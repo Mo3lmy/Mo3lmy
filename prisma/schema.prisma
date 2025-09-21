@@ -1,0 +1,353 @@
+// This is your Prisma schema file
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"  // نبدأ بـ SQLite ونغيرها لـ PostgreSQL لاحقاً
+  url      = env("DATABASE_URL")
+}
+
+// ============= USER & AUTH MODELS =============
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String
+  firstName       String
+  lastName        String
+  role            UserRole  @default(STUDENT)
+  grade           Int?      // الصف الدراسي (6، 9، 12)
+  isActive        Boolean   @default(true)
+  emailVerified   Boolean   @default(false)
+  lastLogin       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  profile         Profile?
+  progress        Progress[]
+  chatHistory     ChatMessage[]
+  quizAttempts    QuizAttempt[]
+  subscription    Subscription?
+  
+  @@index([email])
+  @@index([role])
+}
+
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+model Profile {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  avatar          String?
+  bio             String?
+  phoneNumber     String?
+  dateOfBirth     DateTime?
+  preferences     String?   // JSON string for user preferences
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+}
+
+// ============= EDUCATIONAL CONTENT MODELS =============
+
+model Subject {
+  id              String    @id @default(uuid())
+  name            String    // "رياضيات", "علوم", "تاريخ"
+  nameEn          String    // "Mathematics", "Science", "History"
+  grade           Int       // 6, 9, 12
+  description     String?
+  icon            String?
+  order           Int       @default(0)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  units           Unit[]
+  
+  @@unique([name, grade])
+  @@index([grade])
+}
+
+model Unit {
+  id              String    @id @default(uuid())
+  subjectId       String
+  title           String
+  titleEn         String
+  description     String?
+  order           Int       @default(0)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  subject         Subject   @relation(fields: [subjectId], references: [id])
+  lessons         Lesson[]
+  
+  @@index([subjectId])
+}
+
+model Lesson {
+  id              String    @id @default(uuid())
+  unitId          String
+  title           String
+  titleEn         String
+  description     String?
+  order           Int       @default(0)
+  duration        Int?      // مدة الدرس بالدقائق
+  difficulty      Difficulty @default(MEDIUM)
+  isPublished     Boolean   @default(false)
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  unit            Unit      @relation(fields: [unitId], references: [id])
+  content         Content?
+  video           Video?
+  questions       Question[]
+  progress        Progress[]
+  chatMessages    ChatMessage[]
+  
+  @@index([unitId])
+  @@index([isPublished])
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model Content {
+  id              String    @id @default(uuid())
+  lessonId        String    @unique
+  fullText        String    // المحتوى الكامل للدرس
+  summary         String?   // ملخص الدرس
+  keyPoints       String?   // JSON array للنقاط الرئيسية
+  examples        String?   // JSON array للأمثلة
+  exercises       String?   // JSON array للتمارين
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
+  embeddings      ContentEmbedding[]
+  
+  @@index([lessonId])
+}
+
+// ============= VECTOR EMBEDDINGS FOR RAG =============
+
+model ContentEmbedding {
+  id              String    @id @default(uuid())
+  contentId       String
+  chunkIndex      Int       // رقم الجزء في المحتوى
+  chunkText       String    // النص الأصلي للجزء
+  embedding       String    // Vector as JSON array [768 dimensions]
+  metadata        String?   // JSON metadata
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  content         Content   @relation(fields: [contentId], references: [id])
+  
+  @@unique([contentId, chunkIndex])
+  @@index([contentId])
+}
+
+// ============= VIDEO GENERATION =============
+
+model Video {
+  id              String    @id @default(uuid())
+  lessonId        String    @unique
+  status          VideoStatus @default(PENDING)
+  url             String?
+  thumbnailUrl    String?
+  duration        Int?      // بالثواني
+  script          String?   // JSON script للفيديو
+  slides          String?   // JSON slides data
+  audioUrl        String?
+  processingData  String?   // JSON processing metadata
+  error           String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
+  
+  @@index([lessonId])
+  @@index([status])
+}
+
+enum VideoStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ============= QUIZ & ASSESSMENT =============
+
+model Question {
+  id              String    @id @default(uuid())
+  lessonId        String
+  type            QuestionType
+  question        String
+  options         String?   // JSON array for MCQ options
+  correctAnswer   String
+  explanation     String?
+  points          Int       @default(1)
+  difficulty      Difficulty @default(MEDIUM)
+  order           Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
+  attempts        QuizAttemptAnswer[]
+  
+  @@index([lessonId])
+}
+
+enum QuestionType {
+  MCQ           // Multiple Choice
+  TRUE_FALSE    // True/False
+  FILL_BLANK    // Fill in the blank
+  SHORT_ANSWER  // Short answer
+}
+
+model QuizAttempt {
+  id              String    @id @default(uuid())
+  userId          String
+  lessonId        String
+  score           Float?
+  totalQuestions  Int
+  correctAnswers  Int       @default(0)
+  timeSpent       Int?      // بالثواني
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  answers         QuizAttemptAnswer[]
+  
+  @@index([userId])
+  @@index([lessonId])
+}
+
+model QuizAttemptAnswer {
+  id              String    @id @default(uuid())
+  attemptId       String
+  questionId      String
+  userAnswer      String
+  isCorrect       Boolean
+  timeSpent       Int?      // بالثواني
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  attempt         QuizAttempt @relation(fields: [attemptId], references: [id])
+  question        Question    @relation(fields: [questionId], references: [id])
+  
+  @@unique([attemptId, questionId])
+}
+
+// ============= PROGRESS TRACKING =============
+
+model Progress {
+  id              String    @id @default(uuid())
+  userId          String
+  lessonId        String
+  status          ProgressStatus @default(NOT_STARTED)
+  completionRate  Float     @default(0) // 0-100
+  videoWatched    Boolean   @default(false)
+  quizCompleted   Boolean   @default(false)
+  lastAccessedAt  DateTime  @default(now())
+  completedAt     DateTime?
+  timeSpent       Int       @default(0) // بالثواني
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
+  
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// ============= AI CHAT =============
+
+model ChatMessage {
+  id              String    @id @default(uuid())
+  userId          String
+  lessonId        String?
+  role            ChatRole
+  content         String
+  metadata        String?   // JSON for additional data
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  lesson          Lesson?   @relation(fields: [lessonId], references: [id])
+  
+  @@index([userId])
+  @@index([lessonId])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+// ============= SUBSCRIPTION =============
+
+model Subscription {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  plan            SubscriptionPlan @default(FREE)
+  status          SubscriptionStatus @default(ACTIVE)
+  startDate       DateTime  @default(now())
+  endDate         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([status])
+}
+
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  EXPIRED
+}
