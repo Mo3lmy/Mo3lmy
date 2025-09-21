@@ -1,17 +1,57 @@
 {
   "name": "smart-education-platform",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Smart Education Platform with RAG System",
+  "main": "dist/index.js",
   "scripts": {
     "install:fix": "npm install --legacy-peer-deps",
     "dev": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "start:prod": "NODE_ENV=production node dist/index.js",
+    
+    "// Database Scripts": "",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seeds/seed-curriculum.ts",
+    "db:reset": "prisma migrate reset --force",
+    "db:push": "prisma db push",
+    
+    "// Test Scripts": "",
+    "test": "tsx src/test-integration.ts",
+    "test:integration": "tsx src/test-integration.ts",
+    "test:rag": "tsx src/test-rag.ts",
+    "test:unit": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    
+    "// Development Scripts": "",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    
+    "// Setup Scripts": "",
+    "setup": "npm run db:generate && npm run db:migrate && npm run db:seed",
+    "setup:fresh": "npm run db:reset && npm run db:migrate && npm run db:seed"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "education",
+    "rag",
+    "ai",
+    "typescript",
+    "prisma",
+    "express"
+  ],
+  "author": "Smart Education Team",
   "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/compression": "^1.8.1",
@@ -27,7 +67,8 @@
     "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
     "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "rimraf": "^5.0.5"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
