@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>منصة التعليم - Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-8">منصة التعليم الذكية</h1>
+        
+        <!-- Login Section -->
+        <div class="bg-white p-6 rounded-lg shadow mb-6">
+            <h2 class="text-xl font-semibold mb-4">تسجيل الدخول</h2>
+            <button onclick="login()" class="bg-blue-500 text-white px-4 py-2 rounded">
+                دخول كطالب تجريبي
+            </button>
+            <div id="loginStatus" class="mt-2"></div>
+        </div>
+        
+        <!-- Chat Section -->
+        <div class="bg-white p-6 rounded-lg shadow mb-6">
+            <h2 class="text-xl font-semibold mb-4">اسأل المعلم الذكي</h2>
+            <input id="question" type="text" 
+                   placeholder="اكتب سؤالك هنا..." 
+                   class="w-full p-2 border rounded mb-4">
+            <button onclick="askQuestion()" class="bg-green-500 text-white px-4 py-2 rounded">
+                إرسال السؤال
+            </button>
+            <div id="answer" class="mt-4 p-4 bg-gray-50 rounded"></div>
+        </div>
+        
+        <!-- Progress Section -->
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-4">التقدم الدراسي</h2>
+            <button onclick="getProgress()" class="bg-purple-500 text-white px-4 py-2 rounded">
+                عرض التقدم
+            </button>
+            <div id="progress" class="mt-4"></div>
+        </div>
+    </div>
+    
+    <script>
+        let token = '';
+        const API = 'http://localhost:3000/api/v1';
+        
+        async function login() {
+            const res = await fetch(`${API}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: 'student1@test.com',
+                    password: 'Test@1234'
+                })
+            });
+            const data = await res.json();
+            token = data.data?.token;
+            document.getElementById('loginStatus').innerHTML = 
+                '✅ تم تسجيل الدخول بنجاح!';
+        }
+        
+        async function askQuestion() {
+            const question = document.getElementById('question').value;
+            const res = await fetch(`${API}/chat/message`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ message: question })
+            });
+            const data = await res.json();
+            document.getElementById('answer').innerHTML = 
+                data.data?.message || 'لا توجد إجابة';
+        }
+        
+        async function getProgress() {
+            const res = await fetch(`${API}/student/progress`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            const stats = data.data?.gamification || {};
+            document.getElementById('progress').innerHTML = `
+                <div class="space-y-2">
+                    <p>📊 النقاط: ${stats.totalPoints || 0}</p>
+                    <p>🏆 المستوى: ${stats.level || 1}</p>
+                    <p>💰 العملات: ${stats.coins || 0}</p>
+                    <p>🔥 السلسلة: ${stats.streak || 0} يوم</p>
+                </div>
+            `;
+        }
+        
+        // Auto-login on load
+        window.onload = login;
+    </script>
+</body>
+</html>
