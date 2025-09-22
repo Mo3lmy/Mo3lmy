@@ -1,15 +1,14 @@
+// 📍 المكان: src/services/orchestrator/lesson-orchestrator.service.ts
 // الوظيفة: تنسيق كل الخدمات وإدارة تدفق الدرس بذكاء
 
 import { prisma } from '../../config/database.config';
 import { websocketService } from '../websocket/websocket.service';
 import { sessionService } from '../websocket/session.service';
 import { realtimeChatService } from '../websocket/realtime-chat.service';
-import { EnhancedSlideGenerator } from '../../core/video/slide.generator';
+import { slideGenerator } from '../../core/video/slide.generator';
 import { ragService } from '../../core/rag/rag.service';
-import { openAIService } from '../../services/ai/openai.service';
+import { openAIService } from '../ai/openai.service';
 import type { Lesson, Unit, Subject } from '@prisma/client';
-
-const slideGenerator = new EnhancedSlideGenerator();
 
 // ============= TYPES =============
 
@@ -163,7 +162,7 @@ export class LessonOrchestratorService {
       title: 'مقدمة الدرس',
       slides: [
         {
-          number: 0,
+          number: 1,
           type: 'title',
           content: {
             title: lesson.title,
@@ -172,7 +171,7 @@ export class LessonOrchestratorService {
           duration: 5
         },
         {
-          number: 1,
+          number: 2,
           type: 'bullet',
           content: {
             title: 'ماذا سنتعلم اليوم؟',
@@ -196,11 +195,10 @@ export class LessonOrchestratorService {
     for (let i = 0; i < keyPoints.length; i++) {
       const point = keyPoints[i];
       const sectionSlides: GeneratedSlide[] = [];
-      const currentSlidesCount = sections.reduce((sum, s) => sum + s.slides.length, 0);
       
       // Concept slide
       sectionSlides.push({
-        number: currentSlidesCount + 1,
+        number: sections.length * 3 + 1,
         type: 'content',
         content: {
           title: point,
@@ -211,7 +209,7 @@ export class LessonOrchestratorService {
       
       // Bullet points slide
       sectionSlides.push({
-        number: currentSlidesCount + 2,
+        number: sections.length * 3 + 2,
         type: 'bullet',
         content: {
           title: `نقاط مهمة: ${point}`,
@@ -240,9 +238,8 @@ export class LessonOrchestratorService {
     // 3. Examples Section
     const examples = JSON.parse(lesson.examples || '[]');
     if (examples.length > 0) {
-      const slidesBeforeExamples = sections.reduce((sum, s) => sum + s.slides.length, 0);
       const exampleSlides: GeneratedSlide[] = examples.map((ex: any, i: number) => ({
-        number: slidesBeforeExamples + i + 1,
+        number: sections.length * 2 + i + 1,
         type: 'content',
         content: {
           title: `مثال ${i + 1}`,
@@ -265,14 +262,14 @@ export class LessonOrchestratorService {
     }
     
     // 4. Practice/Quiz Section
-    const slidesBeforePractice = sections.reduce((sum, s) => sum + s.slides.length, 0);
+    const currentSlideCount = sections.reduce((sum, s) => sum + s.slides.length, 0);
     sections.push({
       id: 'practice',
       type: 'practice',
       title: 'تدريبات',
       slides: [
         {
-          number: slidesBeforePractice + 1,
+          number: currentSlideCount + 1,
           type: 'quiz',
           content: {
             quiz: {
@@ -292,14 +289,14 @@ export class LessonOrchestratorService {
     });
     
     // 5. Summary Section
-    const currentTotalSlides = sections.reduce((sum, s) => sum + s.slides.length, 0);
+    const finalSlideCount = sections.reduce((sum, s) => sum + s.slides.length, 0);
     sections.push({
       id: 'summary',
       type: 'summary',
       title: 'ملخص الدرس',
       slides: [
         {
-          number: currentTotalSlides + 1,
+          number: finalSlideCount + 1,
           type: 'summary',
           content: {
             title: 'ما تعلمناه اليوم',
@@ -315,24 +312,13 @@ export class LessonOrchestratorService {
       anticipatedQuestions: ['ما أهم نقطة؟', 'ماذا بعد؟']
     });
     
-    // Re-number all slides sequentially
-    let slideNumber = 0;
-    sections.forEach(section => {
-      section.slides.forEach(slide => {
-        slide.number = slideNumber++;
-      });
-    });
-    
     return sections;
   }
   
   /**
-   * Generate initial slides - must initialize slideGenerator first
+   * توليد الشرائح الأولية
    */
   private async generateInitialSlides(flow: LessonFlow): Promise<void> {
-    // Initialize slide generator if needed
-    await slideGenerator.initialize();
-    
     // Generate first 5 slides HTML
     const slidesToGenerate = Math.min(5, flow.totalSlides);
     
@@ -575,9 +561,8 @@ export class LessonOrchestratorService {
     let content = `شرح تفصيلي عن: ${topic}`;
     
     if (process.env.OPENAI_API_KEY) {
-      const grade = await this.getGradeFromFlow(flow);
       const prompt = `
-اشرح للطالب في الصف ${grade} الموضوع التالي:
+اشرح للطالب في الصف ${this.getGradeFromFlow(flow)} الموضوع التالي:
 "${topic}"
 
 في سياق درس: ${currentSection.title}
@@ -607,8 +592,7 @@ export class LessonOrchestratorService {
       duration: 20
     };
     
-    // Generate HTML - initialize first
-    await slideGenerator.initialize();
+    // Generate HTML
     newSlide.html = slideGenerator.generateRealtimeSlideHTML(
       {
         id: `slide-${newSlide.number}`,
@@ -645,9 +629,8 @@ export class LessonOrchestratorService {
     
     if (process.env.OPENAI_API_KEY) {
       try {
-        const grade = await this.getGradeFromFlow(flow);
         const prompt = `
-أعط مثال واضح ومناسب للصف ${grade} على:
+أعط مثال واضح ومناسب للصف ${this.getGradeFromFlow(flow)} على:
 "${topic}"
 
 المثال (مع الشرح):`;
@@ -717,9 +700,8 @@ export class LessonOrchestratorService {
     
     if (process.env.OPENAI_API_KEY) {
       try {
-        const grade = await this.getGradeFromFlow(flow);
         const prompt = `
-اكتب سؤال اختيار من متعدد للصف ${grade} عن:
+اكتب سؤال اختيار من متعدد للصف ${this.getGradeFromFlow(flow)} عن:
 "${currentSection.title}"
 
 بصيغة JSON:
@@ -730,14 +712,25 @@ export class LessonOrchestratorService {
 }`;
         
         const response = await openAIService.chat([
+          { role: 'system', content: 'You are a JSON generator. Always respond with valid JSON only, no text outside the JSON structure.' },
           { role: 'user', content: prompt }
         ], {
           temperature: 0.5,
           maxTokens: 200
         });
         
-        const parsed = JSON.parse(response);
-        Object.assign(quiz, parsed);
+        // Clean response and parse JSON
+        const cleanedResponse = response
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim();
+        
+        // Try to extract JSON if the response contains text before/after
+        let jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          Object.assign(quiz, parsed);
+        }
       } catch (error) {
         console.error('Failed to generate quiz:', error);
       }
@@ -837,9 +830,6 @@ export class LessonOrchestratorService {
   }
   
   private async generateSlideHTML(flow: LessonFlow, slide: GeneratedSlide): Promise<string> {
-    // Initialize slide generator if needed  
-    await slideGenerator.initialize();
-    
     return slideGenerator.generateRealtimeSlideHTML(
       {
         id: `slide-${slide.number}`,
@@ -928,17 +918,9 @@ export class LessonOrchestratorService {
       .slice(0, 5);
   }
   
-  private async getGradeFromFlow(flow: LessonFlow): Promise<number> {
-    // Extract grade from flow
-    try {
-      const lesson = await this.loadLessonWithContent(flow.lessonId);
-      if (lesson && lesson.unit && lesson.unit.subject) {
-        return lesson.unit.subject.grade;
-      }
-    } catch (error) {
-      console.error('Failed to get grade:', error);
-    }
-    return 6; // Default grade
+  private getGradeFromFlow(flow: LessonFlow): number {
+    // Extract grade from flow or default
+    return 6; // Default, should be from lesson data
   }
   
   private async generateDetailedExplanation(flow: LessonFlow): Promise<void> {

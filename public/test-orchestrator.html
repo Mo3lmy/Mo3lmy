@@ -552,9 +552,18 @@
         // Load available lessons
         async function loadLessons() {
             try {
-                const res = await fetch('http://localhost:3000/api/v1/lessons', {
+                // First try the new endpoint
+                let res = await fetch('http://localhost:3000/api/v1/lessons', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+                
+                // If it fails, try the content endpoint as fallback
+                if (!res.ok) {
+                    console.log('Trying fallback endpoint...');
+                    res = await fetch('http://localhost:3000/api/v1/content/units/a47ac10b-58cc-4372-a567-0e02b2c3d479/lessons', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                }
                 
                 const data = await res.json();
                 if (data.success) {

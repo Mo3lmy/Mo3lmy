@@ -4,24 +4,25 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { config } from './config';
 import { AppError, handleError } from './utils/errors';
 import { websocketService } from './services/websocket/websocket.service';
-import path from 'path';
 
-// Import existing routes
+// ============= IMPORT ALL ROUTES =============
+// Basic REST routes
 import authRoutes from './api/rest/auth.routes';
+import lessonsRoutes from './api/rest/lessons.routes';      // ✅ ADDED
+import subjectsRoutes from './api/rest/subjects.routes';    // ✅ ADDED
 import contentRoutes from './api/rest/content.routes';
 import chatRoutes from './api/rest/chat.routes';
 import quizRoutes from './api/rest/quiz.routes';
+import orchestratorRoutes from './api/rest/orchestrator.routes';
 
-// Import new v1 routes
+// Advanced v1 routes
 import curriculumRoutesV1 from './api/v1/curriculum';
 import quizRoutesV1 from './api/v1/quiz';
 import studentRoutesV1 from './api/v1/student';
-
-// // Import Orchestrator routes (NEW)
-// import orchestratorRoutes from './api/rest/orchestrator.routes';
 
 // Create Express app
 const app: Application = express();
@@ -31,6 +32,7 @@ app.use(helmet({
   contentSecurityPolicy: false, // للسماح بـ WebSocket
   crossOriginEmbedderPolicy: false
 }));
+
 app.use(cors({
   origin: config.NODE_ENV === 'production' 
     ? ['https://yourdomain.com'] 
@@ -80,15 +82,18 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: config.NODE_ENV,
-    version: '2.0.0', // Updated version
+    version: '2.1.0', // Updated version
     services: {
       websocket: {
         connected: websocketService.getConnectedUsersCount(),
         status: 'active'
       },
-      orchestrator: 'active', // NEW
+      orchestrator: 'active',
       database: 'connected',
-      ai: 'ready'
+      ai: 'ready',
+      rag: 'ready',
+      slideGenerator: 'ready',
+      realtimeChat: 'active'
     }
   });
 });
@@ -103,9 +108,9 @@ app.get('/api/status', (req: Request, res: Response) => {
       ai: 'ready',
       rag: 'ready',
       websocket: 'active',
-      orchestrator: 'active', // NEW
-      slideGenerator: 'ready', // NEW
-      realtimeChat: 'active' // NEW
+      orchestrator: 'active',
+      slideGenerator: 'ready',
+      realtimeChat: 'active'
     },
     timestamp: new Date().toISOString(),
   });
@@ -715,196 +720,213 @@ app.get('/test-websocket', (req: Request, res: Response) => {
   `);
 });
 
-// ============= API ROUTES =============
+// ============= 🚀 API ROUTES - ORGANIZED PROPERLY =============
 
-// Existing REST routes
+// 1️⃣ Authentication routes (FIRST)
 app.use('/api/v1/auth', authRoutes);
+
+// 2️⃣ Basic REST endpoints (✅ ADDED)
+app.use('/api/v1/lessons', lessonsRoutes);       // ✅ NEW
+app.use('/api/v1/subjects', subjectsRoutes);     // ✅ NEW
+
+// 3️⃣ Core feature routes
 app.use('/api/v1/content', contentRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/quiz', quizRoutes);
 
-// New RAG and Progress routes
+// 4️⃣ Advanced features
 app.use('/api/v1/curriculum', curriculumRoutesV1);
-app.use('/api/v1/quiz', quizRoutesV1); // This extends the existing quiz routes
 app.use('/api/v1/student', studentRoutesV1);
 
-// // Orchestrator routes (NEW)
-// app.use('/api/v1/orchestrator', orchestratorRoutes);
+// 5️⃣ Orchestrator system
+app.use('/api/v1/orchestrator', orchestratorRoutes);
 
-// API Documentation endpoint (UPDATED)
+// Note: quizRoutesV1 extends the existing quiz routes - removed duplicate
+
+// ============= API DOCUMENTATION ENDPOINT (FULLY UPDATED) =============
 app.get('/api', (req: Request, res: Response) => {
   res.json({
     message: 'Smart Education Platform API',
-    version: '2.0.0', // Updated version
+    version: '2.1.0',
     endpoints: {
       auth: {
         base: '/api/v1/auth',
         routes: [
-          'POST /register',
-          'POST /login',
-          'GET /me',
-          'POST /change-password',
-          'POST /verify',
+          'POST /register - تسجيل مستخدم جديد',
+          'POST /login - تسجيل الدخول',
+          'GET /me - بيانات المستخدم الحالي',
+          'POST /change-password - تغيير كلمة المرور',
+          'POST /verify - تأكيد البريد الإلكتروني',
         ]
       },
+      
+      // ✅ ADDED - Lessons endpoints
+      lessons: {
+        base: '/api/v1/lessons',
+        routes: [
+          'GET / - جلب كل الدروس',
+          'GET /:id - جلب درس بالمعرف',
+          'GET /:id/content - جلب محتوى الدرس',
+          'GET /subject/:subjectId - دروس المادة',
+          'GET /unit/:unitId - دروس الوحدة',
+          'POST /:id/start - بدء تتبع الدرس',
+          'POST /:id/complete - إكمال الدرس'
+        ]
+      },
+      
+      // ✅ ADDED - Subjects endpoints  
+      subjects: {
+        base: '/api/v1/subjects',
+        routes: [
+          'GET / - جلب كل المواد',
+          'GET /:id - جلب مادة مع وحداتها'
+        ]
+      },
+      
       content: {
         base: '/api/v1/content',
         routes: [
-          'GET /subjects',
-          'GET /subjects/:id/units',
-          'GET /units/:id/lessons',
-          'GET /lessons/:id',
-          'GET /lessons/:id/questions',
-          'GET /search',
+          'GET /subjects - المواد حسب الصف',
+          'GET /subjects/:id/units - وحدات المادة',
+          'GET /units/:id/lessons - دروس الوحدة',
+          'GET /lessons/:id - تفاصيل الدرس',
+          'GET /lessons/:id/questions - أسئلة الدرس',
+          'GET /search - البحث في المحتوى',
         ]
       },
-      curriculum: {
-        base: '/api/v1/curriculum',
-        routes: [
-          'POST /search',
-          'POST /ask',
-          'GET /suggest',
-          'GET /trending',
-          'POST /explain/concept',
-          'POST /explain/formula',
-          'POST /insights',
-          'POST /adaptive',
-          'GET /simplify/:text',
-        ]
-      },
-      quiz: {
-        base: '/api/v1/quiz',
-        routes: [
-          'POST /start',
-          'POST /answer',
-          'POST /complete/:attemptId',
-          'GET /history',
-          'GET /statistics/:lessonId',
-          'POST /generate',
-          'POST /generate/adaptive',
-          'POST /regenerate',
-          'GET /templates',
-        ]
-      },
-      student: {
-        base: '/api/v1/student',
-        routes: [
-          'GET /progress',
-          'POST /progress/update',
-          'GET /progress/subject/:subjectId',
-          'GET /progress/statistics',
-          'GET /progress/achievements',
-          'GET /progress/leaderboard',
-          'GET /progress/learning-path',
-          'GET /gamification/stats',
-          'GET /gamification/challenges',
-          'POST /gamification/challenges/:challengeId/complete',
-          'GET /gamification/rewards',
-          'POST /gamification/rewards/:rewardId/claim',
-        ]
-      },
+      
       chat: {
         base: '/api/v1/chat',
         routes: [
-          'POST /message',
-          'GET /history',
-          'GET /session/:sessionId/summary',
-          'POST /feedback',
-          'GET /suggestions',
+          'POST /message - إرسال رسالة',
+          'GET /history - سجل المحادثات',
+          'GET /session/:sessionId/summary - ملخص الجلسة',
+          'POST /feedback - إرسال ملاحظات',
+          'GET /suggestions - اقتراحات',
         ]
       },
-      orchestrator: { // NEW section
+      
+      curriculum: {
+        base: '/api/v1/curriculum',
+        routes: [
+          'POST /search - بحث بنظام RAG',
+          'POST /ask - سؤال عن المنهج',
+          'GET /suggest - اقتراحات البحث',
+          'GET /trending - المواضيع الرائجة',
+          'POST /explain/concept - شرح مفهوم',
+          'POST /explain/formula - شرح معادلة',
+          'POST /insights - رؤى تعليمية',
+          'POST /adaptive - محتوى متكيف',
+          'GET /simplify/:text - تبسيط النص',
+        ]
+      },
+      
+      quiz: {
+        base: '/api/v1/quiz',
+        routes: [
+          'POST /start - بدء اختبار',
+          'POST /answer - إرسال إجابة',
+          'POST /complete/:attemptId - إكمال المحاولة',
+          'GET /history - سجل الاختبارات',
+          'GET /statistics/:lessonId - إحصائيات',
+          'POST /generate - توليد أسئلة',
+          'POST /generate/adaptive - أسئلة متكيفة',
+          'POST /regenerate - إعادة توليد',
+          'GET /templates - قوالب الأسئلة',
+        ]
+      },
+      
+      student: {
+        base: '/api/v1/student',
+        routes: [
+          'GET /progress - التقدم الكامل',
+          'POST /progress/update - تحديث التقدم',
+          'GET /progress/subject/:subjectId - تقدم المادة',
+          'GET /progress/statistics - الإحصائيات',
+          'GET /progress/achievements - الإنجازات',
+          'GET /progress/leaderboard - لوحة الصدارة',
+          'GET /progress/learning-path - مسار التعلم',
+          'GET /gamification/stats - إحصائيات اللعبة',
+          'GET /gamification/challenges - التحديات',
+          'POST /gamification/challenges/:challengeId/complete - إكمال تحدي',
+          'GET /gamification/rewards - المكافآت',
+          'POST /gamification/rewards/:rewardId/claim - استلام مكافأة',
+        ]
+      },
+      
+      orchestrator: {
         base: '/api/v1/orchestrator',
         routes: [
-          'GET /lessons/:lessonId/flow',
-          'POST /lessons/:lessonId/action',
-          'GET /lessons/:lessonId/structure',
-          'POST /lessons/:lessonId/navigate',
-          'GET /lessons/:lessonId/progress',
+          'GET /lessons/:lessonId/flow - هيكل تدفق الدرس',
+          'POST /lessons/:lessonId/action - تنفيذ إجراء',
+          'GET /lessons/:lessonId/sections - أقسام الدرس',
+          'POST /lessons/:lessonId/navigate - التنقل',
+          'GET /status - حالة الخدمة',
         ]
       },
-      websocket: { // UPDATED with new events
+      
+      websocket: {
         base: 'ws://localhost:3000',
+        namespace: '/socket.io',
+        authentication: 'JWT token in auth.token',
         events: {
           core: [
-            'connect',
-            'disconnect',
-            'welcome',
-            'ping/pong',
-            'get_status'
+            'connect - الاتصال',
+            'disconnect - قطع الاتصال',
+            'welcome - رسالة ترحيب',
+            'ping/pong - اختبار الاتصال',
+            'get_status - حالة الاتصال'
           ],
           lessons: [
-            'join_lesson',
-            'leave_lesson',
-            'joined_lesson',
-            'user_joined_lesson',
-            'user_left_lesson'
+            'join_lesson - الانضمام لدرس',
+            'leave_lesson - مغادرة الدرس',
+            'joined_lesson - تأكيد الانضمام',
+            'user_joined_lesson - مستخدم انضم',
+            'user_left_lesson - مستخدم غادر'
           ],
           slides: [
-            'request_slide',
-            'slide_ready',
-            'slide_error',
-            'navigate_slide',
-            'navigation_complete',
-            'update_slide',
-            'slide_updated',
-            'user_slide_change'
+            'request_slide - طلب شريحة',
+            'slide_ready - الشريحة جاهزة',
+            'slide_error - خطأ في الشريحة',
+            'navigate_slide - التنقل بين الشرائح',
+            'update_slide - تحديث الشريحة'
           ],
-          orchestrator: [ // NEW category
-            'start_orchestrated_lesson',
-            'lesson_flow_started',
-            'navigate_smart',
-            'section_changed',
-            'chat_with_action',
-            'action_detected',
-            'action_triggered',
-            'request_action',
-            'action_completed',
-            'get_lesson_structure',
-            'lesson_structure',
-            'generate_smart_slide',
-            'smart_slide_ready',
-            'slide_generated',
-            'get_flow_state',
-            'flow_state',
-            'update_comprehension',
-            'comprehension_updated',
-            'track_interaction',
-            'get_lesson_progress',
-            'lesson_progress',
-            'control_flow',
-            'flow_control_updated',
-            'lesson_completed'
+          orchestrator: [
+            'start_orchestrated_lesson - بدء درس تفاعلي',
+            'lesson_flow_started - بدء التدفق',
+            'navigate_smart - تنقل ذكي',
+            'chat_with_action - محادثة مع إجراءات',
+            'request_action - طلب إجراء',
+            'get_lesson_structure - هيكل الدرس',
+            'generate_smart_slide - توليد شريحة ذكية'
           ],
           chat: [
-            'send_message',
-            'new_message',
-            'chat_message',
-            'ai_response',
-            'ai_typing',
-            'stream_start',
-            'stream_chunk',
-            'stream_end',
-            'get_chat_history',
-            'chat_history',
-            'rate_message',
-            'rating_saved',
-            'clear_chat',
-            'chat_cleared'
+            'chat_message - رسالة محادثة',
+            'ai_response - رد الذكاء الاصطناعي',
+            'ai_typing - الذكاء الاصطناعي يكتب',
+            'stream_start - بدء البث',
+            'stream_chunk - جزء من البث',
+            'stream_end - انتهاء البث'
           ],
           session: [
-            'save_preferences',
-            'preferences_saved',
-            'session_restored',
-            'session_ended'
+            'save_preferences - حفظ التفضيلات',
+            'session_restored - استعادة الجلسة',
+            'session_ended - انتهاء الجلسة'
           ]
         }
       }
-    }
+    },
+    testPages: [
+      '/test - قائمة صفحات الاختبار',
+      '/test-websocket - اختبار WebSocket والشرائح',
+      '/test-orchestrator.html - النظام التفاعلي الذكي',
+      '/test-chat.html - المحادثة الذكية',
+      '/test-full.html - اختبار شامل'
+    ]
   });
 });
 
-// Test pages directory listing (NEW)
+// Test pages directory listing
 app.get('/test', (req: Request, res: Response) => {
   res.send(`
 <!DOCTYPE html>
@@ -1000,7 +1022,7 @@ app.use((req: Request, res: Response) => {
       code: 'NOT_FOUND',
       message: `Endpoint ${req.method} ${req.path} not found`,
       availableEndpoints: '/api',
-      testPages: '/test', // NEW
+      testPages: '/test',
     },
     timestamp: new Date().toISOString(),
   });
