@@ -3,12 +3,7 @@ node_modules/
 .pnp
 .pnp.js
 
-# Environment variables - NEVER commit these!
-.env
-.env.*
-.env.local
-.env.production
-!.env.example
+
 
 # Database
 *.db
