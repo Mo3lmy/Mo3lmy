@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Smart Education Platform with RAG System",
   "main": "dist/index.js",
+  "prisma": {
+    "seed": "tsx prisma/seeds/seed-curriculum.ts"
+  },
   "scripts": {
     "install:fix": "npm install --legacy-peer-deps",
     "dev": "nodemon --exec tsx src/index.ts",
@@ -15,7 +18,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seeds/seed-curriculum.ts",
+    "db:seed": "prisma db seed",
+    "db:seed:clean": "tsx prisma/seeds/seed-curriculum.ts --clean",
     "db:reset": "prisma migrate reset --force",
     "db:push": "prisma db push",
     
@@ -23,6 +27,7 @@
     "test": "tsx src/test-integration.ts",
     "test:integration": "tsx src/test-integration.ts",
     "test:rag": "tsx src/test-rag.ts",
+    "test:openai": "node test-openai.js",
     "test:unit": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -36,7 +41,13 @@
     
     "// Setup Scripts": "",
     "setup": "npm run db:generate && npm run db:migrate && npm run db:seed",
-    "setup:fresh": "npm run db:reset && npm run db:migrate && npm run db:seed"
+    "setup:fresh": "npm run db:reset && npm run setup",
+    "setup:clean": "npm run db:reset && npm run db:migrate && npm run db:seed:clean",
+    
+    "// RAG & Content Processing": "",
+    "content:process": "tsx scripts/process-all-content.ts",
+    "embeddings:generate": "tsx scripts/generate-embeddings.ts",
+    "rag:index": "tsx scripts/index-rag.ts"
   },
   "keywords": [
     "education",
@@ -44,7 +55,10 @@
     "ai",
     "typescript",
     "prisma",
-    "express"
+    "express",
+    "openai",
+    "embeddings",
+    "curriculum"
   ],
   "author": "Smart Education Team",
   "license": "ISC",
@@ -61,6 +75,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^24.5.2",
+    "@types/node-fetch": "^2.6.4",
     "@types/sanitize-html": "^2.16.0",
     "@types/uuid": "^10.0.0",
     "eslint": "^9.36.0",
@@ -92,6 +107,7 @@
     "mammoth": "^1.11.0",
     "marked": "^16.3.0",
     "morgan": "^1.10.1",
+    "node-fetch": "^2.7.0",
     "openai": "^5.22.0",
     "pdf-parse": "^1.1.1",
     "prisma": "^6.16.2",

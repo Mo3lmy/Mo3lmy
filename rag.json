@@ -1,0 +1,933 @@
+{
+  "subject": {
+    "name": "الرياضيات",
+    "nameEn": "Mathematics",
+    "grade": 6
+  },
+  "units": [
+    {
+      "title": "Number Sense and Operations: Expressions and Equations",
+      "titleAr": "الحس العددي والعمليات: التعبيرات والمعادلات",
+      "order": 1,
+      "lessons": [
+        {
+          "title": "Divisibility",
+          "titleAr": "قابلية القسمة",
+          "order": 1,
+          "content": {
+            "fullText": "A number is divisible by another number when the quotient is a whole number and the remainder equals zero. Divisibility rules: A number is divisible by 2 if it ends in 0, 2, 4, 6, or 8. A number is divisible by 3 if the sum of its digits is divisible by 3. A number is divisible by 4 if the last two digits form a number divisible by 4. A number is divisible by 5 if it ends in 0 or 5. A number is divisible by 6 if it is divisible by both 2 and 3. A number is divisible by 10 if it ends in 0.",
+            "summary": "دراسة قواعد قابلية القسمة على الأعداد 2، 3، 4، 5، 6، 10 واستخدامها في حل المسائل الواقعية",
+            "keyPoints": [
+              "قابلية القسمة على 2: العدد الزوجي",
+              "قابلية القسمة على 3: مجموع الأرقام يقبل القسمة على 3",
+              "قابلية القسمة على 4: آخر رقمين يقبلان القسمة على 4",
+              "قابلية القسمة على 5: ينتهي بـ 0 أو 5",
+              "قابلية القسمة على 6: يقبل القسمة على 2 و 3 معاً",
+              "قابلية القسمة على 10: ينتهي بـ 0"
+            ],
+            "examples": [
+              {
+                "problem": "هل العدد 102 يقبل القسمة على 2، 3، 4، 5، 6، 10؟",
+                "solution": "102 يقبل القسمة على: 2 (عدد زوجي)، 3 (1+0+2=3 يقبل القسمة على 3)، 6 (يقبل القسمة على 2 و 3). لا يقبل القسمة على: 4 (02 لا يقبل القسمة على 4)، 5 (لا ينتهي بـ 0 أو 5)، 10 (لا ينتهي بـ 0)"
+              },
+              {
+                "problem": "هل يمكن توزيع 254 طالب بالتساوي على 5 حافلات؟",
+                "solution": "254 ÷ 5 = 50.8، لا يمكن لأن 254 لا يقبل القسمة على 5 (لا ينتهي بـ 0 أو 5)"
+              }
+            ],
+            "concepts": ["divisibility", "divisible", "quotient", "remainder", "even numbers", "odd numbers"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Factorizing a number to its prime Factors",
+          "titleAr": "تحليل العدد إلى عوامله الأولية",
+          "order": 2,
+          "content": {
+            "fullText": "Prime factorization is the process of finding the prime numbers that multiply together to make the original number. Methods include factor trees and repeated division. Venn diagrams can be used to find GCF and LCM using prime factors.",
+            "summary": "استخدام التحليل إلى العوامل الأولية لإيجاد العامل المشترك الأكبر والمضاعف المشترك الأصغر",
+            "keyPoints": [
+              "التحليل باستخدام شجرة العوامل",
+              "التحليل بالقسمة المتكررة",
+              "استخدام مخططات فن للمقارنة",
+              "إيجاد العامل المشترك الأكبر من العوامل المشتركة",
+              "إيجاد المضاعف المشترك الأصغر من جميع العوامل"
+            ],
+            "examples": [
+              {
+                "problem": "حلل 42 إلى عوامله الأولية",
+                "solution": "42 = 2 × 21 = 2 × 3 × 7"
+              },
+              {
+                "problem": "أوجد العامل المشترك الأكبر للعددين 12 و 18",
+                "solution": "12 = 2² × 3، 18 = 2 × 3²، العامل المشترك الأكبر = 2 × 3 = 6"
+              }
+            ],
+            "concepts": ["prime factorization", "prime factors", "factor tree", "GCF", "LCM", "Venn diagram", "relatively prime"],
+            "formulas": ["GCF = product of common prime factors", "LCM = product of all prime factors with highest powers"]
+          }
+        },
+        {
+          "title": "Writing Expressions Using the G.C.F.",
+          "titleAr": "كتابة التعبيرات باستخدام العامل المشترك الأكبر",
+          "order": 3,
+          "content": {
+            "fullText": "The distributive property states that multiplying a number by the sum of two addends is the same as multiplying that number by each addend individually and then adding those products. This property can be used with GCF to write expressions.",
+            "summary": "استخدام خاصية التوزيع والعامل المشترك الأكبر لكتابة وتحليل التعبيرات الجبرية",
+            "keyPoints": [
+              "خاصية التوزيع: a(b + c) = ab + ac",
+              "استخدام العامل المشترك الأكبر في التحليل",
+              "كتابة التعبيرات بأكثر من طريقة",
+              "التطبيقات الواقعية للتوزيع"
+            ],
+            "examples": [
+              {
+                "problem": "اكتب 12 + 8 باستخدام العامل المشترك الأكبر",
+                "solution": "العامل المشترك الأكبر = 4، إذن 12 + 8 = 4(3 + 2)"
+              },
+              {
+                "problem": "طالب لديه 12 كيس حبوب و 8 قطع جبن لعمل صناديق تبرع. ما أكبر عدد من الصناديق المتماثلة؟",
+                "solution": "العامل المشترك الأكبر = 4 صناديق، كل صندوق به 3 أكياس حبوب و 2 قطعة جبن"
+              }
+            ],
+            "concepts": ["distributive property", "GCF", "factoring", "expressions"],
+            "formulas": ["a(b + c) = ab + ac"]
+          }
+        },
+        {
+          "title": "Analyzing Least Common Multiples",
+          "titleAr": "تحليل المضاعف المشترك الأصغر",
+          "order": 4,
+          "content": {
+            "fullText": "The least common multiple (LCM) is the smallest positive number that is a multiple of two or more numbers. LCM is used to find common denominators when adding or subtracting fractions.",
+            "summary": "استخدام المضاعف المشترك الأصغر في جمع وطرح الكسور وحل المسائل الواقعية",
+            "keyPoints": [
+              "المضاعف المشترك الأصغر هو أصغر عدد يقبل القسمة على جميع الأعداد المعطاة",
+              "استخدام LCM لإيجاد المقام المشترك",
+              "جمع وطرح الكسور ذات المقامات المختلفة",
+              "التطبيقات الواقعية للمضاعف المشترك الأصغر"
+            ],
+            "examples": [
+              {
+                "problem": "أوجد المضاعف المشترك الأصغر للعددين 4 و 6",
+                "solution": "مضاعفات 4: 4، 8، 12، 16...\nمضاعفات 6: 6، 12، 18...\nالمضاعف المشترك الأصغر = 12"
+              },
+              {
+                "problem": "احسب 3/4 + 5/6",
+                "solution": "المضاعف المشترك الأصغر = 12\n3/4 = 9/12، 5/6 = 10/12\n9/12 + 10/12 = 19/12 = 1 7/12"
+              }
+            ],
+            "concepts": ["LCM", "common denominator", "fractions", "addition", "subtraction"],
+            "formulas": ["LCM(a,b) = (a × b) / GCF(a,b)"]
+          }
+        }
+      ]
+    },
+    {
+      "title": "Rational Numbers",
+      "titleAr": "الأعداد النسبية",
+      "order": 2,
+      "lessons": [
+        {
+          "title": "Using a Number Line to Describe Data",
+          "titleAr": "استخدام خط الأعداد لوصف البيانات",
+          "order": 1,
+          "content": {
+            "fullText": "A rational number is any number that can be expressed as a fraction a/b where a and b are integers and b ≠ 0. The number line extends infinitely in both directions and includes negative numbers, zero, and positive numbers.",
+            "summary": "التعرف على خط الأعداد الممتد ليشمل الأعداد السالبة واستخدامه في تمثيل المواقف الواقعية",
+            "keyPoints": [
+              "الأعداد النسبية تشمل الأعداد الصحيحة والكسور والأعداد العشرية",
+              "خط الأعداد يمتد في الاتجاهين السالب والموجب",
+              "الصفر يفصل بين الأعداد الموجبة والسالبة",
+              "المسافة من الصفر تحدد القيمة المطلقة"
+            ],
+            "examples": [
+              {
+                "problem": "مثّل الارتفاع 145 متر تحت مستوى سطح البحر على خط الأعداد",
+                "solution": "نضع نقطة عند -145 على خط الأعداد"
+              },
+              {
+                "problem": "رتب درجات تجمد السوائل: الماء العذب (0°C)، ماء البحر (-2°C)، عصير البرتقال (-6°C)",
+                "solution": "من الأقل للأكبر: -6، -2، 0"
+              }
+            ],
+            "concepts": ["rational numbers", "number line", "negative numbers", "positive numbers", "zero"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Using a Number Line and Symbols to Compare Numbers",
+          "titleAr": "استخدام خط الأعداد والرموز لمقارنة الأعداد",
+          "order": 2,
+          "content": {
+            "fullText": "Numbers can be compared using inequality symbols. On a horizontal number line, numbers to the right are greater than numbers to the left. Opposite numbers are the same distance from zero but on opposite sides.",
+            "summary": "مقارنة الأعداد النسبية باستخدام رموز المقارنة وإيجاد المعكوس الجمعي",
+            "keyPoints": [
+              "استخدام الرموز < و > للمقارنة",
+              "العدد الأكبر يقع على يمين العدد الأصغر على خط الأعداد",
+              "المعكوس الجمعي (النظير الجمعي) له نفس المسافة من الصفر",
+              "مجموع العدد ومعكوسه الجمعي = صفر"
+            ],
+            "examples": [
+              {
+                "problem": "قارن بين -7 و -3",
+                "solution": "-7 < -3 لأن -3 يقع على يمين -7 على خط الأعداد"
+              },
+              {
+                "problem": "أوجد المعكوس الجمعي للعدد -5",
+                "solution": "المعكوس الجمعي لـ -5 هو 5"
+              }
+            ],
+            "concepts": ["comparison", "inequality", "opposite numbers", "additive inverse"],
+            "formulas": ["a + (-a) = 0"]
+          }
+        },
+        {
+          "title": "Analyzing Rational Numbers by Using Models",
+          "titleAr": "تحليل الأعداد النسبية باستخدام النماذج",
+          "order": 3,
+          "content": {
+            "fullText": "The number system can be visualized using Venn diagrams. Counting numbers ⊂ Natural numbers ⊂ Integers ⊂ Rational numbers. Each set is a subset of the next larger set.",
+            "summary": "فهم العلاقات بين مجموعات الأعداد المختلفة وتصنيف الأعداد",
+            "keyPoints": [
+              "أعداد العد: 1، 2، 3، ...",
+              "الأعداد الطبيعية: 0، 1، 2، 3، ...",
+              "الأعداد الصحيحة: ...، -2، -1، 0، 1، 2، ...",
+              "الأعداد النسبية: جميع الأعداد التي يمكن كتابتها على صورة a/b"
+            ],
+            "examples": [
+              {
+                "problem": "صنف العدد -3.5",
+                "solution": "عدد نسبي (يمكن كتابته -7/2)، ليس عدداً صحيحاً"
+              },
+              {
+                "problem": "هل العدد 0 عدد طبيعي؟",
+                "solution": "نعم، 0 عدد طبيعي وعدد صحيح وعدد نسبي"
+              }
+            ],
+            "concepts": ["counting numbers", "natural numbers", "integers", "rational numbers", "sets", "subsets"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Comparing and Ordering Rational Numbers",
+          "titleAr": "مقارنة وترتيب الأعداد النسبية",
+          "order": 4,
+          "content": {
+            "fullText": "To order rational numbers, convert them to the same form (decimals or fractions with common denominators) or plot them on a number line. Numbers increase from left to right on a horizontal number line.",
+            "summary": "ترتيب الأعداد النسبية من الأصغر للأكبر والعكس",
+            "keyPoints": [
+              "تحويل الكسور إلى أعداد عشرية للمقارنة",
+              "استخدام خط الأعداد للترتيب",
+              "الترتيب التصاعدي من اليسار لليمين",
+              "الترتيب التنازلي من اليمين لليسار"
+            ],
+            "examples": [
+              {
+                "problem": "رتب تصاعدياً: 2.1، -3.25، -1.875، 1.4",
+                "solution": "-3.25، -1.875، 1.4، 2.1"
+              },
+              {
+                "problem": "أوجد عدداً بين -3/4 و -1/2",
+                "solution": "-5/8 (لأن -3/4 = -6/8 و -1/2 = -4/8)"
+              }
+            ],
+            "concepts": ["ordering", "ascending", "descending", "comparison"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Exploring Absolute Value",
+          "titleAr": "استكشاف القيمة المطلقة",
+          "order": 5,
+          "content": {
+            "fullText": "The absolute value of a number is its distance from zero on the number line, regardless of direction. It is always non-negative. The absolute value of a is written as |a|.",
+            "summary": "فهم مفهوم القيمة المطلقة كمسافة من الصفر على خط الأعداد",
+            "keyPoints": [
+              "القيمة المطلقة هي المسافة من الصفر",
+              "القيمة المطلقة دائماً موجبة أو صفر",
+              "|-a| = |a|",
+              "الأعداد المتقابلة لها نفس القيمة المطلقة"
+            ],
+            "examples": [
+              {
+                "problem": "أوجد |-7|",
+                "solution": "|-7| = 7 (المسافة من 0 إلى -7 هي 7 وحدات)"
+              },
+              {
+                "problem": "أي عدد أبعد عن الصفر: -9 أم 8؟",
+                "solution": "-9 أبعد لأن |-9| = 9 > |8| = 8"
+              }
+            ],
+            "concepts": ["absolute value", "distance", "magnitude"],
+            "formulas": ["|a| = a if a ≥ 0", "|a| = -a if a < 0"]
+          }
+        },
+        {
+          "title": "Comparing Absolute Values",
+          "titleAr": "مقارنة القيم المطلقة",
+          "order": 6,
+          "content": {
+            "fullText": "When comparing absolute values, we compare the distances from zero. The context determines whether to compare the actual values or their absolute values.",
+            "summary": "مقارنة القيم المطلقة وتطبيقاتها في المواقف الواقعية",
+            "keyPoints": [
+              "مقارنة القيم المطلقة تعني مقارنة المسافات",
+              "السياق يحدد نوع المقارنة المطلوبة",
+              "في درجات الحرارة: العدد الأصغر أبرد",
+              "في الديون: القيمة المطلقة الأكبر تعني دين أكثر"
+            ],
+            "examples": [
+              {
+                "problem": "قارن بين |−8.2| و −7.9",
+                "solution": "|−8.2| = 8.2 > −7.9"
+              },
+              {
+                "problem": "أي درجة حرارة أبرد: -17°C أم -33°C؟",
+                "solution": "-33°C أبرد لأن -33 < -17"
+              }
+            ],
+            "concepts": ["absolute value comparison", "real-world applications"],
+            "formulas": []
+          }
+        }
+      ]
+    },
+    {
+      "title": "Algebraic Expressions",
+      "titleAr": "التعبيرات الجبرية",
+      "order": 3,
+      "lessons": [
+        {
+          "title": "Creating Mathematical Expressions",
+          "titleAr": "إنشاء التعبيرات الرياضية",
+          "order": 1,
+          "content": {
+            "fullText": "An algebraic expression contains variables, constants, and operations. Variables represent unknown or changing values. Constants are fixed values. Coefficients are numbers multiplied by variables.",
+            "summary": "التعرف على مكونات التعبيرات الجبرية وكيفية كتابتها",
+            "keyPoints": [
+              "المتغير: رمز يمثل قيمة غير معروفة أو متغيرة",
+              "الثابت: عدد ثابت في التعبير",
+              "المعامل: العدد المضروب في المتغير",
+              "الحد: جزء من التعبير مفصول بعملية جمع أو طرح"
+            ],
+            "examples": [
+              {
+                "problem": "اكتب تعبيراً لارتفاع رائد فضاء في الفضاء إذا كان أطول بـ 0.05 متر من ارتفاعه على الأرض",
+                "solution": "h + 0.05 حيث h ارتفاعه على الأرض"
+              },
+              {
+                "problem": "حدد المعاملات والثوابت في 3x + 7 + 2x",
+                "solution": "المعاملات: 3، 2\nالثوابت: 7"
+              }
+            ],
+            "concepts": ["variable", "constant", "coefficient", "term", "algebraic expression"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Analyzing Mathematical Expressions",
+          "titleAr": "تحليل التعبيرات الرياضية",
+          "order": 2,
+          "content": {
+            "fullText": "Terms are parts of an expression separated by + or - signs. Like terms have the same variables with the same exponents. They can be combined by adding or subtracting their coefficients.",
+            "summary": "فهم الحدود والحدود المتشابهة في التعبيرات الجبرية",
+            "keyPoints": [
+              "الحد: جزء من التعبير",
+              "الحدود المتشابهة: لها نفس المتغيرات بنفس الأسس",
+              "يمكن جمع أو طرح الحدود المتشابهة",
+              "المعامل 1 لا يُكتب عادة"
+            ],
+            "examples": [
+              {
+                "problem": "حدد الحدود المتشابهة في 4x + 2y + 3x - 5 + y",
+                "solution": "الحدود المتشابهة: 4x و 3x، 2y و y"
+              },
+              {
+                "problem": "بسّط 5x + 3x - 2",
+                "solution": "8x - 2"
+              }
+            ],
+            "concepts": ["terms", "like terms", "combining like terms"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Writing Algebraic Expressions",
+          "titleAr": "كتابة التعبيرات الجبرية",
+          "order": 3,
+          "content": {
+            "fullText": "Verbal expressions can be translated into algebraic expressions. Key phrases indicate operations: 'sum' means addition, 'difference' means subtraction, 'product' means multiplication, 'quotient' means division.",
+            "summary": "ترجمة العبارات اللفظية إلى تعبيرات جبرية",
+            "keyPoints": [
+              "الجمع: مجموع، زيادة، أكثر من",
+              "الطرح: الفرق، أقل من، ناقص",
+              "الضرب: حاصل ضرب، مرات، من",
+              "القسمة: خارج قسمة، مقسوماً على"
+            ],
+            "examples": [
+              {
+                "problem": "اكتب تعبيراً لـ 'العدد مضافاً إليه 5'",
+                "solution": "x + 5"
+              },
+              {
+                "problem": "اكتب 'ثلاثة أمثال العدد ناقص 7'",
+                "solution": "3x - 7"
+              }
+            ],
+            "concepts": ["verbal expressions", "translation", "mathematical language"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Order of Operations and Exponents",
+          "titleAr": "ترتيب العمليات والأسس",
+          "order": 4,
+          "content": {
+            "fullText": "The order of operations (PEMDAS): Parentheses, Exponents, Multiplication and Division (left to right), Addition and Subtraction (left to right).",
+            "summary": "تطبيق ترتيب العمليات الحسابية في التعبيرات التي تحتوي على أسس",
+            "keyPoints": [
+              "الأقواس أولاً",
+              "ثم الأسس",
+              "ثم الضرب والقسمة من اليسار لليمين",
+              "ثم الجمع والطرح من اليسار لليمين"
+            ],
+            "examples": [
+              {
+                "problem": "احسب 8 + 2(6 - 2) ÷ 2³",
+                "solution": "8 + 2(4) ÷ 8 = 8 + 8 ÷ 8 = 8 + 1 = 9"
+              },
+              {
+                "problem": "بسّط 3² × 4 - 15",
+                "solution": "9 × 4 - 15 = 36 - 15 = 21"
+              }
+            ],
+            "concepts": ["order of operations", "PEMDAS", "exponents"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Evaluating Algebraic Expressions",
+          "titleAr": "إيجاد قيمة التعبيرات الجبرية",
+          "order": 5,
+          "content": {
+            "fullText": "To evaluate an algebraic expression, substitute the given value(s) for the variable(s) and simplify using the order of operations.",
+            "summary": "التعويض بقيم المتغيرات وحساب قيمة التعبير",
+            "keyPoints": [
+              "عوّض عن المتغير بالقيمة المعطاة",
+              "اتبع ترتيب العمليات",
+              "احسب الأسس أولاً",
+              "بسّط النتيجة"
+            ],
+            "examples": [
+              {
+                "problem": "احسب قيمة 3x + 7 عندما x = 4",
+                "solution": "3(4) + 7 = 12 + 7 = 19"
+              },
+              {
+                "problem": "احسب 2x² - 5 عندما x = 3",
+                "solution": "2(3)² - 5 = 2(9) - 5 = 18 - 5 = 13"
+              }
+            ],
+            "concepts": ["evaluation", "substitution", "simplification"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Applications on Algebraic Expressions",
+          "titleAr": "تطبيقات على التعبيرات الجبرية",
+          "order": 6,
+          "content": {
+            "fullText": "Algebraic expressions with exponents and parentheses require careful attention to the order of operations when evaluating.",
+            "summary": "تطبيق ترتيب العمليات في التعبيرات المعقدة",
+            "keyPoints": [
+              "عوّض أولاً",
+              "احسب ما داخل الأقواس",
+              "احسب الأسس",
+              "أكمل باقي العمليات بالترتيب"
+            ],
+            "examples": [
+              {
+                "problem": "احسب 9 + (p² - 3) ÷ 2 عندما p = 5",
+                "solution": "9 + (25 - 3) ÷ 2 = 9 + 22 ÷ 2 = 9 + 11 = 20"
+              },
+              {
+                "problem": "احسب 7 + 6(t² - 3) عندما t = 4",
+                "solution": "7 + 6(16 - 3) = 7 + 6(13) = 7 + 78 = 85"
+              }
+            ],
+            "concepts": ["complex expressions", "multi-step evaluation"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Determining Equivalent Algebraic Expressions",
+          "titleAr": "تحديد التعبيرات الجبرية المكافئة",
+          "order": 7,
+          "content": {
+            "fullText": "Two expressions are equivalent if they have the same value for all values of the variable(s). Test by substituting different values.",
+            "summary": "التحقق من تكافؤ التعبيرات الجبرية",
+            "keyPoints": [
+              "التعبيرات المكافئة لها نفس القيمة دائماً",
+              "اختبر بقيم مختلفة للتحقق",
+              "استخدم خصائص العمليات للتبسيط",
+              "الحدود المتشابهة يمكن جمعها"
+            ],
+            "examples": [
+              {
+                "problem": "هل 3(2x + 1) مكافئ لـ 6x + 3؟",
+                "solution": "نعم، 3(2x + 1) = 6x + 3 بخاصية التوزيع"
+              },
+              {
+                "problem": "هل 2x + x مكافئ لـ 2x²؟",
+                "solution": "لا، 2x + x = 3x وليس 2x²"
+              }
+            ],
+            "concepts": ["equivalent expressions", "distributive property", "simplification"],
+            "formulas": ["a(b + c) = ab + ac"]
+          }
+        }
+      ]
+    },
+    {
+      "title": "Equations and Inequalities",
+      "titleAr": "المعادلات والمتباينات",
+      "order": 4,
+      "lessons": [
+        {
+          "title": "Solving Algebraic Equations",
+          "titleAr": "حل المعادلات الجبرية",
+          "order": 1,
+          "content": {
+            "fullText": "An equation states that two expressions are equal. To solve, perform the same operation on both sides to maintain balance. The solution is the value that makes the equation true.",
+            "summary": "استخدام مفهوم التوازن لحل المعادلات الجبرية",
+            "keyPoints": [
+              "المعادلة تعبر عن تساوي طرفين",
+              "أجري نفس العملية على الطرفين",
+              "الهدف عزل المتغير",
+              "تحقق من الحل بالتعويض"
+            ],
+            "examples": [
+              {
+                "problem": "حل x + 5 = 11",
+                "solution": "x + 5 - 5 = 11 - 5\nx = 6"
+              },
+              {
+                "problem": "حل 3x = 18",
+                "solution": "3x ÷ 3 = 18 ÷ 3\nx = 6"
+              }
+            ],
+            "concepts": ["equation", "solution", "inverse operations", "balance"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Exploring Inequalities",
+          "titleAr": "استكشاف المتباينات",
+          "order": 2,
+          "content": {
+            "fullText": "Inequalities express relationships where quantities are not equal. They use symbols: < (less than), > (greater than), ≤ (less than or equal), ≥ (greater than or equal).",
+            "summary": "فهم المتباينات وتطبيقاتها في الحياة الواقعية",
+            "keyPoints": [
+              "< أقل من",
+              "> أكبر من",
+              "≤ أقل من أو يساوي",
+              "≥ أكبر من أو يساوي",
+              "المتباينات تمثل مدى من القيم"
+            ],
+            "examples": [
+              {
+                "problem": "حد السرعة 40 كم/س. أي السرعات مقبولة؟",
+                "solution": "أي سرعة ≤ 40 كم/س مقبولة"
+              },
+              {
+                "problem": "الحد الأدنى للطول 120 سم. اكتب متباينة",
+                "solution": "h ≥ 120 حيث h الطول بالسنتيمتر"
+              }
+            ],
+            "concepts": ["inequality", "constraints", "real-world applications"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Solving Inequalities",
+          "titleAr": "حل المتباينات",
+          "order": 3,
+          "content": {
+            "fullText": "Inequalities have infinite solutions. The solution set is represented on a number line with an open circle for < or > and a closed circle for ≤ or ≥.",
+            "summary": "تمثيل حلول المتباينات على خط الأعداد",
+            "keyPoints": [
+              "الدائرة المفتوحة: القيمة غير مشمولة",
+              "الدائرة المغلقة: القيمة مشمولة",
+              "السهم يشير لاتجاه الحلول",
+              "مجموعة الحل لانهائية"
+            ],
+            "examples": [
+              {
+                "problem": "مثّل x > -2 على خط الأعداد",
+                "solution": "دائرة مفتوحة عند -2 وسهم لليمين"
+              },
+              {
+                "problem": "هل 5 حل للمتباينة x ≤ 7؟",
+                "solution": "نعم، لأن 5 ≤ 7"
+              }
+            ],
+            "concepts": ["solution set", "number line representation", "open/closed circles"],
+            "formulas": []
+          }
+        }
+      ]
+    },
+    {
+      "title": "Dependent and Independent Variables",
+      "titleAr": "المتغيرات التابعة والمستقلة",
+      "order": 5,
+      "lessons": [
+        {
+          "title": "The Relationship Between Dependent and Independent Variables",
+          "titleAr": "العلاقة بين المتغيرات التابعة والمستقلة",
+          "order": 1,
+          "content": {
+            "fullText": "An independent variable is a variable whose value is not determined by any other variable. The dependent variable changes based on the independent variable.",
+            "summary": "فهم المتغيرات المستقلة والتابعة وعلاقتها",
+            "keyPoints": [
+              "المتغير المستقل: يمكن اختيار قيمته بحرية",
+              "المتغير التابع: قيمته تعتمد على المتغير المستقل",
+              "يمكن تمثيل العلاقة بجدول أو رسم بياني أو معادلة",
+              "المتغير المستقل على المحور الأفقي عادة"
+            ],
+            "examples": [
+              {
+                "problem": "عدد التذاكر المطلوبة لركوب لعبة تكلف 6 تذاكر",
+                "solution": "المتغير المستقل: عدد مرات الركوب\nالمتغير التابع: عدد التذاكر\nالمعادلة: t = 6r"
+              },
+              {
+                "problem": "المسافة المقطوعة تعتمد على السرعة والزمن",
+                "solution": "المتغيرات المستقلة: السرعة، الزمن\nالمتغير التابع: المسافة"
+              }
+            ],
+            "concepts": ["independent variable", "dependent variable", "relationship", "function"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Applications on Dependent and Independent Variables",
+          "titleAr": "تطبيقات على المتغيرات التابعة والمستقلة",
+          "order": 2,
+          "content": {
+            "fullText": "Real-world situations can be modeled using equations with dependent and independent variables. The equation shows how one quantity depends on another.",
+            "summary": "كتابة معادلات لتمثيل المواقف الواقعية",
+            "keyPoints": [
+              "حدد المتغيرات في الموقف",
+              "حدد أيها مستقل وأيها تابع",
+              "اكتب معادلة تربط بينهما",
+              "استخدم المعادلة للتنبؤ"
+            ],
+            "examples": [
+              {
+                "problem": "سعر صندوق الفشار 15 جنيه. اكتب معادلة للتكلفة الكلية",
+                "solution": "c = 15n حيث n عدد الصناديق (مستقل) و c التكلفة (تابع)"
+              },
+              {
+                "problem": "راتب عامل 50 جنيه للساعة",
+                "solution": "s = 50h حيث h عدد الساعات و s الراتب"
+              }
+            ],
+            "concepts": ["modeling", "real-world applications", "equations"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Analyzing The Relationship Between Dependent and Independent Variables",
+          "titleAr": "تحليل العلاقة بين المتغيرات التابعة والمستقلة",
+          "order": 3,
+          "content": {
+            "fullText": "Rules describe how input values (independent) are transformed into output values (dependent). Tables help identify patterns and write equations.",
+            "summary": "اكتشاف القواعد والأنماط في العلاقات بين المتغيرات",
+            "keyPoints": [
+              "المدخل = المتغير المستقل",
+              "المخرج = المتغير التابع",
+              "ابحث عن النمط في الجدول",
+              "اكتب قاعدة أو معادلة"
+            ],
+            "examples": [
+              {
+                "problem": "جدول: x: 0,2,4,6 | y: 0,6,12,18",
+                "solution": "النمط: y = 3x (اضرب في 3)"
+              },
+              {
+                "problem": "القاعدة: 'اضرب في 2 واطرح 1'",
+                "solution": "المعادلة: y = 2x - 1"
+              }
+            ],
+            "concepts": ["input-output", "patterns", "rules", "tables"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Graph Representation for Dependent and Independent Variables",
+          "titleAr": "التمثيل البياني للمتغيرات التابعة والمستقلة",
+          "order": 4,
+          "content": {
+            "fullText": "Graphs visually represent relationships. The independent variable is on the x-axis (horizontal) and the dependent variable is on the y-axis (vertical).",
+            "summary": "تمثيل العلاقات بين المتغيرات بيانياً",
+            "keyPoints": [
+              "المحور الأفقي (x): المتغير المستقل",
+              "المحور الرأسي (y): المتغير التابع",
+              "كل نقطة تمثل زوج من القيم",
+              "الخط أو المنحنى يوضح العلاقة"
+            ],
+            "examples": [
+              {
+                "problem": "ارسم العلاقة y = 2x",
+                "solution": "نقاط: (0,0), (1,2), (2,4), (3,6)\nخط مستقيم صاعد"
+              },
+              {
+                "problem": "فسر الرسم البياني لسرعة سيارة مع الزمن",
+                "solution": "الزمن على المحور الأفقي (مستقل)\nالسرعة على المحور الرأسي (تابع)"
+              }
+            ],
+            "concepts": ["coordinate plane", "graphing", "x-axis", "y-axis"],
+            "formulas": []
+          }
+        }
+      ]
+    },
+    {
+      "title": "Data Distributions",
+      "titleAr": "توزيعات البيانات",
+      "order": 6,
+      "lessons": [
+        {
+          "title": "Data and Statistical Questions",
+          "titleAr": "البيانات والأسئلة الإحصائية",
+          "order": 1,
+          "content": {
+            "fullText": "A statistical question is one that anticipates variability in the data and can be answered by collecting data. It produces multiple different answers.",
+            "summary": "التمييز بين الأسئلة الإحصائية وغير الإحصائية",
+            "keyPoints": [
+              "السؤال الإحصائي ينتج عنه إجابات متنوعة",
+              "السؤال غير الإحصائي له إجابة واحدة محددة",
+              "البيانات الفئوية: أنواع أو فئات",
+              "البيانات العددية: أرقام قابلة للقياس"
+            ],
+            "examples": [
+              {
+                "problem": "هل 'ما ألوان الطلاب المفضلة؟' سؤال إحصائي؟",
+                "solution": "نعم، لأنه ينتج عنه إجابات متنوعة"
+              },
+              {
+                "problem": "هل 'كم عدد الطلاب في الفصل؟' سؤال إحصائي؟",
+                "solution": "لا، له إجابة واحدة محددة"
+              }
+            ],
+            "concepts": ["statistical question", "variability", "categorical data", "numerical data"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Exploring the Histogram",
+          "titleAr": "استكشاف المدرج التكراري",
+          "order": 2,
+          "content": {
+            "fullText": "A histogram displays numerical data grouped into intervals. Bars touch each other and represent frequency of data in each interval.",
+            "summary": "فهم خصائص المدرج التكراري ومقارنته بالرسوم البيانية الأخرى",
+            "keyPoints": [
+              "الأعمدة متلاصقة",
+              "البيانات مجمعة في فترات",
+              "الارتفاع يمثل التكرار",
+              "لا يظهر القيم الفردية"
+            ],
+            "examples": [
+              {
+                "problem": "مدرج تكراري لأطوال الطلاب بفترات 5 سم",
+                "solution": "الفترات: 140-145، 145-150، 150-155\nالأعمدة متلاصقة"
+              },
+              {
+                "problem": "الفرق بين المدرج التكراري والرسم البياني الشريطي",
+                "solution": "المدرج: أعمدة متلاصقة، بيانات عددية\nالشريطي: أعمدة منفصلة، بيانات فئوية"
+              }
+            ],
+            "concepts": ["histogram", "intervals", "frequency", "continuous data"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Representing Data Using Histograms",
+          "titleAr": "تمثيل البيانات باستخدام المدرج التكراري",
+          "order": 3,
+          "content": {
+            "fullText": "To create a histogram: determine the range, choose appropriate intervals, count frequency in each interval, draw bars.",
+            "summary": "إنشاء مدرج تكراري من مجموعة بيانات",
+            "keyPoints": [
+              "حدد المدى (أكبر قيمة - أصغر قيمة)",
+              "اختر حجم الفترة المناسب",
+              "احسب التكرار لكل فترة",
+              "ارسم الأعمدة المتلاصقة"
+            ],
+            "examples": [
+              {
+                "problem": "أنشئ مدرج تكراري لدرجات اختبار: 65,72,78,82,85,88,91,95",
+                "solution": "الفترات: 60-70، 70-80، 80-90، 90-100\nالتكرارات: 1، 2، 3، 2"
+              }
+            ],
+            "concepts": ["creating histograms", "interval selection", "data organization"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Exploring Box Plot",
+          "titleAr": "استكشاف مخطط الصندوق",
+          "order": 4,
+          "content": {
+            "fullText": "A box plot displays the 5-number summary: minimum, lower quartile (Q1), median, upper quartile (Q3), maximum. The box shows the middle 50% of data.",
+            "summary": "فهم مخطط الصندوق والملخص الخماسي للبيانات",
+            "keyPoints": [
+              "الملخص الخماسي: min, Q1, median, Q3, max",
+              "الصندوق يمثل 50% من البيانات",
+              "الخط في المنتصف هو الوسيط",
+              "الأطراف (whiskers) تمثل باقي البيانات"
+            ],
+            "examples": [
+              {
+                "problem": "أنشئ مخطط صندوق للبيانات: 2,4,6,8,10,12,14",
+                "solution": "Min=2, Q1=4, Median=8, Q3=12, Max=14"
+              }
+            ],
+            "concepts": ["box plot", "5-number summary", "quartiles", "median"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Applications on Data Representations",
+          "titleAr": "تطبيقات على تمثيل البيانات",
+          "order": 5,
+          "content": {
+            "fullText": "Different displays are appropriate for different purposes: dot plots show individual values, histograms show distributions, box plots show spread.",
+            "summary": "اختيار أنسب طريقة لعرض البيانات حسب الهدف",
+            "keyPoints": [
+              "مخطط النقاط: للقيم الفردية",
+              "المدرج التكراري: للتوزيعات والفترات",
+              "مخطط الصندوق: للانتشار والوسيط",
+              "اختر حسب السؤال المطلوب إجابته"
+            ],
+            "examples": [
+              {
+                "problem": "أي رسم أفضل لإظهار القيمة الوسطى؟",
+                "solution": "مخطط الصندوق لأنه يظهر الوسيط بوضوح"
+              },
+              {
+                "problem": "أي رسم أفضل لإظهار عدد الطلاب في كل فترة درجات؟",
+                "solution": "المدرج التكراري"
+              }
+            ],
+            "concepts": ["choosing displays", "data visualization", "interpretation"],
+            "formulas": []
+          }
+        }
+      ]
+    },
+    {
+      "title": "Measures of Central Tendency and Spread",
+      "titleAr": "مقاييس النزعة المركزية والانتشار",
+      "order": 7,
+      "lessons": [
+        {
+          "title": "Exploring the Balance of Data Sets",
+          "titleAr": "استكشاف توازن مجموعات البيانات",
+          "order": 1,
+          "content": {
+            "fullText": "The mean represents the balance point of a data set. It can be found by leveling all values to the same height, like distributing items equally.",
+            "summary": "فهم المتوسط كنقطة توازن لمجموعة البيانات",
+            "keyPoints": [
+              "المتوسط هو نقطة التوازن",
+              "يمثل القيمة النموذجية",
+              "يمكن إيجاده بالتسوية",
+              "مجموع القيم ÷ عددها"
+            ],
+            "examples": [
+              {
+                "problem": "أوجد متوسط: 22، 19، 27، 25، 29، 21، 25",
+                "solution": "المجموع = 168\nالمتوسط = 168 ÷ 7 = 24"
+              }
+            ],
+            "concepts": ["mean", "balance point", "average", "center"],
+            "formulas": ["Mean = Sum of values / Number of values"]
+          }
+        },
+        {
+          "title": "Interpreting Mean",
+          "titleAr": "تفسير المتوسط",
+          "order": 2,
+          "content": {
+            "fullText": "The mean can be interpreted as fair share - if all values were distributed equally. It represents what each would get if the total was shared equally.",
+            "summary": "فهم المتوسط كحصة عادلة وطرق حسابه",
+            "keyPoints": [
+              "المتوسط = الحصة العادلة",
+              "التوزيع المتساوي للمجموع",
+              "طريقة الجمع والقسمة",
+              "طريقة التسوية"
+            ],
+            "examples": [
+              {
+                "problem": "5 مجموعات صنعت: 32، 34، 36، 38، 40 بطاقة",
+                "solution": "المجموع = 180\nالمتوسط = 180 ÷ 5 = 36 بطاقة لكل مجموعة"
+              }
+            ],
+            "concepts": ["fair share", "distribution", "leveling"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Exploring Median, Mode, and Outliers",
+          "titleAr": "استكشاف الوسيط والمنوال والقيم الشاذة",
+          "order": 3,
+          "content": {
+            "fullText": "The median is the middle value when data is ordered. Mode is the most frequent value. Outliers are extreme values that affect the mean more than the median.",
+            "summary": "فهم تأثير القيم الشاذة على مقاييس النزعة المركزية",
+            "keyPoints": [
+              "الوسيط: القيمة الوسطى",
+              "المنوال: الأكثر تكراراً",
+              "القيم الشاذة تؤثر على المتوسط",
+              "الوسيط أكثر ثباتاً"
+            ],
+            "examples": [
+              {
+                "problem": "البيانات: 0، 0، 1، 2، 3، 9",
+                "solution": "المتوسط = 2.5، الوسيط = 1.5، المنوال = 0\n9 قيمة شاذة ترفع المتوسط"
+              }
+            ],
+            "concepts": ["median", "mode", "outliers", "robustness"],
+            "formulas": []
+          }
+        },
+        {
+          "title": "Exploring The Range",
+          "titleAr": "استكشاف المدى",
+          "order": 4,
+          "content": {
+            "fullText": "The range measures spread by finding the difference between maximum and minimum values. It shows how spread out the data is.",
+            "summary": "حساب المدى كمقياس للانتشار",
+            "keyPoints": [
+              "المدى = القيمة الكبرى - القيمة الصغرى",
+              "يقيس الانتشار الكلي",
+              "حساس للقيم الشاذة",
+              "سهل الحساب"
+            ],
+            "examples": [
+              {
+                "problem": "درجات الحرارة: 15، 18، 20، 22، 25",
+                "solution": "المدى = 25 - 15 = 10 درجات"
+              },
+              {
+                "problem": "مع قيمة شاذة: 15، 18، 20، 22، 45",
+                "solution": "المدى = 45 - 15 = 30 (تأثر بالقيمة الشاذة)"
+              }
+            ],
+            "concepts": ["range", "spread", "variability", "dispersion"],
+            "formulas": ["Range = Maximum - Minimum"]
+          }
+        }
+      ]
+    }
+  ]
+}

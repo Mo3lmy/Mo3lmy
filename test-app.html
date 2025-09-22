@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>منصة Mo3lmy التعليمية</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-right: 4px solid #667eea;
+        }
+        
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        input, button, select {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+        
+        .lesson-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .lesson-card {
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .lesson-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        #result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e8f5e9;
+            border-radius: 10px;
+            border-right: 4px solid #4caf50;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .error {
+            background: #ffebee;
+            border-right-color: #f44336;
+        }
+        
+        .chat-container {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            background: white;
+            margin-bottom: 10px;
+        }
+        
+        .chat-message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        
+        .user-message {
+            background: #667eea;
+            color: white;
+            text-align: left;
+            margin-left: 20%;
+        }
+        
+        .ai-message {
+            background: #f1f3f5;
+            margin-right: 20%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 منصة Mo3lmy التعليمية</h1>
+            <p>منصة تعليمية ذكية للمناهج المصرية</p>
+        </div>
+        
+        <div class="content">
+            <!-- Login Section -->
+            <div class="section">
+                <h2>👤 تسجيل الدخول</h2>
+                <input type="email" id="email" placeholder="البريد الإلكتروني" value="student@test.com">
+                <input type="password" id="password" placeholder="كلمة المرور" value="Test@1234">
+                <button onclick="register()">تسجيل جديد</button>
+                <button onclick="login()">دخول</button>
+            </div>
+            
+            <!-- Content Browser -->
+            <div class="section">
+                <h2>📚 استعرض المناهج</h2>
+                <button onclick="getSubjects()">عرض مادة الرياضيات</button>
+                <button onclick="getUnits()">عرض الوحدات</button>
+                <div id="lessons" class="lesson-grid"></div>
+            </div>
+            
+            <!-- AI Chat -->
+            <div class="section">
+                <h2>🤖 المساعد الذكي</h2>
+                <div id="chat" class="chat-container"></div>
+                <input type="text" id="message" placeholder="اسأل عن أي موضوع في المنهج..." 
+                       onkeypress="if(event.key==='Enter') sendMessage()">
+                <button onclick="sendMessage()">إرسال</button>
+            </div>
+            
+            <!-- Result Display -->
+            <div id="result"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:3000/api/v1';
+        let token = '';
+        let subjectId = 'SUBJ_1758520078724_vrhif4ato'; // من الـ response
+        
+        async function register() {
+            try {
+                const res = await fetch(`${API_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('email').value,
+                        password: document.getElementById('password').value,
+                        firstName: 'طالب',
+                        lastName: 'تجريبي',
+                        grade: 6
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    token = data.data.token;
+                    showResult('✅ تم التسجيل بنجاح!', false);
+                } else {
+                    showResult('⚠️ المستخدم موجود بالفعل، جرب تسجيل الدخول', true);
+                }
+            } catch (error) {
+                showResult('❌ خطأ: ' + error.message, true);
+            }
+        }
+        
+        async function login() {
+            try {
+                const res = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('email').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    token = data.data.token;
+                    showResult('✅ تم تسجيل الدخول بنجاح!', false);
+                } else {
+                    showResult('❌ خطأ في البيانات', true);
+                }
+            } catch (error) {
+                showResult('❌ خطأ: ' + error.message, true);
+            }
+        }
+        
+        async function getSubjects() {
+            try {
+                const res = await fetch(`${API_URL}/content/subjects?grade=6`);
+                const data = await res.json();
+                if (data.success && data.data) {
+                    const subject = data.data[0];
+                    subjectId = subject.id;
+                    showResult(`📚 ${subject.name}\n${subject.description}\n\nID: ${subject.id}`, false);
+                }
+            } catch (error) {
+                showResult('❌ خطأ: ' + error.message, true);
+            }
+        }
+        
+        async function getUnits() {
+            try {
+                const res = await fetch(`${API_URL}/content/subjects/${subjectId}/units`);
+                const data = await res.json();
+                if (data.success && data.data) {
+                    const unitsText = data.data.map(u => 
+                        `📂 ${u.title}\n   ${u.description || ''}`
+                    ).join('\n\n');
+                    showResult('الوحدات الدراسية:\n\n' + unitsText, false);
+                    
+                    // Display as cards
+                    const lessonsDiv = document.getElementById('lessons');
+                    lessonsDiv.innerHTML = data.data.map(unit => `
+                        <div class="lesson-card" onclick="getUnitLessons('${unit.id}')">
+                            <h4>📂 ${unit.title}</h4>
+                            <p>${unit.description || ''}</p>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                showResult('❌ خطأ: ' + error.message, true);
+            }
+        }
+        
+        async function getUnitLessons(unitId) {
+            try {
+                const res = await fetch(`${API_URL}/content/units/${unitId}/lessons`);
+                const data = await res.json();
+                if (data.success && data.data) {
+                    const lessonsText = data.data.map(l => 
+                        `📝 ${l.title}`
+                    ).join('\n');
+                    showResult('دروس الوحدة:\n\n' + lessonsText, false);
+                }
+            } catch (error) {
+                showResult('❌ خطأ: ' + error.message, true);
+            }
+        }
+        
+        async function sendMessage() {
+            const message = document.getElementById('message').value;
+            if (!message || !token) {
+                showResult('⚠️ يجب تسجيل الدخول أولاً وكتابة رسالة', true);
+                return;
+            }
+            
+            // Add user message to chat
+            addChatMessage(message, 'user');
+            document.getElementById('message').value = '';
+            
+            try {
+                const res = await fetch(`${API_URL}/chat/message`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ message })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    addChatMessage(data.data.message, 'ai');
+                }
+            } catch (error) {
+                showResult('❌ خطأ: ' + error.message, true);
+            }
+        }
+        
+        function addChatMessage(text, sender) {
+            const chatDiv = document.getElementById('chat');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${sender}-message`;
+            messageDiv.textContent = text;
+            chatDiv.appendChild(messageDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+        
+        function showResult(text, isError) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = text;
+            resultDiv.className = isError ? 'error' : '';
+            resultDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

@@ -17,7 +17,7 @@ export interface ApiResponse<T = any> {
 }
 
 // Success Response Helper
-export const successResponse = <T>(
+export const successResponse = <T = any>(
   data: T, 
   message?: string,
   meta?: any
@@ -36,7 +36,7 @@ export const errorResponse = (
   code: string,
   message: string,
   details?: any
-): ApiResponse => {
+): ApiResponse<null> => {
   return {
     success: false,
     error: {
@@ -66,7 +66,7 @@ export interface PaginatedResponse<T> {
   };
 }
 
-export const paginate = async <T>(
+export const paginate = async <T = any>(
   model: any,
   params: PaginationParams,
   where?: any,

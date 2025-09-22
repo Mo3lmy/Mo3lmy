@@ -1,12 +1,14 @@
 # Dependencies
 node_modules/
-.pnpm-store/
+.pnp
+.pnp.js
 
-# Environment files
+# Environment variables - NEVER commit these!
 .env
+.env.*
 .env.local
 .env.production
-.env.*
+!.env.example
 
 # Database
 *.db
@@ -15,16 +17,11 @@ node_modules/
 prisma/dev.db
 prisma/dev.db-journal
 
-# Build output
+# Build outputs
 dist/
 build/
 out/
-.next/
-
-# Temporary files
-temp/
-tmp/
-*.tmp
+*.tsbuildinfo
 
 # Logs
 logs/
@@ -33,25 +30,26 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# OS files
-.DS_Store
-Thumbs.db
+lerna-debug.log*
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
+.DS_Store
 
-# Test coverage
+# Testing
 coverage/
 .nyc_output/
 
-# TypeScript cache
-*.tsbuildinfo
+# Temporary files
+tmp/
+temp/
+.cache/
 
-# Package manager locks (optional - يمكن رفع واحد فقط)
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+# OpenAI API Keys - CRITICAL!
+*api-key*
+*secret*
+credentials/
