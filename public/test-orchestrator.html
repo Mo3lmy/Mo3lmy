@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 اختبار نظام Orchestrator الذكي</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Tajawal', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 350px 1fr 300px;
+            gap: 20px;
+            height: calc(100vh - 40px);
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow-y: auto;
+        }
+        
+        .panel h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        /* Control Panel */
+        .control-panel button {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .control-panel button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .control-panel button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        /* Slide Viewer */
+        .slide-viewer {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .slide-container {
+            flex: 1;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 500px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .slide-container .slide-content {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .navigation-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 15px;
+        }
+        
+        .nav-button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        .nav-button:hover:not(:disabled) {
+            background: #5a67d8;
+        }
+        
+        .nav-button:disabled {
+            opacity: 0.3;
+        }
+        
+        .slide-info {
+            text-align: center;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        /* Info Panel */
+        .info-panel {
+            font-size: 14px;
+        }
+        
+        .section-list {
+            margin: 15px 0;
+        }
+        
+        .section-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f0f4ff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .section-item:hover {
+            background: #e0e8ff;
+            transform: translateX(-5px);
+        }
+        
+        .section-item.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .section-item .badge {
+            float: left;
+            background: rgba(255, 255, 255, 0.3);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        
+        /* Chat Section */
+        .chat-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e8ff;
+        }
+        
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e8ff;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .chat-input button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        
+        /* Actions Grid */
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .action-btn {
+            padding: 15px;
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        
+        .action-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .action-btn .emoji {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        /* Status Bar */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .status-indicator.connected {
+            background: #4ade80;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.disconnected {
+            background: #f87171;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* Animations */
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        /* Loading Spinner */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Control Panel -->
+        <div class="panel control-panel">
+            <h2>🎮 لوحة التحكم</h2>
+            
+            <button id="connectBtn" onclick="connect()">🔌 اتصال</button>
+            
+            <div style="margin: 20px 0;">
+                <label>اختر درس:</label>
+                <select id="lessonSelect" style="width: 100%; padding: 10px; margin-top: 10px;">
+                    <option value="">-- اختر درس --</option>
+                </select>
+            </div>
+            
+            <button id="startOrchestratedBtn" onclick="startOrchestratedLesson()" disabled>
+                🎯 بدء الدرس التفاعلي الذكي
+            </button>
+            
+            <div class="button-group">
+                <button onclick="navigateSmart('previous')">⬅️ السابق</button>
+                <button onclick="navigateSmart('next')">➡️ التالي</button>
+            </div>
+            
+            <h3 style="margin-top: 30px; color: #764ba2;">🎬 إجراءات ذكية</h3>
+            <div class="actions-grid">
+                <div class="action-btn" onclick="requestAction('explain')">
+                    <span class="emoji">📖</span>
+                    <small>اشرح أكثر</small>
+                </div>
+                <div class="action-btn" onclick="requestAction('example')">
+                    <span class="emoji">💡</span>
+                    <small>مثال</small>
+                </div>
+                <div class="action-btn" onclick="requestAction('quiz')">
+                    <span class="emoji">❓</span>
+                    <small>اختبار</small>
+                </div>
+                <div class="action-btn" onclick="requestAction('simplify')">
+                    <span class="emoji">🎯</span>
+                    <small>بسّط</small>
+                </div>
+            </div>
+            
+            <div class="chat-section">
+                <h3 style="color: #764ba2;">💬 اسأل بذكاء</h3>
+                <div class="chat-input">
+                    <input type="text" id="smartChat" placeholder="اكتب سؤالك أو طلبك..." />
+                    <button onclick="sendSmartChat()">إرسال</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Slide Viewer -->
+        <div class="panel slide-viewer">
+            <h2>📺 عارض الشرائح التفاعلي</h2>
+            
+            <div class="slide-container" id="slideContainer">
+                <div style="text-align: center; color: #999;">
+                    <h3>مرحباً بك في نظام التعلم التفاعلي الذكي! 🎓</h3>
+                    <p style="margin-top: 20px;">اتصل واختر درساً للبدء</p>
+                </div>
+            </div>
+            
+            <div class="navigation-bar">
+                <button class="nav-button" id="prevBtn" onclick="navigateSmart('previous')" disabled>
+                    ⬅️ السابق
+                </button>
+                
+                <div class="slide-info">
+                    <span id="slideNumber">0</span> / <span id="totalSlides">0</span>
+                    <div style="margin-top: 5px; font-size: 12px; color: #999;">
+                        <span id="sectionName">--</span>
+                    </div>
+                </div>
+                
+                <button class="nav-button" id="nextBtn" onclick="navigateSmart('next')" disabled>
+                    التالي ➡️
+                </button>
+            </div>
+        </div>
+        
+        <!-- Info Panel -->
+        <div class="panel info-panel">
+            <h2>📊 معلومات الدرس</h2>
+            
+            <div id="lessonInfo">
+                <p style="color: #999;">لم يتم اختيار درس بعد</p>
+            </div>
+            
+            <h3 style="margin-top: 20px; color: #764ba2;">📚 الأقسام</h3>
+            <div class="section-list" id="sectionList">
+                <!-- Sections will be added here -->
+            </div>
+            
+            <h3 style="margin-top: 20px; color: #764ba2;">📈 الإحصائيات</h3>
+            <div id="stats">
+                <p>⏱️ الوقت المتوقع: <span id="estimatedTime">--</span> دقيقة</p>
+                <p>❓ الأسئلة المطروحة: <span id="questionsCount">0</span></p>
+                <p>🎯 مستوى التفاعل: <span id="engagementScore">100</span>%</p>
+                <p>📖 مستوى الفهم: <span id="comprehension">متوسط</span></p>
+            </div>
+            
+            <h3 style="margin-top: 20px; color: #764ba2;">🔔 الإشعارات</h3>
+            <div id="notifications" style="max-height: 200px; overflow-y: auto;">
+                <!-- Notifications will appear here -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="status-bar">
+        <div>
+            <span class="status-indicator disconnected" id="statusIndicator"></span>
+            <span id="statusText">غير متصل</span>
+        </div>
+        <div id="statusInfo">
+            Socket ID: -- | الدرس: -- | القسم: --
+        </div>
+    </div>
+    
+    <script>
+        let socket = null;
+        let token = null;
+        let currentLessonId = null;
+        let flowData = null;
+        let currentSlideNumber = 0;
+        let totalSlides = 0;
+        
+        // Connect to WebSocket
+        async function connect() {
+            try {
+                document.getElementById('connectBtn').disabled = true;
+                updateStatus('connecting', 'جاري الاتصال...');
+                
+                // Login first
+                const loginRes = await fetch('http://localhost:3000/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'student1@test.com',
+                        password: 'Test@1234'
+                    })
+                });
+                
+                const loginData = await loginRes.json();
+                if (!loginData.success) {
+                    throw new Error('فشل تسجيل الدخول');
+                }
+                
+                token = loginData.data.token;
+                
+                // Connect WebSocket
+                socket = io('http://localhost:3000', {
+                    auth: { token },
+                    transports: ['websocket', 'polling']
+                });
+                
+                setupSocketEvents();
+                
+            } catch (error) {
+                console.error('Connection error:', error);
+                alert('خطأ في الاتصال: ' + error.message);
+                document.getElementById('connectBtn').disabled = false;
+            }
+        }
+        
+        // Setup Socket Events
+        function setupSocketEvents() {
+            socket.on('connect', () => {
+                updateStatus('connected', 'متصل');
+                document.getElementById('connectBtn').textContent = '✅ متصل';
+                loadLessons();
+                addNotification('تم الاتصال بنجاح', 'success');
+            });
+            
+            socket.on('disconnect', () => {
+                updateStatus('disconnected', 'غير متصل');
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('connectBtn').textContent = '🔌 اتصال';
+            });
+            
+            // Orchestrator Events
+            socket.on('lesson_flow_started', (data) => {
+                console.log('Lesson flow started:', data);
+                flowData = data;
+                currentLessonId = data.lessonId;
+                totalSlides = data.totalSlides;
+                
+                // Update UI
+                document.getElementById('totalSlides').textContent = totalSlides;
+                document.getElementById('estimatedTime').textContent = data.estimatedDuration;
+                
+                // Display sections
+                displaySections(data.sections);
+                
+                // Enable navigation
+                document.getElementById('nextBtn').disabled = false;
+                
+                addNotification(`بدأ الدرس: ${data.sections.length} أقسام، ${totalSlides} شريحة`, 'info');
+            });
+            
+            socket.on('slide_ready', (data) => {
+                console.log('Slide ready:', data);
+                displaySlide(data.html);
+                currentSlideNumber = data.slideNumber;
+                
+                // Update UI
+                document.getElementById('slideNumber').textContent = currentSlideNumber + 1;
+                document.getElementById('sectionName').textContent = data.section || '--';
+                
+                // Update navigation buttons
+                document.getElementById('prevBtn').disabled = currentSlideNumber === 0;
+                document.getElementById('nextBtn').disabled = currentSlideNumber >= totalSlides - 1;
+                
+                addNotification(`عرض الشريحة ${currentSlideNumber + 1}`, 'info');
+            });
+            
+            socket.on('section_changed', (data) => {
+                console.log('Section changed:', data);
+                addNotification(`انتقال للقسم: ${data.section}`, 'info');
+                updateActiveSection(data.section);
+            });
+            
+            socket.on('action_detected', (data) => {
+                console.log('Action detected:', data);
+                addNotification(
+                    `تم اكتشاف إجراء: ${data.action} (ثقة: ${Math.round(data.confidence * 100)}%)`,
+                    'success'
+                );
+            });
+            
+            socket.on('slide_generated', (data) => {
+                console.log('New slide generated:', data);
+                addNotification(`تم توليد شريحة جديدة: ${data.reason}`, 'success');
+            });
+            
+            socket.on('lesson_completed', () => {
+                addNotification('🎉 مبروك! أكملت الدرس بنجاح', 'success');
+                document.getElementById('nextBtn').disabled = true;
+            });
+            
+            socket.on('ai_response', (data) => {
+                console.log('AI response:', data);
+                if (data.message) {
+                    addNotification(`الذكاء الاصطناعي: ${data.message.substring(0, 100)}...`, 'ai');
+                }
+            });
+            
+            socket.on('error', (data) => {
+                console.error('Error:', data);
+                addNotification(`خطأ: ${data.message}`, 'error');
+            });
+        }
+        
+        // Load available lessons
+        async function loadLessons() {
+            try {
+                const res = await fetch('http://localhost:3000/api/v1/lessons', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    const select = document.getElementById('lessonSelect');
+                    select.innerHTML = '<option value="">-- اختر درس --</option>';
+                    
+                    data.data.forEach(lesson => {
+                        const option = document.createElement('option');
+                        option.value = lesson.id;
+                        option.textContent = lesson.title;
+                        select.appendChild(option);
+                    });
+                    
+                    select.onchange = () => {
+                        currentLessonId = select.value;
+                        document.getElementById('startOrchestratedBtn').disabled = !currentLessonId;
+                        if (currentLessonId) {
+                            loadLessonInfo(currentLessonId);
+                        }
+                    };
+                }
+            } catch (error) {
+                console.error('Failed to load lessons:', error);
+            }
+        }
+        
+        // Load lesson info
+        async function loadLessonInfo(lessonId) {
+            socket.emit('get_lesson_structure', lessonId);
+            
+            socket.once('lesson_structure', (data) => {
+                document.getElementById('lessonInfo').innerHTML = `
+                    <p><strong>📚 الدرس:</strong> ${data.title}</p>
+                    <p><strong>📖 المادة:</strong> ${data.subject}</p>
+                    <p><strong>📂 الوحدة:</strong> ${data.unit}</p>
+                    <p><strong>🎓 الصف:</strong> ${data.grade}</p>
+                    <p><strong>🎯 نقاط رئيسية:</strong> ${data.structure.keyPoints}</p>
+                    <p><strong>💡 أمثلة:</strong> ${data.structure.examples}</p>
+                `;
+            });
+        }
+        
+        // Start Orchestrated Lesson
+        function startOrchestratedLesson() {
+            if (!currentLessonId) return;
+            
+            socket.emit('start_orchestrated_lesson', {
+                lessonId: currentLessonId,
+                preferences: {
+                    autoAdvance: false,
+                    voiceEnabled: false,
+                    playbackSpeed: 1
+                }
+            });
+            
+            document.getElementById('startOrchestratedBtn').disabled = true;
+        }
+        
+        // Smart Navigation
+        function navigateSmart(direction) {
+            if (!currentLessonId) return;
+            
+            socket.emit('navigate_smart', {
+                lessonId: currentLessonId,
+                direction: direction
+            });
+        }
+        
+        // Request Action
+        function requestAction(action) {
+            if (!currentLessonId) return;
+            
+            socket.emit('request_action', {
+                lessonId: currentLessonId,
+                action: action
+            });
+        }
+        
+        // Send Smart Chat
+        function sendSmartChat() {
+            const input = document.getElementById('smartChat');
+            const message = input.value.trim();
+            
+            if (!message || !currentLessonId) return;
+            
+            socket.emit('chat_with_action', {
+                lessonId: currentLessonId,
+                message: message
+            });
+            
+            input.value = '';
+            addNotification(`أنت: ${message}`, 'user');
+        }
+        
+        // Display Slide
+        function displaySlide(html) {
+            const container = document.getElementById('slideContainer');
+            container.innerHTML = html;
+            container.classList.add('animate-fade-in');
+            
+            // Add styles
+            if (!document.getElementById('slide-styles')) {
+                const style = document.createElement('style');
+                style.id = 'slide-styles';
+                style.textContent = `
+                    .slide-container { background: white; color: #333; }
+                    .slide-container h1 { font-size: 48px; margin-bottom: 20px; }
+                    .slide-container h2 { font-size: 36px; margin-bottom: 15px; }
+                    .slide-container p { font-size: 24px; line-height: 1.6; }
+                    .slide-container ul { list-style: none; padding: 0; }
+                    .slide-container li { margin: 15px 0; font-size: 22px; }
+                    .quiz-option { 
+                        padding: 15px; 
+                        margin: 10px;
+                        background: #f0f4ff;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                    }
+                    .quiz-option:hover { background: #667eea; color: white; }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+        
+        // Display Sections
+        function displaySections(sections) {
+            const container = document.getElementById('sectionList');
+            container.innerHTML = '';
+            
+            sections.forEach((section, index) => {
+                const div = document.createElement('div');
+                div.className = 'section-item';
+                div.innerHTML = `
+                    <strong>${section.title}</strong>
+                    <div class="badge">${section.slideCount} شرائح</div>
+                    <div style="clear: both; margin-top: 5px; font-size: 12px; color: #666;">
+                        ${section.type} - ${section.duration}ث
+                    </div>
+                `;
+                div.onclick = () => {
+                    // Could implement jump to section
+                    socket.emit('navigate_smart', {
+                        lessonId: currentLessonId,
+                        direction: 'section',
+                        target: section.id
+                    });
+                };
+                container.appendChild(div);
+            });
+        }
+        
+        // Update Active Section
+        function updateActiveSection(sectionTitle) {
+            document.querySelectorAll('.section-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.textContent.includes(sectionTitle)) {
+                    item.classList.add('active');
+                }
+            });
+        }
+        
+        // Add Notification
+        function addNotification(message, type = 'info') {
+            const container = document.getElementById('notifications');
+            const div = document.createElement('div');
+            div.style.cssText = `
+                padding: 10px;
+                margin: 5px 0;
+                border-radius: 8px;
+                font-size: 13px;
+                background: ${
+                    type === 'error' ? '#fee' :
+                    type === 'success' ? '#efe' :
+                    type === 'ai' ? '#eef' :
+                    type === 'user' ? '#fef' :
+                    '#f0f4ff'
+                };
+                border-left: 4px solid ${
+                    type === 'error' ? '#f87171' :
+                    type === 'success' ? '#4ade80' :
+                    type === 'ai' ? '#667eea' :
+                    type === 'user' ? '#a855f7' :
+                    '#94a3b8'
+                };
+            `;
+            div.textContent = `[${new Date().toLocaleTimeString('ar-EG')}] ${message}`;
+            
+            container.insertBefore(div, container.firstChild);
+            
+            // Keep only last 10 notifications
+            while (container.children.length > 10) {
+                container.removeChild(container.lastChild);
+            }
+        }
+        
+        // Update Status
+        function updateStatus(status, text) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            indicator.className = `status-indicator ${status}`;
+            statusText.textContent = text;
+            
+            if (status === 'connected' && socket) {
+                document.getElementById('statusInfo').textContent = 
+                    `Socket ID: ${socket.id} | الدرس: ${currentLessonId || '--'} | القسم: ${document.getElementById('sectionName').textContent}`;
+            }
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (!currentLessonId) return;
+            
+            switch(e.key) {
+                case 'ArrowRight':
+                    navigateSmart('next');
+                    break;
+                case 'ArrowLeft':
+                    navigateSmart('previous');
+                    break;
+                case ' ':
+                    e.preventDefault();
+                    // Play/pause if voice enabled
+                    break;
+            }
+        });
+        
+        // Enter key for chat
+        document.getElementById('smartChat').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendSmartChat();
+            }
+        });
+    </script>
+</body>
+</html>

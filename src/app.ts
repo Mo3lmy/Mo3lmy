@@ -20,6 +20,9 @@ import curriculumRoutesV1 from './api/v1/curriculum';
 import quizRoutesV1 from './api/v1/quiz';
 import studentRoutesV1 from './api/v1/student';
 
+// // Import Orchestrator routes (NEW)
+// import orchestratorRoutes from './api/rest/orchestrator.routes';
+
 // Create Express app
 const app: Application = express();
 
@@ -77,10 +80,15 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: config.NODE_ENV,
-    version: '1.0.0',
-    websocket: {
-      connected: websocketService.getConnectedUsersCount(),
-      status: 'active'
+    version: '2.0.0', // Updated version
+    services: {
+      websocket: {
+        connected: websocketService.getConnectedUsersCount(),
+        status: 'active'
+      },
+      orchestrator: 'active', // NEW
+      database: 'connected',
+      ai: 'ready'
     }
   });
 });
@@ -95,6 +103,9 @@ app.get('/api/status', (req: Request, res: Response) => {
       ai: 'ready',
       rag: 'ready',
       websocket: 'active',
+      orchestrator: 'active', // NEW
+      slideGenerator: 'ready', // NEW
+      realtimeChat: 'active' // NEW
     },
     timestamp: new Date().toISOString(),
   });
@@ -717,11 +728,14 @@ app.use('/api/v1/curriculum', curriculumRoutesV1);
 app.use('/api/v1/quiz', quizRoutesV1); // This extends the existing quiz routes
 app.use('/api/v1/student', studentRoutesV1);
 
-// API Documentation endpoint
+// // Orchestrator routes (NEW)
+// app.use('/api/v1/orchestrator', orchestratorRoutes);
+
+// API Documentation endpoint (UPDATED)
 app.get('/api', (req: Request, res: Response) => {
   res.json({
     message: 'Smart Education Platform API',
-    version: '1.0.0',
+    version: '2.0.0', // Updated version
     endpoints: {
       auth: {
         base: '/api/v1/auth',
@@ -799,22 +813,183 @@ app.get('/api', (req: Request, res: Response) => {
           'GET /suggestions',
         ]
       },
-      websocket: {
-        base: 'ws://localhost:3000',
-        events: [
-          'connect',
-          'disconnect',
-          'join_lesson',
-          'leave_lesson',
-          'request_slide',
-          'navigate_slide',
-          'send_message',
-          'update_slide',
-          'save_preferences',
+      orchestrator: { // NEW section
+        base: '/api/v1/orchestrator',
+        routes: [
+          'GET /lessons/:lessonId/flow',
+          'POST /lessons/:lessonId/action',
+          'GET /lessons/:lessonId/structure',
+          'POST /lessons/:lessonId/navigate',
+          'GET /lessons/:lessonId/progress',
         ]
+      },
+      websocket: { // UPDATED with new events
+        base: 'ws://localhost:3000',
+        events: {
+          core: [
+            'connect',
+            'disconnect',
+            'welcome',
+            'ping/pong',
+            'get_status'
+          ],
+          lessons: [
+            'join_lesson',
+            'leave_lesson',
+            'joined_lesson',
+            'user_joined_lesson',
+            'user_left_lesson'
+          ],
+          slides: [
+            'request_slide',
+            'slide_ready',
+            'slide_error',
+            'navigate_slide',
+            'navigation_complete',
+            'update_slide',
+            'slide_updated',
+            'user_slide_change'
+          ],
+          orchestrator: [ // NEW category
+            'start_orchestrated_lesson',
+            'lesson_flow_started',
+            'navigate_smart',
+            'section_changed',
+            'chat_with_action',
+            'action_detected',
+            'action_triggered',
+            'request_action',
+            'action_completed',
+            'get_lesson_structure',
+            'lesson_structure',
+            'generate_smart_slide',
+            'smart_slide_ready',
+            'slide_generated',
+            'get_flow_state',
+            'flow_state',
+            'update_comprehension',
+            'comprehension_updated',
+            'track_interaction',
+            'get_lesson_progress',
+            'lesson_progress',
+            'control_flow',
+            'flow_control_updated',
+            'lesson_completed'
+          ],
+          chat: [
+            'send_message',
+            'new_message',
+            'chat_message',
+            'ai_response',
+            'ai_typing',
+            'stream_start',
+            'stream_chunk',
+            'stream_end',
+            'get_chat_history',
+            'chat_history',
+            'rate_message',
+            'rating_saved',
+            'clear_chat',
+            'chat_cleared'
+          ],
+          session: [
+            'save_preferences',
+            'preferences_saved',
+            'session_restored',
+            'session_ended'
+          ]
+        }
       }
     }
   });
+});
+
+// Test pages directory listing (NEW)
+app.get('/test', (req: Request, res: Response) => {
+  res.send(`
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>صفحات الاختبار</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 90%;
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-links {
+            display: grid;
+            gap: 15px;
+        }
+        .test-link {
+            display: block;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        .test-link:hover {
+            background: #667eea;
+            color: white;
+            transform: translateX(-10px);
+            border-color: #667eea;
+        }
+        .test-link h3 {
+            margin: 0 0 10px 0;
+        }
+        .test-link p {
+            margin: 0;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 صفحات الاختبار</h1>
+        <div class="test-links">
+            <a href="/test-websocket" class="test-link">
+                <h3>🔌 WebSocket & Slides</h3>
+                <p>اختبار الاتصال وتوليد الشرائح</p>
+            </a>
+            <a href="/test-orchestrator.html" class="test-link">
+                <h3>🎯 Orchestrator System</h3>
+                <p>النظام التفاعلي الذكي الكامل</p>
+            </a>
+            <a href="/test-chat.html" class="test-link">
+                <h3>💬 Real-time Chat</h3>
+                <p>المحادثة الذكية مع AI</p>
+            </a>
+            <a href="/test-full.html" class="test-link">
+                <h3>🚀 Full System Test</h3>
+                <p>اختبار شامل لكل المكونات</p>
+            </a>
+        </div>
+    </div>
+</body>
+</html>
+  `);
 });
 
 // 404 handler
@@ -825,6 +1000,7 @@ app.use((req: Request, res: Response) => {
       code: 'NOT_FOUND',
       message: `Endpoint ${req.method} ${req.path} not found`,
       availableEndpoints: '/api',
+      testPages: '/test', // NEW
     },
     timestamp: new Date().toISOString(),
   });

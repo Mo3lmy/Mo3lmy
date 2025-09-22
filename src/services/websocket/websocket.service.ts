@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/websocket/websocket.service.ts
-// النسخة المحدثة مع SessionService و SlideGenerator و RealtimeChat متكامل
+// النسخة المحدثة الكاملة مع Orchestrator + SessionService + SlideGenerator + RealtimeChat
 
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -7,8 +7,14 @@ import jwt from 'jsonwebtoken';
 import { config } from '../../config';
 import { prisma } from '../../config/database.config';
 import { sessionService } from './session.service';
-import { slideGenerator } from '../../core/video/slide.generator';
+import { EnhancedSlideGenerator } from '../../core/video/slide.generator';
 import { realtimeChatService } from './realtime-chat.service';
+import { setupOrchestratorEvents } from './orchestrator-events';
+import { lessonOrchestrator } from '../orchestrator/lesson-orchestrator.service';
+import { openAIService } from '../ai/openai.service';
+
+// Initialize slideGenerator
+const slideGenerator = new EnhancedSlideGenerator();
 
 interface UserData {
   id: string;
@@ -35,43 +41,43 @@ export class WebSocketService {
    * Initialize WebSocket server with proper configuration
    */
   initialize(httpServer: HTTPServer): void {
-  this.io = new SocketIOServer(httpServer, {
-    cors: {
-      origin: function(origin, callback) {
-        // السماح لكل Origins في development
-        if (config.NODE_ENV === 'development') {
-          callback(null, true);
-        } else {
-          // في production، حدد domains معينة
-          const allowedOrigins = ['https://yourdomain.com'];
-          if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    this.io = new SocketIOServer(httpServer, {
+      cors: {
+        origin: function(origin, callback) {
+          // السماح لكل Origins في development
+          if (config.NODE_ENV === 'development') {
             callback(null, true);
           } else {
-            callback(new Error('Not allowed by CORS'));
+            // في production، حدد domains معينة
+            const allowedOrigins = ['https://yourdomain.com'];
+            if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+              callback(null, true);
+            } else {
+              callback(new Error('Not allowed by CORS'));
+            }
           }
-        }
+        },
+        credentials: true,
+        methods: ['GET', 'POST']
       },
-      credentials: true,
-      methods: ['GET', 'POST']
-    },
-    
-    // مهم جداً: استخدم polling أولاً
-    transports: ['polling', 'websocket'],
-    
-    // السماح بالـ upgrade
-    allowUpgrades: true,
-    
-    // Connection settings محدثة
-    pingTimeout: 120000, // 2 minutes
-    pingInterval: 25000,
-    connectTimeout: 45000,
-    
-    // Path
-    path: '/socket.io/',
-    
-    // Allow EIO3 clients
-    allowEIO3: true
-  });
+      
+      // مهم جداً: استخدم polling أولاً
+      transports: ['polling', 'websocket'],
+      
+      // السماح بالـ upgrade
+      allowUpgrades: true,
+      
+      // Connection settings محدثة
+      pingTimeout: 120000, // 2 minutes
+      pingInterval: 25000,
+      connectTimeout: 45000,
+      
+      // Path
+      path: '/socket.io/',
+      
+      // Allow EIO3 clients
+      allowEIO3: true
+    });
     
     // Authentication middleware
     this.io.use(async (socket, next) => {
@@ -117,6 +123,11 @@ export class WebSocketService {
     
     // Start cleanup interval
     this.startCleanupInterval();
+    
+    // Initialize slideGenerator
+    slideGenerator.initialize().then(() => {
+      console.log('✅ Slide generator initialized');
+    });
   }
   
   /**
@@ -159,6 +170,190 @@ export class WebSocketService {
         userId: user.id,
         userName: `${user.firstName} ${user.lastName}`,
         totalUsers: this.connectedUsers.size
+      });
+      
+      // ============= ORCHESTRATOR EVENTS (NEW) =============
+      
+      // Setup orchestrator event handlers
+      setupOrchestratorEvents(socket, user);
+      
+      // Additional orchestrator-specific events
+      socket.on('get_lesson_structure', async (lessonId: string) => {
+        try {
+          // Fetch the lesson with all its fields
+          const lesson = await prisma.lesson.findUnique({
+            where: { id: lessonId }
+          });
+          
+          if (!lesson) {
+            socket.emit('error', {
+              code: 'LESSON_NOT_FOUND',
+              message: 'الدرس غير موجود'
+            });
+            return;
+          }
+          
+          // Fetch related unit and subject
+          const unit = await prisma.unit.findUnique({
+            where: { id: lesson.unitId },
+            include: {
+              subject: true
+            }
+          });
+          
+          if (!unit) {
+            socket.emit('error', {
+              code: 'UNIT_NOT_FOUND',
+              message: 'الوحدة غير موجودة'
+            });
+            return;
+          }
+          
+          // Parse content - use only fields that exist in the model
+          const keyPoints = JSON.parse(lesson.keyPoints || '[]');
+          
+          // Note: The Lesson model doesn't have a 'content' field
+          // Examples and objectives might be stored in description or summary
+          let examples = [];
+          let objectives = [];
+          
+          // Try to extract from description or summary if they contain JSON
+          if (lesson.description) {
+            try {
+              const descData = typeof lesson.description === 'string' && 
+                              lesson.description.startsWith('{') ? 
+                              JSON.parse(lesson.description) : {};
+              examples = descData.examples || [];
+              objectives = descData.objectives || [];
+            } catch (e) {
+              // description is not JSON, it's plain text
+            }
+          }
+          
+          // If not found in description, try summary
+          if (examples.length === 0 && lesson.summary) {
+            try {
+              const summaryData = typeof lesson.summary === 'string' && 
+                                 lesson.summary.startsWith('{') ? 
+                                 JSON.parse(lesson.summary) : {};
+              examples = summaryData.examples || examples;
+              objectives = summaryData.objectives || objectives;
+            } catch (e) {
+              // summary is not JSON, it's plain text
+            }
+          }
+          
+          // If still not found, extract from keyPoints
+          if (objectives.length === 0 && keyPoints.length > 0) {
+            // Use first few keyPoints as objectives
+            objectives = keyPoints.slice(0, 3);
+          }
+          
+          socket.emit('lesson_structure', {
+            lessonId,
+            title: lesson.title,
+            subject: unit.subject.name,
+            unit: unit.title,
+            grade: unit.subject.grade,
+            structure: {
+              keyPoints: keyPoints.length,
+              examples: examples.length,
+              objectives: objectives.length,
+              hasVideo: false, // Since videoUrl doesn't exist in the model
+              estimatedDuration: Math.ceil((keyPoints.length * 5) + (examples.length * 3) + 10)
+            },
+            metadata: {
+              createdAt: lesson.createdAt,
+              updatedAt: lesson.updatedAt
+            }
+          });
+          
+        } catch (error) {
+          socket.emit('error', {
+            code: 'STRUCTURE_ERROR',
+            message: 'فشل جلب هيكل الدرس'
+          });
+        }
+      });
+      
+      socket.on('generate_smart_slide', async (data: {
+        lessonId: string;
+        prompt: string;
+        type?: string;
+      }) => {
+        try {
+          console.log(`🎨 Smart slide generation requested: "${data.prompt}"`);
+          
+          // Use AI to understand the request
+          let slideContent: any = {
+            title: 'شريحة مخصصة',
+            text: data.prompt
+          };
+          
+          if (process.env.OPENAI_API_KEY) {
+            const aiPrompt = `
+قم بإنشاء محتوى شريحة تعليمية بناء على الطلب التالي:
+"${data.prompt}"
+
+أرجع النتيجة بصيغة JSON:
+{
+  "type": "content|bullet|quiz",
+  "title": "عنوان الشريحة",
+  "content": "المحتوى" أو ["نقطة 1", "نقطة 2"] للـ bullets
+}`;
+
+            try {
+              const response = await openAIService.chat([
+                { role: 'user', content: aiPrompt }
+              ], {
+                temperature: 0.7,
+                maxTokens: 300
+              });
+              
+              const parsed = JSON.parse(response);
+              slideContent = parsed.content;
+            } catch (aiError) {
+              console.error('AI slide generation failed:', aiError);
+            }
+          }
+          
+          // Generate HTML
+          await slideGenerator.initialize();
+          const slideHTML = slideGenerator.generateRealtimeSlideHTML(
+            {
+              id: `smart-slide-${Date.now()}`,
+              type: data.type as any || 'content',
+              content: slideContent,
+              duration: 15,
+              transitions: { in: 'fade', out: 'fade' }
+            },
+            'colorful'
+          );
+          
+          socket.emit('smart_slide_ready', {
+            html: slideHTML,
+            content: slideContent,
+            prompt: data.prompt
+          });
+          
+        } catch (error) {
+          socket.emit('slide_generation_error', {
+            message: 'فشل توليد الشريحة الذكية'
+          });
+        }
+      });
+      
+      socket.on('get_flow_state', async (lessonId: string) => {
+        // Get current orchestrator flow state
+        const flowKey = `${user.id}-${lessonId}`;
+        // This would need to be exposed from orchestrator
+        
+        socket.emit('flow_state', {
+          lessonId,
+          hasActiveFlow: false, // Check if exists
+          currentSection: null,
+          currentSlide: null
+        });
       });
       
       // ============= LESSON EVENTS =============
@@ -301,7 +496,7 @@ export class WebSocketService {
         socket.emit('left_lesson', { lessonId });
       });
       
-      // ============= SLIDE EVENTS (NEW) =============
+      // ============= SLIDE EVENTS =============
       
       socket.on('request_slide', async (data: {
         lessonId?: string;
@@ -314,6 +509,7 @@ export class WebSocketService {
           console.log(`🖼️ Generating slide ${data.slideNumber} for ${user.email}`);
           
           // Generate HTML
+          await slideGenerator.initialize();
           const slideHTML = slideGenerator.generateRealtimeSlideHTML(
             {
               id: `slide-${data.slideNumber}`,
@@ -495,7 +691,7 @@ export class WebSocketService {
         console.log(`💬 Message from ${user.email}: ${message.substring(0, 50)}...`);
       });
       
-      // ============= AI CHAT EVENTS (NEW) =============
+      // ============= AI CHAT EVENTS =============
       
       socket.on('chat_message', async (data: {
         lessonId: string;
@@ -505,6 +701,24 @@ export class WebSocketService {
         const { lessonId, message, streamMode } = data;
         
         console.log(`🤖 AI Chat request from ${user.email}: "${message.substring(0, 50)}..."`);
+        
+        // Check if message might trigger an action (integration with orchestrator)
+        if (!streamMode) {
+          const action = await lessonOrchestrator.processUserMessage(
+            user.id,
+            lessonId,
+            message
+          );
+          
+          if (action && action.confidence > 0.7) {
+            // Notify user about action
+            socket.emit('action_triggered', {
+              action: action.action,
+              trigger: action.trigger,
+              fromChat: true
+            });
+          }
+        }
         
         if (streamMode) {
           // Streaming mode للرسائل الطويلة
@@ -777,6 +991,50 @@ export class WebSocketService {
    */
   getIO(): SocketIOServer | null {
     return this.io;
+  }
+  
+  /**
+   * Send orchestrated content to user (NEW)
+   */
+  sendOrchestratedContent(
+    userId: string,
+    eventName: string,
+    data: any
+  ): boolean {
+    return this.sendToUser(userId, eventName, data);
+  }
+  
+  /**
+   * Broadcast orchestrator updates to lesson (NEW)
+   */
+  broadcastOrchestratorUpdate(
+    lessonId: string,
+    update: any
+  ): void {
+    this.sendToLesson(lessonId, 'orchestrator_update', update);
+  }
+  
+  /**
+   * Get active flow for user (NEW)
+   */
+  async getActiveFlow(userId: string, lessonId: string): Promise<any> {
+    // This would interact with orchestrator to get flow state
+    return null;
+  }
+  
+  /**
+   * Send action result to user (NEW)
+   */
+  sendActionResult(
+    userId: string,
+    action: string,
+    result: any
+  ): void {
+    this.sendToUser(userId, 'action_result', {
+      action,
+      result,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 
