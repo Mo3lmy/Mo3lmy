@@ -28,13 +28,13 @@ model User {
   // Relations
   profile         Profile?
   progress        Progress[]
-  chatMessages    ChatMessage[]
+  chatHistory     ChatMessage[]
   quizAttempts    QuizAttempt[]
   subscription    Subscription?
   achievements    UserAchievement[]
   rewards         ClaimedReward[]
   challenges      DailyChallenge[]
-  learningSessions LearningSession[]
+  learningSessions LearningSession[] 
   
   @@index([email])
   @@index([role])
@@ -396,31 +396,16 @@ enum ProgressStatus {
   COMPLETED
 }
 
-// ============= AI CHAT (FIXED FOR REALTIME) =============
+// ============= AI CHAT =============
 
 model ChatMessage {
   id              String    @id @default(uuid())
   userId          String
   lessonId        String?
-  sessionId       String?   // ربط بجلسة التعلم
-  
-  // محتوى الرسالة - اختياري لأن الرسالة قد تكون من user أو AI
-  userMessage     String    @default("")
-  aiResponse      String    @default("")
-  
-  // معلومات إضافية
-  role            String    @default("USER") // أبسط من enum
-  metadata        String?   // JSON for suggestions, context, etc.
-  rating          Int?      // تقييم المستخدم للرد (1-5)
-  feedback        String?   // ملاحظات المستخدم
-  
-  // Stream support
-  isStreaming     Boolean   @default(false) // هل تم بث الرد
-  responseTime    Int?      // وقت الاستجابة بالـ ms
-  
-  // Timestamps
+  role            ChatRole
+  content         String
+  metadata        String?   // JSON for additional data
   createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
   
   // Relations
   user            User      @relation(fields: [userId], references: [id])
@@ -428,8 +413,12 @@ model ChatMessage {
   
   @@index([userId])
   @@index([lessonId])
-  @@index([sessionId])
-  @@index([createdAt])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
 }
 
 // ============= GAMIFICATION MODELS =============

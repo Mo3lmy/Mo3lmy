@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { chatService } from '../../core/chat/chat.service';
+import { chatService } from '../../services/ai/chat.service';
 import { validateBody, validateParams, validateQuery } from '../middleware/validation.middleware';
 import { authenticate } from '../middleware/auth.middleware';
 import { successResponse, errorResponse } from '../../utils/response.utils';

@@ -2,9 +2,10 @@ import path from 'path';
 import fs from 'fs/promises';
 import { prisma } from '../../config/database.config';
 import { scriptGenerator } from './script.generator';
-import { slideGenerator } from './slide.generator';
+import { EnhancedSlideGenerator } from './slide.generator';
+const slideGenerator = new EnhancedSlideGenerator();
 import { audioGenerator } from './audio.generator';
-import { videoComposer } from './video.composer';
+import * as enhancedVideoComposer from './video.composer';
 import { queues } from '../../config/queue.config';
 import type { VideoGenerationJob, VideoScript } from '../../types/video.types';
 
@@ -85,7 +86,7 @@ export class VideoGenerationService {
       const outputPath = path.join(jobDir, 'output.mp4');
       const durations = allSlides.map(slide => slide.duration);
       
-      await videoComposer.composeVideo(
+      await enhancedVideoComposer.composeVideo(
         slidePaths,
         finalAudioPath,
         outputPath,
@@ -95,7 +96,7 @@ export class VideoGenerationService {
       // Step 5: Generate thumbnail
       console.log('\n📸 Step 5: Generating thumbnail...');
       const thumbnailPath = path.join(jobDir, 'thumbnail.png');
-      await videoComposer.extractThumbnail(outputPath, thumbnailPath);
+      await enhancedVideoComposer.extractThumbnail(outputPath, thumbnailPath);
       
       // Update video record
       await prisma.video.update({
@@ -137,75 +138,114 @@ export class VideoGenerationService {
    * Queue video generation job
    */
   async queueVideoGeneration(lessonId: string): Promise<string> {
+    console.log('📋 Queueing video generation for lesson:', lessonId);
+    
+    // Create pending video record
+    const video = await prisma.video.create({
+      data: {
+        lessonId,
+        status: 'PENDING',
+      },
+    });
+    
+    // Add to queue
     const job = await queues.videoGeneration.add(
       'generate-video',
-      { lessonId },
-      { priority: 1 }
+      { lessonId, videoId: video.id },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      }
     );
     
-    console.log(`📋 Video generation job queued: ${job.id}`);
-    return job.id || '';
+    console.log(`✅ Video generation job queued: ${job.id}`);
+    return video.id;
   }
   
   /**
    * Get video generation status
    */
-  async getVideoStatus(lessonId: string): Promise<any> {
+  async getVideoStatus(videoId: string) {
     const video = await prisma.video.findUnique({
-      where: { lessonId },
+      where: { id: videoId },
+      select: {
+        id: true,
+        status: true,
+        url: true,
+        thumbnailUrl: true,
+        duration: true,
+        error: true,
+        startedAt: true,
+        completedAt: true,
+      },
     });
     
     if (!video) {
-      return null;
+      throw new Error('Video not found');
+    }
+    
+    // Calculate progress based on status
+    let progress = 0;
+    switch (video.status) {
+      case 'PENDING':
+        progress = 0;
+        break;
+      case 'PROCESSING':
+        progress = 50;
+        break;
+      case 'COMPLETED':
+        progress = 100;
+        break;
+      case 'FAILED':
+        progress = -1;
+        break;
     }
     
     return {
-      status: video.status,
-      progress: this.calculateProgress(video),
-      url: video.url,
-      thumbnailUrl: video.thumbnailUrl,
-      error: video.error,
-      startedAt: video.startedAt,
-      completedAt: video.completedAt,
+      ...video,
+      progress,
     };
   }
   
   /**
-   * Calculate progress percentage
+   * Retry failed video generation
    */
-  private calculateProgress(video: any): number {
-    switch (video.status) {
-      case 'PENDING':
-        return 0;
-      case 'PROCESSING':
-        if (video.script && video.slides && video.audioUrl) {
-          return 75;
-        } else if (video.script && video.slides) {
-          return 50;
-        } else if (video.script) {
-          return 25;
-        }
-        return 10;
-      case 'COMPLETED':
-        return 100;
-      case 'FAILED':
-        return 0;
-      default:
-        return 0;
-    }
-  }
-  
-  /**
-   * Regenerate video
-   */
-  async regenerateVideo(lessonId: string): Promise<string> {
-    // Delete existing video
-    await prisma.video.deleteMany({
-      where: { lessonId },
+  async retryVideoGeneration(videoId: string): Promise<void> {
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
     });
     
-    // Generate new video
-    return await this.generateVideo(lessonId);
+    if (!video) {
+      throw new Error('Video not found');
+    }
+    
+    if (video.status !== 'FAILED') {
+      throw new Error('Can only retry failed videos');
+    }
+    
+    // Reset status and queue again
+    await prisma.video.update({
+      where: { id: videoId },
+      data: {
+        status: 'PENDING',
+        error: null,
+      },
+    });
+    
+    await queues.videoGeneration.add(
+      'generate-video',
+      { lessonId: video.lessonId, videoId },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      }
+    );
   }
   
   /**
@@ -224,18 +264,16 @@ export class VideoGenerationService {
     });
     
     for (const video of oldVideos) {
-      if (video.url) {
-        const videoDir = path.dirname(video.url);
-        try {
-          await fs.rm(videoDir, { recursive: true, force: true });
-          console.log(`🗑️ Cleaned up video: ${video.id}`);
-        } catch (error) {
-          console.error(`Failed to cleanup video ${video.id}:`, error);
-        }
+      try {
+        const jobDir = path.join(this.workDir, video.id);
+        await fs.rm(jobDir, { recursive: true, force: true });
+        console.log(`🗑️ Cleaned up video: ${video.id}`);
+      } catch (error) {
+        console.error(`❌ Failed to cleanup video ${video.id}:`, error);
       }
     }
   }
 }
 
 // Export singleton instance
-export const videoService = new VideoGenerationService();
+export const videoGenerationService = new VideoGenerationService();

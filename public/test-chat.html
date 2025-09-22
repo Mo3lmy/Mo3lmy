@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Chat Test</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .chat-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 25px;
+            position: relative;
+        }
+        
+        .chat-header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .status-dot.connected {
+            background: #4ade80;
+        }
+        
+        .status-dot.connecting {
+            background: #fbbf24;
+        }
+        
+        .status-dot.disconnected {
+            background: #ef4444;
+        }
+        
+        .error-banner {
+            background: #fef2f2;
+            color: #991b1b;
+            padding: 15px;
+            margin: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #ef4444;
+            display: none;
+        }
+        
+        .error-banner.active {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .info-banner {
+            background: #eff6ff;
+            color: #1e40af;
+            padding: 15px;
+            margin: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #3b82f6;
+            display: none;
+        }
+        
+        .info-banner.active {
+            display: block;
+        }
+        
+        .chat-messages {
+            height: 450px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            scroll-behavior: smooth;
+        }
+        
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        .message {
+            margin: 15px 0;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message-bubble {
+            padding: 12px 18px;
+            border-radius: 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+            line-height: 1.6;
+        }
+        
+        .user-message {
+            display: flex;
+            justify-content: flex-end;
+        }
+        
+        .user-message .message-bubble {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .ai-message {
+            display: flex;
+            justify-content: flex-start;
+        }
+        
+        .ai-message .message-bubble {
+            background: white;
+            color: #333;
+            border: 1px solid #e5e7eb;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .typing-indicator {
+            display: none;
+            padding: 20px;
+            background: #f3f4f6;
+        }
+        
+        .typing-indicator.active {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: typingAnimation 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typingAnimation {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+        
+        .suggestions {
+            padding: 15px 20px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .suggestion-chip {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 20px;
+            color: #667eea;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .suggestion-chip:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .chat-input-container {
+            padding: 20px;
+            border-top: 2px solid #e5e7eb;
+            background: white;
+        }
+        
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        #messageInput {
+            flex: 1;
+            padding: 12px 20px;
+            border: 2px solid #e5e7eb;
+            border-radius: 25px;
+            font-size: 16px;
+            font-family: inherit;
+            transition: border-color 0.3s ease;
+        }
+        
+        #messageInput:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        #messageInput:disabled {
+            background: #f3f4f6;
+            cursor: not-allowed;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-send {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .btn-send:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-send:disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+        
+        .btn-secondary:hover {
+            background: #e5e7eb;
+        }
+        
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .control-buttons button {
+            flex: 1;
+        }
+        
+        .debug-info {
+            display: none;
+            padding: 10px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            font-family: monospace;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        
+        .debug-info.active {
+            display: block;
+        }
+        
+        .welcome-screen {
+            padding: 40px;
+            text-align: center;
+            color: #6b7280;
+        }
+        
+        .welcome-screen h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 مساعد AI التعليمي</h1>
+            <div class="connection-status">
+                <span class="status-dot disconnected" id="statusDot"></span>
+                <span id="statusText">غير متصل</span>
+            </div>
+        </div>
+        
+        <div class="error-banner" id="errorBanner"></div>
+        <div class="info-banner" id="infoBanner"></div>
+        
+        <div class="chat-messages" id="messages">
+            <div class="welcome-screen">
+                <h2>مرحباً بك في مساعد AI التعليمي</h2>
+                <p>جاري تحضير المساعد...</p>
+                <div class="loader"></div>
+            </div>
+        </div>
+        
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dots">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+            <span>المساعد يكتب...</span>
+        </div>
+        
+        <div class="suggestions" id="suggestions">
+            <div class="suggestion-chip" onclick="sendSuggestion('مرحباً، كيف يمكنك مساعدتي؟')">
+                👋 التحية
+            </div>
+            <div class="suggestion-chip" onclick="sendSuggestion('اشرح لي الأعداد الطبيعية')">
+                📚 شرح الدرس
+            </div>
+            <div class="suggestion-chip" onclick="sendSuggestion('أعطني مثال')">
+                💡 مثال توضيحي
+            </div>
+            <div class="suggestion-chip" onclick="sendSuggestion('اختبرني بسؤال')">
+                ✏️ اختبار سريع
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="اكتب سؤالك هنا..."
+                    disabled
+                />
+                <button class="btn btn-send" onclick="sendMessage()" disabled id="sendBtn">
+                    إرسال
+                </button>
+            </div>
+            <div class="control-buttons">
+                <button class="btn btn-secondary" onclick="clearChat()">
+                    🗑️ مسح المحادثة
+                </button>
+                <button class="btn btn-secondary" onclick="reconnect()">
+                    🔄 إعادة اتصال
+                </button>
+                <button class="btn btn-secondary" onclick="toggleDebug()">
+                    🔧 Debug
+                </button>
+            </div>
+        </div>
+        
+        <div class="debug-info" id="debugInfo">
+            <div>Socket ID: <span id="debugSocketId">-</span></div>
+            <div>Status: <span id="debugStatus">-</span></div>
+            <div>Messages: <span id="debugMessages">0</span></div>
+            <div>Lesson ID: <span id="debugLessonId">-</span></div>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables
+        let socket = null;
+        let isConnected = false;
+        let currentLessonId = '550e8400-e29b-41d4-a716-446655440001';
+        let messageCount = 0;
+        let debugMode = false;
+        
+        // Helper functions
+        function showError(message, duration = 5000) {
+            const errorBanner = document.getElementById('errorBanner');
+            errorBanner.textContent = '❌ ' + message;
+            errorBanner.classList.add('active');
+            
+            setTimeout(() => {
+                errorBanner.classList.remove('active');
+            }, duration);
+        }
+        
+        function showInfo(message, duration = 3000) {
+            const infoBanner = document.getElementById('infoBanner');
+            infoBanner.textContent = '💡 ' + message;
+            infoBanner.classList.add('active');
+            
+            setTimeout(() => {
+                infoBanner.classList.remove('active');
+            }, duration);
+        }
+        
+        function updateConnectionStatus(status) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            
+            statusDot.className = 'status-dot ' + status;
+            
+            switch(status) {
+                case 'connected':
+                    isConnected = true;
+                    statusText.textContent = 'متصل';
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    messageInput.placeholder = 'اكتب سؤالك هنا...';
+                    break;
+                case 'connecting':
+                    isConnected = false;
+                    statusText.textContent = 'جاري الاتصال...';
+                    messageInput.disabled = true;
+                    sendBtn.disabled = true;
+                    messageInput.placeholder = 'انتظر الاتصال...';
+                    break;
+                case 'disconnected':
+                    isConnected = false;
+                    statusText.textContent = 'غير متصل';
+                    messageInput.disabled = true;
+                    sendBtn.disabled = true;
+                    messageInput.placeholder = 'غير متصل';
+                    break;
+            }
+            
+            updateDebugInfo();
+        }
+        
+        function updateDebugInfo() {
+            if (debugMode) {
+                document.getElementById('debugSocketId').textContent = socket?.id || '-';
+                document.getElementById('debugStatus').textContent = isConnected ? 'Connected' : 'Disconnected';
+                document.getElementById('debugMessages').textContent = messageCount;
+                document.getElementById('debugLessonId').textContent = currentLessonId;
+            }
+        }
+        
+        function toggleDebug() {
+            debugMode = !debugMode;
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.classList.toggle('active');
+            updateDebugInfo();
+        }
+        
+        // Main connection function
+        async function connect() {
+            try {
+                updateConnectionStatus('connecting');
+                console.log('🚀 Starting connection process...');
+                
+                // Step 1: Try to login
+                console.log('📝 Attempting login...');
+                let token = await attemptLogin();
+                
+                // Step 2: If login failed, try registration
+                if (!token) {
+                    console.log('📝 Login failed, attempting registration...');
+                    await attemptRegistration();
+                    token = await attemptLogin();
+                    
+                    if (!token) {
+                        throw new Error('فشل تسجيل الدخول والتسجيل');
+                    }
+                }
+                
+                // Step 3: Connect WebSocket
+                console.log('🔌 Connecting WebSocket...');
+                await connectWebSocket(token);
+                
+            } catch (error) {
+                console.error('❌ Connection failed:', error);
+                showError(`فشل الاتصال: ${error.message}`);
+                updateConnectionStatus('disconnected');
+            }
+        }
+        
+        async function attemptLogin() {
+            try {
+                const response = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'student1@test.com',
+                        password: 'Test@1234'
+                    })
+                });
+                
+                if (!response.ok) {
+                    console.log('Login response not OK:', response.status);
+                    return null;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.data && data.data.token) {
+                    console.log('✅ Login successful');
+                    showInfo('تم تسجيل الدخول بنجاح');
+                    return data.data.token;
+                }
+                
+                return null;
+            } catch (error) {
+                console.error('Login error:', error);
+                return null;
+            }
+        }
+        
+        async function attemptRegistration() {
+            try {
+                const response = await fetch('/api/v1/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'student1@test.com',
+                        password: 'Test@1234',
+                        firstName: 'Test',
+                        lastName: 'User',
+                        grade: 6
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('Registration response:', data);
+                
+                if (data.success) {
+                    showInfo('تم إنشاء حساب جديد');
+                    return true;
+                }
+                
+                return false;
+            } catch (error) {
+                console.error('Registration error:', error);
+                return false;
+            }
+        }
+        
+        async function connectWebSocket(token) {
+            return new Promise((resolve, reject) => {
+                socket = io({
+                    auth: { token },
+                    transports: ['polling', 'websocket'],
+                    reconnection: true,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    reconnectionAttempts: 5
+                });
+                
+                // Connection events
+                socket.on('connect', () => {
+                    console.log('✅ WebSocket connected:', socket.id);
+                    updateConnectionStatus('connected');
+                    clearMessages();
+                    addMessage('مرحباً! أنا مساعدك التعليمي. كيف يمكنني مساعدتك اليوم؟ 😊', 'ai');
+                    
+                    // Join lesson
+                    socket.emit('join_lesson', currentLessonId);
+                    resolve();
+                });
+                
+                socket.on('disconnect', (reason) => {
+                    console.log('❌ Disconnected:', reason);
+                    updateConnectionStatus('disconnected');
+                    showError('انقطع الاتصال: ' + reason);
+                });
+                
+                socket.on('connect_error', (error) => {
+                    console.error('Connection error:', error);
+                    updateConnectionStatus('disconnected');
+                    reject(error);
+                });
+                
+                // Chat events
+                socket.on('ai_typing', (data) => {
+                    console.log('AI typing...');
+                    showTypingIndicator();
+                });
+                
+                socket.on('ai_response', (data) => {
+                    console.log('AI response:', data);
+                    hideTypingIndicator();
+                    
+                    if (data.message) {
+                        addMessage(data.message, 'ai');
+                    }
+                    
+                    if (data.suggestions && data.suggestions.length > 0) {
+                        updateSuggestions(data.suggestions);
+                    }
+                });
+                
+                socket.on('stream_start', () => {
+                    showTypingIndicator();
+                    addMessage('', 'ai', true); // Add empty message for streaming
+                });
+                
+                socket.on('stream_chunk', (data) => {
+                    updateLastMessage(data.accumulated);
+                });
+                
+                socket.on('stream_end', (data) => {
+                    hideTypingIndicator();
+                    updateLastMessage(data.fullResponse);
+                });
+                
+                socket.on('chat_error', (data) => {
+                    hideTypingIndicator();
+                    showError(data.message || 'حدث خطأ في المحادثة');
+                });
+                
+                socket.on('error', (data) => {
+                    console.error('Socket error:', data);
+                    showError(data.message || 'حدث خطأ');
+                });
+                
+                // Lesson events
+                socket.on('joined_lesson', (data) => {
+                    console.log('Joined lesson:', data);
+                    showInfo(`انضممت للدرس: ${data.lessonTitle}`);
+                });
+                
+                socket.on('welcome', (data) => {
+                    console.log('Welcome:', data);
+                });
+                
+                // Set timeout for connection
+                setTimeout(() => {
+                    if (!socket.connected) {
+                        reject(new Error('Connection timeout'));
+                    }
+                }, 10000);
+            });
+        }
+        
+        // Message handling functions
+        function addMessage(text, type, streaming = false) {
+            const messages = document.getElementById('messages');
+            
+            // Clear welcome screen if exists
+            const welcomeScreen = messages.querySelector('.welcome-screen');
+            if (welcomeScreen) {
+                welcomeScreen.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.textContent = text;
+            
+            if (streaming) {
+                bubble.id = 'streamingMessage';
+            }
+            
+            messageDiv.appendChild(bubble);
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+            
+            messageCount++;
+            updateDebugInfo();
+        }
+        
+        function updateLastMessage(text) {
+            const streamingMessage = document.getElementById('streamingMessage');
+            if (streamingMessage) {
+                streamingMessage.textContent = text;
+                streamingMessage.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+        
+        function clearMessages() {
+            const messages = document.getElementById('messages');
+            messages.innerHTML = '';
+            messageCount = 0;
+            updateDebugInfo();
+        }
+        
+        function showTypingIndicator() {
+            document.getElementById('typingIndicator').classList.add('active');
+        }
+        
+        function hideTypingIndicator() {
+            document.getElementById('typingIndicator').classList.remove('active');
+        }
+        
+        // User interaction functions
+        function sendMessage() {
+            if (!isConnected || !socket) {
+                showError('الرجاء الانتظار حتى يتم الاتصال');
+                return;
+            }
+            
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message
+            addMessage(message, 'user');
+            
+            // Send to server
+            console.log('Sending message:', message);
+            socket.emit('chat_message', {
+                lessonId: currentLessonId,
+                message,
+                streamMode: message.length > 100 // Use streaming for long messages
+            });
+            
+            // Clear input
+            input.value = '';
+            input.focus();
+        }
+        
+        function sendSuggestion(text) {
+            if (!isConnected) {
+                showError('الرجاء الانتظار حتى يتم الاتصال');
+                return;
+            }
+            
+            document.getElementById('messageInput').value = text;
+            sendMessage();
+        }
+        
+        function updateSuggestions(suggestions) {
+            const container = document.getElementById('suggestions');
+            container.innerHTML = '';
+            
+            suggestions.forEach(suggestion => {
+                const chip = document.createElement('div');
+                chip.className = 'suggestion-chip';
+                chip.textContent = suggestion;
+                chip.onclick = () => sendSuggestion(suggestion);
+                container.appendChild(chip);
+            });
+        }
+        
+        function clearChat() {
+            if (socket && isConnected) {
+                socket.emit('clear_chat', currentLessonId);
+            }
+            
+            clearMessages();
+            addMessage('تم مسح المحادثة. كيف يمكنني مساعدتك؟', 'ai');
+        }
+        
+        function reconnect() {
+            showInfo('جاري إعادة الاتصال...');
+            
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            
+            setTimeout(connect, 500);
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('DOMContentLoaded', () => {
+            const messageInput = document.getElementById('messageInput');
+            
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            // Focus input when clicking anywhere in chat
+            document.querySelector('.chat-messages').addEventListener('click', () => {
+                if (isConnected) {
+                    messageInput.focus();
+                }
+            });
+            
+            // Start connection automatically
+            connect();
+        });
+        
+        // Auto-reconnect on visibility change
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !isConnected && !socket?.connected) {
+                console.log('Page visible, attempting reconnect...');
+                reconnect();
+            }
+        });
+        
+        // Window focus
+        window.addEventListener('focus', () => {
+            if (isConnected) {
+                document.getElementById('messageInput').focus();
+            }
+        });
+    </script>
+</body>
+</html>

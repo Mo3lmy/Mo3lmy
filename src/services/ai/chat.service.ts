@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../../config/database.config';
-import { ragService } from '../rag/rag.service';
-import { openAIService } from '../../services/ai/openai.service';
+import { ragService } from '../../core/rag/rag.service';
+import { openAIService } from './openai.service';
 import { NotFoundError } from '../../utils/errors';
 import type {
   ChatSession,
@@ -17,11 +17,101 @@ import type { ChatMessage as DBChatMessage } from '@prisma/client';
 
 export class ChatService {
   private sessions: Map<string, ChatSession> = new Map();
+  private openai: any; // OpenAI instance if available
+  
+  constructor() {
+    // Initialize OpenAI if API key exists
+    if (process.env.OPENAI_API_KEY) {
+      this.initializeOpenAI();
+    }
+  }
   
   /**
-   * Start or continue a chat session
+   * Initialize OpenAI
+   */
+  private async initializeOpenAI() {
+    try {
+      const { OpenAI } = await import('openai');
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+      console.log('✅ OpenAI initialized for ChatService');
+    } catch (error) {
+      console.warn('⚠️ OpenAI not initialized in ChatService:', error);
+    }
+  }
+  
+  /**
+   * Process message for realtime chat (NEW METHOD)
    */
   async processMessage(
+    message: string,
+    context: any,
+    userId: string
+  ): Promise<{ response: string; suggestions?: string[] }> {
+    try {
+      // إذا OpenAI موجود، استخدمه
+      if (this.openai) {
+        const completion = await this.openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `أنت مساعد تعليمي ذكي للمناهج المصرية. 
+              المادة: ${context.subject}
+              الوحدة: ${context.unit}
+              الدرس: ${context.lesson}
+              الصف: ${context.grade || 6}
+              
+              أجب بطريقة بسيطة ومناسبة لمستوى الطالب.`
+            },
+            {
+              role: 'user',
+              content: message
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 500
+        });
+        
+        return {
+          response: completion.choices[0].message.content || 'عذراً، لم أفهم السؤال.',
+          suggestions: this.generateSuggestions(message)
+        };
+      }
+    } catch (error) {
+      console.error('OpenAI error:', error);
+    }
+    
+    // Fallback response
+    return {
+      response: `تلقيت سؤالك: "${message}". أنا هنا لمساعدتك في فهم الدرس بشكل أفضل!`,
+      suggestions: this.generateSuggestions(message)
+    };
+  }
+  
+  /**
+   * Generate suggestions based on message
+   */
+  private generateSuggestions(message: string): string[] {
+    const suggestions = [];
+    
+    if (!message.includes('مثال')) {
+      suggestions.push('أعطني مثال');
+    }
+    if (!message.includes('شرح')) {
+      suggestions.push('اشرح أكثر');
+    }
+    suggestions.push('اختبرني');
+    suggestions.push('ما التالي؟');
+    
+    return suggestions.slice(0, 3);
+  }
+  
+  /**
+   * Process chat message (Original method with full parameters)
+   */
+  async processChatMessage(
     userId: string,
     request: ChatRequest
   ): Promise<ChatResponse> {
@@ -202,6 +292,10 @@ export class ChatService {
       if (lesson) {
         context.lessonTitle = lesson.title;
         context.subjectName = lesson.unit.subject.name;
+        // Add these for realtime context
+        (context as any).subject = lesson.unit.subject.name;
+        (context as any).unit = lesson.unit.title;
+        (context as any).lesson = lesson.title;
       }
     }
     
@@ -215,7 +309,7 @@ export class ChatService {
       take: 10,
     });
     
-    context.previousQuestions = recentMessages.map(m => m.content);
+    context.previousQuestions = recentMessages.map(m => m.userMessage);
     
     // Determine user level based on progress
     const progress = await prisma.progress.findMany({
@@ -372,7 +466,7 @@ export class ChatService {
     context?: ChatContext
   ): Promise<string> {
     // If no OpenAI key, return helpful response
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY || !this.openai) {
       return `شكراً لرسالتك! أنا هنا لمساعدتك في دراستك.
 
 إذا كان لديك سؤال محدد عن ${context?.lessonTitle || 'الدرس'}، لا تتردد في طرحه.
@@ -389,15 +483,22 @@ export class ChatService {
 ${context?.lessonTitle ? `يدرس حالياً: ${context.lessonTitle}` : ''}
 اجب بطريقة ودية ومفيدة ومناسبة للعمر.`;
     
-    const response = await openAIService.chat([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: message },
-    ], {
-      temperature: 0.7,
-      maxTokens: 300,
-    });
-    
-    return response;
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ],
+        temperature: 0.7,
+        max_tokens: 300
+      });
+      
+      return completion.choices[0].message.content || 'عذراً، حدث خطأ. حاول مرة أخرى.';
+    } catch (error) {
+      console.error('Error in general message handler:', error);
+      return `شكراً لرسالتك! سأساعدك في فهم ${context?.lessonTitle || 'الدرس'} بشكل أفضل.`;
+    }
   }
   
   /**
@@ -486,7 +587,9 @@ ${context?.lessonTitle ? `يدرس حالياً: ${context.lessonTitle}` : ''}
         userId,
         lessonId,
         role: role.toUpperCase() as any,
-        content,
+        ...(role === 'user'
+          ? { userMessage: content, aiResponse: "" }
+          : { aiResponse: content, userMessage: "" }),
         metadata: metadata ? JSON.stringify(metadata) : null,
       },
     });
@@ -533,14 +636,16 @@ ${context?.lessonTitle ? `يدرس حالياً: ${context.lessonTitle}` : ''}
     // Analyze conversation
     const questionsAsked = messages
       .filter(m => m.role === 'USER')
-      .map(m => m.content);
+      .map(m => m.userMessage);
     
     const questionsAnswered = messages
       .filter(m => m.role === 'ASSISTANT')
       .length;
     
     // Extract topics (simplified version)
-    const topics = this.extractTopics(messages.map(m => m.content));
+    const topics = this.extractTopics(
+      messages.map(m => m.role === 'USER' ? m.userMessage : m.aiResponse)
+    );
     
     // Calculate duration
     const duration = session.lastMessageAt.getTime() - session.startedAt.getTime();
@@ -588,7 +693,7 @@ ${context?.lessonTitle ? `يدرس حالياً: ${context.lessonTitle}` : ''}
    * Helper: Simplify answer for beginners
    */
   private async simplifyAnswer(answer: string): Promise<string> {
-    if (!process.env.OPENAI_API_KEY) {
+    if (!this.openai) {
       return answer; // Return as-is if no API key
     }
     
@@ -597,14 +702,21 @@ ${answer}
 
 الشرح المبسط:`;
     
-    const simplified = await openAIService.chat([
-      { role: 'user', content: prompt },
-    ], {
-      temperature: 0.5,
-      maxTokens: 300,
-    });
-    
-    return simplified;
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.5,
+        max_tokens: 300
+      });
+      
+      return completion.choices[0].message.content || answer;
+    } catch (error) {
+      console.error('Error simplifying answer:', error);
+      return answer;
+    }
   }
   
   /**

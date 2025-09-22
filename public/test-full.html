@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket & Slides Test - Complete</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Tajawal', 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .main-grid {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 20px;
+        }
+        
+        /* Control Panel */
+        .control-panel {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            overflow: hidden;
+            height: fit-content;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .status-bar {
+            background: #f8f9fa;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .connecting { background: #fff3cd; color: #856404; }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: bold;
+            color: #6c757d;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            background: #e9ecef;
+        }
+        
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            margin-bottom: -2px;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Theme Selector */
+        .theme-selector {
+            margin: 15px 0;
+        }
+        
+        .theme-selector label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        .theme-selector select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        /* Stats */
+        .stats {
+            padding: 15px;
+            background: #f8f9fa;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+        }
+        
+        /* Logs */
+        .logs-container {
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        #logs {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 6px;
+            border-radius: 3px;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { 
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .log-error { background: #ffe4e6; color: #991b1b; }
+        .log-success { background: #dcfce7; color: #166534; }
+        .log-info { background: #e0f2fe; color: #075985; }
+        .log-warning { background: #fef3c7; color: #92400e; }
+        
+        /* Slide Viewer */
+        .slide-viewer {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: fit-content;
+        }
+        
+        .slide-header {
+            background: #333;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .slide-info {
+            font-size: 14px;
+        }
+        
+        .slide-nav {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .nav-btn {
+            padding: 5px 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .nav-btn:hover {
+            background: #5a67d8;
+        }
+        
+        .nav-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        #slideContainer {
+            height: 600px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: #f8f9fa;
+            overflow: hidden;
+        }
+        
+        /* Slide Styles */
+        .slide-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: white;
+            font-family: 'Tajawal', sans-serif;
+            direction: rtl;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .slide-content {
+            max-width: 900px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .slide-title {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .slide-subtitle {
+            font-size: 2rem;
+            font-weight: 400;
+            opacity: 0.95;
+        }
+        
+        .slide-heading {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .slide-text {
+            font-size: 1.5rem;
+            line-height: 1.8;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .slide-bullets {
+            list-style: none;
+            text-align: right;
+            font-size: 1.4rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .slide-bullets li {
+            margin: 1.5rem 0;
+            padding-right: 2rem;
+            position: relative;
+        }
+        
+        .bullet-icon {
+            position: absolute;
+            right: 0;
+            font-size: 1.2rem;
+        }
+        
+        .summary-points {
+            list-style: none;
+            text-align: right;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .summary-points li {
+            margin: 1.2rem 0;
+            padding-right: 3rem;
+            position: relative;
+            font-size: 1.3rem;
+        }
+        
+        .point-number {
+            position: absolute;
+            right: 0;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        .quiz-question {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .quiz-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .quiz-option {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            padding: 1.2rem;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px;
+            color: white;
+            font-size: 1.3rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .quiz-option:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        
+        .animate-fade-in { animation: fadeIn 0.8s ease-out; }
+        .animate-slide-up { animation: slideUp 0.8s ease-out; }
+        .animate-slide-in { animation: slideIn 0.6s ease-out backwards; }
+        .animate-scale-in { animation: scaleIn 0.5s ease-out backwards; }
+        .animate-zoom-in { animation: scaleIn 0.8s ease-out; }
+        
+        .empty-state {
+            color: #999;
+            font-size: 18px;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-grid">
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <div class="header">
+                <h1>🚀 WebSocket Test Suite</h1>
+                <p>اختبار شامل مع Slides</p>
+            </div>
+            
+            <div class="status-bar">
+                <div>
+                    الحالة: <span id="status" class="status disconnected">غير متصل</span>
+                </div>
+                <div>
+                    ID: <span id="socketId">-</span>
+                </div>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('connection')">🔌 الاتصال</div>
+                <div class="tab" onclick="switchTab('slides')">🖼️ الشرائح</div>
+                <div class="tab" onclick="switchTab('testing')">🧪 اختبار</div>
+            </div>
+            
+            <!-- Connection Tab -->
+            <div id="connection-tab" class="tab-content active">
+                <div class="controls">
+                    <button type="button" id="connectBtn" class="btn-primary" onclick="connectSocket()">
+                        🔌 اتصال
+                    </button>
+                    <button type="button" class="btn-danger" onclick="disconnectSocket()">
+                        ❌ قطع الاتصال
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="testPing()" disabled id="pingBtn">
+                        🏓 Ping Test
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="getStatus()" disabled id="statusBtn">
+                        📊 حالة النظام
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Slides Tab -->
+            <div id="slides-tab" class="tab-content">
+                <div class="theme-selector">
+                    <label>اختر Theme:</label>
+                    <select id="themeSelect">
+                        <option value="default">Default (Purple)</option>
+                        <option value="blue">Blue Ocean</option>
+                        <option value="green">Green Nature</option>
+                        <option value="dark">Dark Mode</option>
+                        <option value="colorful">Colorful</option>
+                    </select>
+                </div>
+                
+                <div class="controls">
+                    <button onclick="requestTitleSlide()" disabled id="titleBtn" class="btn-primary">
+                        📝 شريحة العنوان
+                    </button>
+                    <button onclick="requestContentSlide()" disabled id="contentBtn" class="btn-info">
+                        📄 شريحة محتوى
+                    </button>
+                    <button onclick="requestBulletSlide()" disabled id="bulletBtn" class="btn-warning">
+                        📋 شريحة نقاط
+                    </button>
+                    <button onclick="requestQuizSlide()" disabled id="quizBtn" class="btn-success">
+                        ❓ شريحة اختبار
+                    </button>
+                    <button onclick="requestSummarySlide()" disabled id="summaryBtn" class="btn-secondary">
+                        📊 شريحة ملخص
+                    </button>
+                    <button onclick="requestImageSlide()" disabled id="imageBtn" class="btn-info">
+                        🖼️ شريحة صورة
+                    </button>
+                    <button onclick="clearSlides()" class="btn-danger">
+                        🗑️ مسح الشرائح
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Testing Tab -->
+            <div id="testing-tab" class="tab-content">
+                <div class="controls">
+                    <button type="button" class="btn-success" onclick="joinTestLesson()" disabled id="joinBtn">
+                        📚 انضم لدرس تجريبي
+                    </button>
+                    <button type="button" class="btn-warning" onclick="leaveLesson()" disabled id="leaveBtn">
+                        📤 غادر الدرس
+                    </button>
+                    <button type="button" class="btn-info" onclick="sendTestMessage()" disabled id="msgBtn">
+                        💬 أرسل رسالة
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="updateSlidePosition()" disabled id="updateBtn">
+                        📍 تحديث الموضع
+                    </button>
+                    <button type="button" class="btn-primary" onclick="savePreferences()" disabled id="prefsBtn">
+                        ⚙️ حفظ التفضيلات
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Stats -->
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="connectedUsers">0</div>
+                    <div class="stat-label">متصلون</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="messagesCount">0</div>
+                    <div class="stat-label">رسائل</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="pingLatency">-</div>
+                    <div class="stat-label">Ping (ms)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="uptime">0</div>
+                    <div class="stat-label">مدة (ث)</div>
+                </div>
+            </div>
+            
+            <!-- Logs -->
+            <div class="logs-container">
+                <div class="logs-header">
+                    <h3>📝 السجلات</h3>
+                    <button type="button" class="btn-secondary" onclick="clearLogs()">مسح</button>
+                </div>
+                <div id="logs"></div>
+            </div>
+        </div>
+        
+        <!-- Slide Viewer -->
+        <div class="slide-viewer">
+            <div class="slide-header">
+                <div class="slide-info">
+                    <span>Slide <span id="currentSlide">0</span> / <span id="totalSlides">0</span></span>
+                </div>
+                <div class="slide-nav">
+                    <button class="nav-btn" onclick="navigateSlide('previous')">السابق</button>
+                    <button class="nav-btn" onclick="navigateSlide('next')">التالي</button>
+                    <button class="nav-btn" onclick="navigateSlide('goto', 1)">البداية</button>
+                </div>
+            </div>
+            <div id="slideContainer">
+                <div class="empty-state">
+                    <h2>🎨 منطقة عرض الشرائح</h2>
+                    <p>اتصل بالنظام ثم اضغط على أزرار توليد الشرائح</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables
+        let socket = null;
+        let token = null;
+        let isConnecting = false;
+        let connectionStartTime = null;
+        let messageCount = 0;
+        let pingStartTime = null;
+        let uptimeInterval = null;
+        let currentLessonId = null;
+        let currentSessionId = null;
+        let slideNumber = 0;
+        let slides = [];
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // Logging function
+        function log(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const time = new Date().toLocaleTimeString();
+            
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${time}] ${message}`;
+            
+            logs.appendChild(entry);
+            logs.scrollTop = logs.scrollHeight;
+            
+            // Limit logs to 100 entries
+            while (logs.children.length > 100) {
+                logs.removeChild(logs.firstChild);
+            }
+        }
+        
+        // Update UI status
+        function updateStatus(status, socketId = '-') {
+            const statusEl = document.getElementById('status');
+            const socketIdEl = document.getElementById('socketId');
+            
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = 
+                status === 'connected' ? 'متصل' :
+                status === 'connecting' ? 'جاري الاتصال...' :
+                'غير متصل';
+            
+            socketIdEl.textContent = socketId;
+            
+            // Enable/disable buttons based on connection
+            const connected = status === 'connected';
+            
+            // Connection buttons
+            document.getElementById('pingBtn').disabled = !connected;
+            document.getElementById('statusBtn').disabled = !connected;
+            
+            // Slide buttons
+            document.getElementById('titleBtn').disabled = !connected;
+            document.getElementById('contentBtn').disabled = !connected;
+            document.getElementById('bulletBtn').disabled = !connected;
+            document.getElementById('quizBtn').disabled = !connected;
+            document.getElementById('summaryBtn').disabled = !connected;
+            document.getElementById('imageBtn').disabled = !connected;
+            
+            // Testing buttons
+            document.getElementById('joinBtn').disabled = !connected;
+            document.getElementById('leaveBtn').disabled = !connected;
+            document.getElementById('msgBtn').disabled = !connected;
+            document.getElementById('updateBtn').disabled = !connected;
+            document.getElementById('prefsBtn').disabled = !connected;
+        }
+        
+        // Connect to WebSocket
+        async function connectSocket() {
+    if (isConnecting || socket?.connected) {
+        log('⏳ اتصال موجود بالفعل', 'warning');
+        return;
+    }
+    
+    isConnecting = true;
+    document.getElementById('connectBtn').disabled = true;
+    updateStatus('connecting');
+    
+    try {
+        // Step 1: Login
+        log('🔐 تسجيل الدخول...', 'info');
+        
+        const loginRes = await fetch('http://localhost:3000/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: 'student1@test.com',
+                password: 'Test@1234'
+            })
+        });
+        
+        const data = await loginRes.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Login failed');
+        }
+        
+        token = data.data.token;
+        log('✅ تم تسجيل الدخول بنجاح', 'success');
+        
+        // Step 2: Connect WebSocket with correct settings
+        log('🔌 إنشاء اتصال WebSocket...', 'info');
+        
+        socket = io('http://localhost:3000', {
+            auth: { token },
+            transports: ['websocket', 'polling'], // websocket first
+            upgrade: true,
+            rememberUpgrade: true,
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: 5,
+            timeout: 20000,
+            path: '/socket.io/',
+            withCredentials: true
+        });
+        
+        // Add connection timeout handler
+        const connectionTimeout = setTimeout(() => {
+            if (!socket.connected) {
+                log('⏱️ Connection timeout, retrying...', 'warning');
+                socket.connect();
+            }
+        }, 5000);
+        
+        socket.on('connect', () => {
+            clearTimeout(connectionTimeout);
+            log(`✅ تم الاتصال! Socket ID: ${socket.id}`, 'success');
+            updateStatus('connected', socket.id);
+            
+            connectionStartTime = Date.now();
+            uptimeInterval = setInterval(updateUptime, 1000);
+            
+            document.getElementById('connectBtn').disabled = false;
+            isConnecting = false;
+        });
+        
+        // باقي الـ events...
+        setupSocketEvents();
+        
+    } catch (error) {
+        log(`❌ ${error.message}`, 'error');
+        updateStatus('disconnected');
+        document.getElementById('connectBtn').disabled = false;
+        isConnecting = false;
+    }
+}
+        
+        // Setup all socket events
+        function setupSocketEvents() {
+            // Connection events
+            socket.on('connect', () => {
+                log(`✅ تم الاتصال! Socket ID: ${socket.id}`, 'success');
+                updateStatus('connected', socket.id);
+                
+                connectionStartTime = Date.now();
+                uptimeInterval = setInterval(updateUptime, 1000);
+                
+                document.getElementById('connectBtn').disabled = false;
+                isConnecting = false;
+            });
+            
+            socket.on('welcome', (data) => {
+                log(`👋 ${data.message}`, 'success');
+                if (data.lastSession) {
+                    log(`📚 آخر جلسة: ${data.lastSession.lessonTitle}`, 'info');
+                }
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log(`❌ انقطع الاتصال: ${reason}`, 'error');
+                updateStatus('disconnected');
+                clearInterval(uptimeInterval);
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`❌ خطأ في الاتصال: ${error.message}`, 'error');
+                updateStatus('disconnected');
+                document.getElementById('connectBtn').disabled = false;
+                isConnecting = false;
+            });
+            
+            // User events
+            socket.on('user_connected', (data) => {
+                log(`👥 ${data.userName} انضم (المتصلون: ${data.totalUsers})`, 'info');
+                document.getElementById('connectedUsers').textContent = data.totalUsers;
+            });
+            
+            socket.on('user_disconnected', (data) => {
+                log(`👋 ${data.userName} غادر (المتصلون: ${data.totalUsers})`, 'info');
+                document.getElementById('connectedUsers').textContent = data.totalUsers;
+            });
+            
+            // Lesson events
+            socket.on('joined_lesson', (data) => {
+                log(`📚 انضممت للدرس: ${data.lessonTitle}`, 'success');
+                log(`   المادة: ${data.subjectName} - الوحدة: ${data.unitTitle}`, 'info');
+                currentLessonId = data.lessonId;
+                if (data.session) {
+                    currentSessionId = data.session.id;
+                    log(`📝 Session: ${data.session.isResumed ? 'استئناف' : 'جديدة'}`, 'info');
+                }
+            });
+            
+            socket.on('left_lesson', (data) => {
+                log(`📤 غادرت الدرس`, 'info');
+                currentLessonId = null;
+                currentSessionId = null;
+            });
+            
+            // Slide events
+            socket.on('slide_ready', (data) => {
+                log(`🖼️ تم استلام الشريحة #${data.slideNumber}`, 'success');
+                displaySlide(data.html);
+                slides[data.slideNumber] = data.html;
+                updateSlideInfo(data.slideNumber);
+            });
+            
+            socket.on('slide_error', (data) => {
+                log(`❌ خطأ في الشريحة: ${data.message}`, 'error');
+            });
+            
+            socket.on('slide_updated', (data) => {
+                log(`📍 تم تحديث الموضع: ${data.currentSlide}/${data.totalSlides}`, 'info');
+            });
+            
+            socket.on('navigation_complete', (data) => {
+                log(`🧭 تم الانتقال للشريحة ${data.currentSlide}`, 'info');
+            });
+            
+            // Message events
+            socket.on('new_message', (data) => {
+                log(`💬 ${data.userName}: ${data.message}`, 'info');
+                messageCount++;
+                document.getElementById('messagesCount').textContent = messageCount;
+            });
+            
+            // Utility events
+            socket.on('pong', (data) => {
+                const latency = Date.now() - pingStartTime;
+                log(`🏓 Pong! Latency: ${latency}ms`, 'success');
+                document.getElementById('pingLatency').textContent = latency;
+            });
+            
+            socket.on('status', (data) => {
+                log('📊 حالة الاتصال:', 'info');
+                log(`   المتصلون: ${data.totalUsers}`, 'info');
+                log(`   جلسة نشطة: ${data.hasActiveSession ? 'نعم' : 'لا'}`, 'info');
+            });
+            
+            socket.on('preferences_saved', (data) => {
+                log('⚙️ تم حفظ التفضيلات', 'success');
+            });
+            
+            socket.on('error', (data) => {
+                log(`❌ خطأ: ${data.message}`, 'error');
+            });
+        }
+        
+        // Disconnect
+        function disconnectSocket() {
+            if (socket?.connected) {
+                socket.disconnect();
+                socket = null;
+                log('👋 تم قطع الاتصال', 'info');
+                clearInterval(uptimeInterval);
+                currentLessonId = null;
+                currentSessionId = null;
+            } else {
+                log('⚠️ لا يوجد اتصال نشط', 'warning');
+            }
+        }
+        
+        // Slide Functions
+        function requestTitleSlide() {
+            const theme = document.getElementById('themeSelect').value;
+            socket.emit('request_slide', {
+                slideNumber: ++slideNumber,
+                type: 'title',
+                content: {
+                    title: 'مرحباً في منصة التعليم الذكية',
+                    subtitle: 'تعلم بطريقة تفاعلية وممتعة'
+                },
+                theme,
+                lessonId: currentLessonId
+            });
+            log('📤 طلب شريحة العنوان...', 'info');
+        }
+        
+        function requestContentSlide() {
+            const theme = document.getElementById('themeSelect').value;
+            socket.emit('request_slide', {
+                slideNumber: ++slideNumber,
+                type: 'content',
+                content: {
+                    title: 'ما هي الأعداد الطبيعية؟',
+                    text: 'الأعداد الطبيعية هي الأعداد التي نستخدمها للعد، وتبدأ من الرقم 1 وتستمر إلى ما لا نهاية. مثل: 1، 2، 3، 4، 5... وهي أساس علم الرياضيات.'
+                },
+                theme,
+                lessonId: currentLessonId
+            });
+            log('📤 طلب شريحة المحتوى...', 'info');
+        }
+        
+        function requestBulletSlide() {
+            const theme = document.getElementById('themeSelect').value;
+            socket.emit('request_slide', {
+                slideNumber: ++slideNumber,
+                type: 'bullet',
+                content: {
+                    title: 'خصائص الأعداد الطبيعية',
+                    bullets: [
+                        'تبدأ من العدد 1',
+                        'لا تحتوي على كسور أو أعداد عشرية',
+                        'تستمر إلى ما لا نهاية',
+                        'تُستخدم في العد والترتيب',
+                        'يمكن جمعها وضربها'
+                    ]
+                },
+                theme,
+                lessonId: currentLessonId
+            });
+            log('📤 طلب شريحة النقاط...', 'info');
+        }
+        
+        function requestQuizSlide() {
+            const theme = document.getElementById('themeSelect').value;
+            socket.emit('request_slide', {
+                slideNumber: ++slideNumber,
+                type: 'quiz',
+                content: {
+                    quiz: {
+                        question: 'أي من التالي يُعتبر عدد طبيعي؟',
+                        options: ['0.5', '-3', '7', '2.5'],
+                        correctIndex: 2
+                    }
+                },
+                theme,
+                lessonId: currentLessonId
+            });
+            log('📤 طلب شريحة الاختبار...', 'info');
+        }
+        
+        function requestSummarySlide() {
+            const theme = document.getElementById('themeSelect').value;
+            socket.emit('request_slide', {
+                slideNumber: ++slideNumber,
+                type: 'summary',
+                content: {
+                    bullets: [
+                        'تعلمنا تعريف الأعداد الطبيعية',
+                        'عرفنا خصائصها المميزة',
+                        'تدربنا على التمييز بينها وبين الأعداد الأخرى',
+                        'الأعداد الطبيعية أساس الرياضيات'
+                    ]
+                },
+                theme,
+                lessonId: currentLessonId
+            });
+            log('📤 طلب شريحة الملخص...', 'info');
+        }
+        
+        function requestImageSlide() {
+            const theme = document.getElementById('themeSelect').value;
+            socket.emit('request_slide', {
+                slideNumber: ++slideNumber,
+                type: 'image',
+                content: {
+                    title: 'الأعداد على خط الأعداد',
+                    imageUrl: 'https://via.placeholder.com/600x400/667eea/ffffff?text=Number+Line',
+                    text: 'خط الأعداد يوضح ترتيب الأعداد الطبيعية'
+                },
+                theme,
+                lessonId: currentLessonId
+            });
+            log('📤 طلب شريحة الصورة...', 'info');
+        }
+        
+        function displaySlide(html) {
+            document.getElementById('slideContainer').innerHTML = html;
+        }
+        
+        function updateSlideInfo(num) {
+            document.getElementById('currentSlide').textContent = num;
+            document.getElementById('totalSlides').textContent = slides.length;
+        }
+        
+        function navigateSlide(direction, targetSlide = null) {
+            let newSlideNumber = slideNumber;
+            
+            if (direction === 'next' && slideNumber < slides.length - 1) {
+                newSlideNumber = slideNumber + 1;
+            } else if (direction === 'previous' && slideNumber > 1) {
+                newSlideNumber = slideNumber - 1;
+            } else if (direction === 'goto' && targetSlide !== null) {
+                newSlideNumber = targetSlide;
+            }
+            
+            if (slides[newSlideNumber]) {
+                slideNumber = newSlideNumber;
+                displaySlide(slides[slideNumber]);
+                updateSlideInfo(slideNumber);
+                
+                // Emit navigation event
+                if (socket?.connected) {
+                    socket.emit('navigate_slide', {
+                        direction: direction,
+                        slideNumber: newSlideNumber
+                    });
+                }
+            }
+        }
+        
+        function clearSlides() {
+            slides = [];
+            slideNumber = 0;
+            document.getElementById('slideContainer').innerHTML = `
+                <div class="empty-state">
+                    <h2>🎨 منطقة عرض الشرائح</h2>
+                    <p>اضغط على أزرار توليد الشرائح</p>
+                </div>
+            `;
+            updateSlideInfo(0);
+            log('🗑️ تم مسح جميع الشرائح', 'info');
+        }
+        
+        // Test functions
+        function testPing() {
+            if (socket?.connected) {
+                pingStartTime = Date.now();
+                socket.emit('ping');
+                log('🏓 Sending ping...', 'info');
+            }
+        }
+        
+        function getStatus() {
+            if (socket?.connected) {
+                socket.emit('get_status');
+                log('📊 طلب الحالة...', 'info');
+            }
+        }
+        
+        function joinTestLesson() {
+            if (socket?.connected) {
+                // استخدم lesson ID من قاعدة البيانات
+                const lessonId = '550e8400-e29b-41d4-a716-446655440001';
+                socket.emit('join_lesson', lessonId);
+                log('📚 جاري الانضمام للدرس التجريبي...', 'info');
+            }
+        }
+        
+        function leaveLesson() {
+            if (socket?.connected && currentLessonId) {
+                socket.emit('leave_lesson', currentLessonId);
+                log('📤 مغادرة الدرس...', 'info');
+            } else {
+                log('⚠️ لست في درس حالياً', 'warning');
+            }
+        }
+        
+        function sendTestMessage() {
+            if (socket?.connected) {
+                const message = prompt('اكتب رسالتك:') || 'رسالة تجريبية';
+                socket.emit('send_message', {
+                    lessonId: currentLessonId,
+                    message
+                });
+                log(`💬 أرسلت: ${message}`, 'info');
+            }
+        }
+        
+        function updateSlidePosition() {
+            if (socket?.connected && currentSessionId) {
+                const position = prompt('رقم الشريحة:', slideNumber) || slideNumber;
+                socket.emit('update_slide', {
+                    slideNumber: parseInt(position),
+                    totalSlides: slides.length
+                });
+                log(`📍 تحديث الموضع: ${position}`, 'info');
+            }
+        }
+        
+        function savePreferences() {
+            if (socket?.connected) {
+                const prefs = {
+                    theme: document.getElementById('themeSelect').value,
+                    playbackSpeed: 1,
+                    autoPlay: true,
+                    fontSize: 'medium'
+                };
+                socket.emit('save_preferences', prefs);
+                log('⚙️ حفظ التفضيلات...', 'info');
+            }
+        }
+        
+        // Clear logs
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+            log('🧹 تم مسح السجلات', 'info');
+        }
+        
+        // Update uptime
+        function updateUptime() {
+            if (connectionStartTime) {
+                const uptime = Math.floor((Date.now() - connectionStartTime) / 1000);
+                document.getElementById('uptime').textContent = uptime;
+            }
+        }
+        
+        // Initialize
+        window.onload = () => {
+            log('🚀 النظام جاهز للاختبار', 'info');
+            log('💡 اضغط "اتصال" للبدء', 'info');
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+/* Slide Base Styles */
+.slide-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  color: white;
+  font-family: 'Tajawal', sans-serif;
+  direction: rtl;
+  position: relative;
+  overflow: hidden;
+}
+
+.slide-content {
+  max-width: 1400px;
+  width: 100%;
+  text-align: center;
+}
+
+/* Typography */
+.slide-title {
+  font-size: 4rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+}
+
+.slide-subtitle {
+  font-size: 2.5rem;
+  font-weight: 400;
+  opacity: 0.95;
+}
+
+.slide-heading {
+  font-size: 3rem;
+  margin-bottom: 2rem;
+  color: #ffd700;
+}
+
+.slide-text {
+  font-size: 2rem;
+  line-height: 1.8;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Bullets */
+.slide-bullets {
+  list-style: none;
+  text-align: right;
+  font-size: 1.8rem;
+}
+
+.slide-bullets li {
+  margin: 1.5rem 0;
+  padding-right: 3rem;
+  position: relative;
+}
+
+.slide-bullets li:before {
+  content: "◈";
+  position: absolute;
+  right: 0;
+  color: #ffd700;
+  font-size: 1.5rem;
+}
+
+/* Quiz */
+.quiz-question {
+  font-size: 2.5rem;
+  margin-bottom: 3rem;
+}
+
+.quiz-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.quiz-option {
+  background: rgba(255,255,255,0.2);
+  backdrop-filter: blur(10px);
+  padding: 1.5rem;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 15px;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.quiz-option:hover {
+  background: rgba(255,255,255,0.3);
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from { 
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to { 
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.8s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.8s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.6s ease-out backwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.5s ease-out backwards;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .slide-title { font-size: 2.5rem; }
+  .slide-subtitle { font-size: 1.8rem; }
+  .slide-heading { font-size: 2rem; }
+  .slide-text { font-size: 1.3rem; }
+  .slide-bullets { font-size: 1.2rem; }
+  .quiz-options { grid-template-columns: 1fr; }
+}

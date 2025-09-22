@@ -1,4 +1,4 @@
-import { chatService } from './core/chat/chat.service';
+import { chatService } from './services/ai/chat.service';
 import { authService } from './core/auth/auth.service';
 import { prisma } from './config/database.config';
 
