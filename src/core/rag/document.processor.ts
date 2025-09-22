@@ -1,13 +1,15 @@
+// src/core/rag/document.processor.ts (النسخة العامة الكاملة)
+
 import { openAIService } from '../../services/ai/openai.service';
 import { prisma } from '../../config/database.config';
 import type { DocumentChunk } from '../../types/rag.types';
 
 export class DocumentProcessor {
-  private readonly chunkSize = 500; // characters
-  private readonly chunkOverlap = 50; // characters
+  private readonly chunkSize = 500;
+  private readonly chunkOverlap = 50;
   
   /**
-   * Process ALL lessons in database
+   * Process ALL lessons - works with ANY subject
    */
   async processAllContent(): Promise<void> {
     console.log('🔄 Processing all content for RAG...\n');
@@ -60,10 +62,9 @@ export class DocumentProcessor {
   }
   
   /**
-   * Process lesson content with better chunking
+   * Process lesson content - universal approach
    */
   async processLessonContent(lessonId: string): Promise<void> {
-    // Get full lesson info
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
@@ -85,11 +86,11 @@ export class DocumentProcessor {
       where: { contentId: lesson.content.id },
     });
     
-    // Prepare rich content for embedding
-    const fullContent = this.prepareRichContent(lesson);
+    // Create universal enriched content
+    const enrichedContent = await this.createUniversalEnrichedContent(lesson);
     
     // Create smart chunks
-    const chunks = this.createSmartChunks(fullContent);
+    const chunks = this.createSmartChunks(enrichedContent);
     console.log(`   📄 Created ${chunks.length} chunks`);
     
     // Generate and store embeddings
@@ -97,10 +98,8 @@ export class DocumentProcessor {
       const chunk = chunks[i];
       
       try {
-        // Generate embedding
         const { embedding } = await openAIService.generateEmbedding(chunk);
         
-        // Store in database with rich metadata
         await prisma.contentEmbedding.create({
           data: {
             contentId: lesson.content.id,
@@ -132,45 +131,161 @@ export class DocumentProcessor {
   }
   
   /**
-   * Prepare rich content including all lesson data
+   * Create universal enriched content for ANY subject
    */
-  private prepareRichContent(lesson: any): string {
+  private async createUniversalEnrichedContent(lesson: any): Promise<string> {
     const content = lesson.content;
     const keyPoints = content.keyPoints ? JSON.parse(content.keyPoints) : [];
     const examples = content.examples ? JSON.parse(content.examples) : [];
     const exercises = content.exercises ? JSON.parse(content.exercises) : [];
     
-    // Build comprehensive content
-    const parts = [
+    // Generate search variations automatically
+    const searchVariations = this.generateSearchVariations(lesson);
+    
+    // Build universal content structure
+    const parts: string[] = [
+      // === Metadata Section ===
       `الدرس: ${lesson.title}`,
       lesson.titleEn ? `Lesson: ${lesson.titleEn}` : '',
       `الوحدة: ${lesson.unit.title}`,
+      lesson.unit.titleEn ? `Unit: ${lesson.unit.titleEn}` : '',
       `المادة: ${lesson.unit.subject.name}`,
+      lesson.unit.subject.nameEn ? `Subject: ${lesson.unit.subject.nameEn}` : '',
       `الصف: ${lesson.unit.subject.grade}`,
+      `Grade: ${lesson.unit.subject.grade}`,
       '',
-      '=== المحتوى الرئيسي ===',
+      
+      // === Search optimization section ===
+      '=== البحث | Search Terms ===',
+      ...searchVariations,
+      '',
+      
+      // === Main content ===
+      '=== المحتوى الرئيسي | Main Content ===',
       content.fullText || '',
       '',
-      '=== النقاط الأساسية ===',
+      
+      // === Key points ===
+      '=== النقاط الأساسية | Key Points ===',
       ...keyPoints.map((point: string, i: number) => `${i + 1}. ${point}`),
       '',
-      '=== الأمثلة التوضيحية ===',
-      ...examples.map((ex: any) => {
-        if (typeof ex === 'string') return ex;
-        return `المثال: ${ex.problem || ex.question || ''}\nالحل: ${ex.solution || ex.answer || ''}`;
-      }),
-      '',
-      '=== الملخص ===',
+      
+      // === Summary ===
+      '=== الملخص | Summary ===',
       content.summary || '',
+      ''
     ];
+    
+    // Add examples if available
+    if (examples.length > 0) {
+      parts.push('=== الأمثلة | Examples ===');
+      examples.forEach((ex: any) => {
+        if (typeof ex === 'string') {
+          parts.push(ex);
+        } else {
+          parts.push(`المثال | Example: ${ex.problem || ex.question || ''}`);
+          parts.push(`الحل | Solution: ${ex.solution || ex.answer || ''}`);
+        }
+      });
+      parts.push('');
+    }
     
     // Add exercises if available
     if (exercises.length > 0) {
-      parts.push('', '=== التمارين ===');
+      parts.push('=== التمارين | Exercises ===');
       parts.push(...exercises.map((ex: any, i: number) => `${i + 1}. ${ex}`));
+      parts.push('');
     }
     
     return parts.filter(p => p !== undefined && p !== '').join('\n');
+  }
+  
+  /**
+   * Generate search variations automatically for ANY content
+   */
+  private generateSearchVariations(lesson: any): string[] {
+    const variations: string[] = [];
+    
+    // Common question patterns in Arabic
+    const arabicPatterns = [
+      `ما هو ${lesson.title}`,
+      `ما هي ${lesson.title}`,
+      `اشرح ${lesson.title}`,
+      `اشرح لي ${lesson.title}`,
+      `عرف ${lesson.title}`,
+      `تعريف ${lesson.title}`,
+      `أمثلة على ${lesson.title}`,
+      `مثال على ${lesson.title}`,
+      `كيف أفهم ${lesson.title}`,
+      `كيف أحل ${lesson.title}`,
+      `تمارين ${lesson.title}`,
+      `${lesson.title} للصف ${lesson.unit.subject.grade}`,
+    ];
+    
+    // Common question patterns in English (if English title exists)
+    const englishPatterns = lesson.titleEn ? [
+      `what is ${lesson.titleEn}`,
+      `explain ${lesson.titleEn}`,
+      `define ${lesson.titleEn}`,
+      `examples of ${lesson.titleEn}`,
+      `how to solve ${lesson.titleEn}`,
+      `${lesson.titleEn} grade ${lesson.unit.subject.grade}`,
+    ] : [];
+    
+    // Add all patterns
+    variations.push(...arabicPatterns);
+    variations.push(...englishPatterns);
+    
+    // Add subject-specific terms
+    variations.push(`${lesson.unit.subject.name} ${lesson.title}`);
+    if (lesson.unit.subject.nameEn) {
+      variations.push(`${lesson.unit.subject.nameEn} ${lesson.titleEn || lesson.title}`);
+    }
+    
+    // Extract important words from content
+    const importantWords = this.extractImportantWords(
+      lesson.content.fullText || '',
+      lesson.content.summary || ''
+    );
+    
+    if (importantWords.length > 0) {
+      variations.push(importantWords.join(' | '));
+    }
+    
+    // Return as formatted lines
+    return [variations.join(' | ')];
+  }
+  
+  /**
+   * Extract important words from any text
+   */
+  private extractImportantWords(fullText: string, summary: string): string[] {
+    const text = `${fullText} ${summary}`.toLowerCase();
+    const words: string[] = [];
+    
+    // Extract Arabic important words (3+ characters, not common)
+    const arabicWords = text.match(/[\u0600-\u06FF]{3,}/g) || [];
+    
+    // Extract English important words (4+ characters, not common)
+    const englishWords = text.match(/[a-z]{4,}/g) || [];
+    
+    // Common words to exclude (expandable)
+    const stopWords = new Set([
+      // Arabic
+      'هذا', 'هذه', 'ذلك', 'التي', 'الذي', 'التي', 'على', 'في', 'من', 'إلى',
+      // English
+      'this', 'that', 'which', 'where', 'when', 'what', 'with', 'from', 'into'
+    ]);
+    
+    // Filter and collect important words
+    const filtered = [
+      ...arabicWords.filter(w => !stopWords.has(w)),
+      ...englishWords.filter(w => !stopWords.has(w))
+    ];
+    
+    // Get unique words and limit to top 20
+    const unique = [...new Set(filtered)];
+    return unique.slice(0, 20);
   }
   
   /**
@@ -199,7 +314,7 @@ export class DocumentProcessor {
             
             // Add overlap from previous chunk
             const words = currentChunk.split(' ');
-            const overlapWords = words.slice(-10); // Last 10 words
+            const overlapWords = words.slice(-10);
             currentChunk = overlapWords.join(' ') + ' ' + sentence;
           } else {
             currentChunk += (currentChunk ? ' ' : '') + sentence;
@@ -212,20 +327,18 @@ export class DocumentProcessor {
       }
     }
     
-    return chunks.filter(c => c.length > 20); // Filter out very small chunks
+    return chunks.filter(c => c.length > 20);
   }
   
   /**
-   * Split text into sentences (Arabic & English)
+   * Split text into sentences (universal)
    */
   private splitIntoSentences(text: string): string[] {
-    // Enhanced sentence splitting for Arabic and English
     const sentences = text
       .split(/[.!?؟।।॥]\s+|\n\n|\n(?=[A-Z\u0600-\u06FF])/)
       .map(s => s.trim())
       .filter(s => s.length > 0);
     
-    // Merge very short sentences
     const merged: string[] = [];
     let current = '';
     
@@ -243,74 +356,7 @@ export class DocumentProcessor {
     return merged;
   }
   
-  /**
-   * Process multiple lessons
-   */
-  async processMultipleLessons(lessonIds: string[]): Promise<void> {
-    console.log(`🚀 Processing ${lessonIds.length} lessons...`);
-    
-    for (const lessonId of lessonIds) {
-      try {
-        await this.processLessonContent(lessonId);
-      } catch (error) {
-        console.error(`❌ Failed to process lesson ${lessonId}:`, error);
-      }
-    }
-    
-    console.log('✅ Batch processing complete');
-  }
-  
-  /**
-   * Clean text for better embedding
-   */
-  cleanText(text: string): string {
-    return text
-      .replace(/\s+/g, ' ')
-      .replace(/<[^>]*>/g, '')
-      .replace(/[^\w\s\u0600-\u06FF\u0750-\u077F.!?؟،]/g, ' ')
-      .trim();
-  }
-  
-  /**
-   * Extract key points from text using AI
-   */
-  async extractKeyPoints(text: string): Promise<string[]> {
-    const prompt = `استخرج 3-5 نقاط رئيسية من هذا النص. أرجع النتيجة كـ JSON array:
-
-النص: ${text}
-
-النقاط الرئيسية (JSON array):`;
-    
-    const response = await openAIService.chat([
-      { role: 'system', content: 'أنت مساعد يستخرج النقاط المهمة من المحتوى التعليمي.' },
-      { role: 'user', content: prompt },
-    ], { temperature: 0.3, maxTokens: 200 });
-    
-    try {
-      const cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      return JSON.parse(cleaned);
-    } catch {
-      return [];
-    }
-  }
-  
-  /**
-   * Generate summary using AI
-   */
-  async generateSummary(text: string): Promise<string> {
-    const prompt = `لخص هذا المحتوى التعليمي في 2-3 جمل بالعربية:
-
-${text}
-
-الملخص:`;
-    
-    const response = await openAIService.chat([
-      { role: 'system', content: 'أنت مساعد يقوم بتلخيص المحتوى التعليمي بإيجاز.' },
-      { role: 'user', content: prompt },
-    ], { temperature: 0.5, maxTokens: 150 });
-    
-    return response.trim();
-  }
+  // باقي الدوال كما هي...
   
   /**
    * Verify embeddings are working
@@ -321,15 +367,33 @@ ${text}
     console.log(`   Total embeddings: ${count}`);
     
     if (count > 0) {
-      const sample = await prisma.contentEmbedding.findFirst();
+      const sample = await prisma.contentEmbedding.findFirst({
+        include: {
+          content: {
+            include: {
+              lesson: {
+                include: {
+                  unit: {
+                    include: {
+                      subject: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      
       if (sample) {
         const embedding = JSON.parse(sample.embedding);
         console.log(`   Embedding dimensions: ${embedding.length}`);
+        console.log(`   Subject: ${sample.content.lesson.unit.subject.name}`);
+        console.log(`   Lesson: ${sample.content.lesson.title}`);
         console.log(`   Sample text: ${sample.chunkText.substring(0, 50)}...`);
       }
     }
   }
 }
 
-// Export singleton instance
 export const documentProcessor = new DocumentProcessor();

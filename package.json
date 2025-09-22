@@ -12,7 +12,6 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "start:prod": "NODE_ENV=production node dist/index.js",
-    
     "// Database Scripts": "",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
@@ -22,17 +21,14 @@
     "db:seed:clean": "tsx prisma/seeds/seed-curriculum.ts --clean",
     "db:reset": "prisma migrate reset --force",
     "db:push": "prisma db push",
-    
     "// Complete Setup": "",
     "setup:complete": "npm run db:reset && npm run db:migrate && npm run db:seed && npm run content:process",
     "setup:quick": "npm run db:seed && npm run content:process",
-    
     "// RAG & Content Processing": "",
     "content:process": "tsx src/scripts/process-content.ts",
     "content:verify": "tsx src/scripts/verify-content.ts",
     "embeddings:generate": "tsx src/scripts/generate-embeddings.ts",
     "rag:index": "tsx src/scripts/index-rag.ts",
-    
     "// Test Scripts": "",
     "test": "tsx src/test-integration.ts",
     "test:content": "node test-content.js",
@@ -41,14 +37,12 @@
     "test:unit": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    
     "// Development Scripts": "",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist",
-    
     "// Utility Scripts": "",
     "setup": "npm run db:generate && npm run db:migrate && npm run db:seed",
     "setup:fresh": "npm run db:reset && npm run setup"
@@ -79,15 +73,15 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^24.5.2",
-    "@types/node-fetch": "^2.6.4",
+    "@types/node-fetch": "^2.6.13",
     "@types/sanitize-html": "^2.16.0",
     "@types/uuid": "^10.0.0",
     "eslint": "^9.36.0",
     "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
+    "rimraf": "^5.0.5",
     "tsx": "^4.20.5",
-    "typescript": "^5.9.2",
-    "rimraf": "^5.0.5"
+    "typescript": "^5.9.2"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -100,6 +94,7 @@
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
+    "elevenlabs": "^1.59.0",
     "express": "^5.1.0",
     "express-async-handler": "^1.2.0",
     "express-rate-limit": "^8.1.0",
