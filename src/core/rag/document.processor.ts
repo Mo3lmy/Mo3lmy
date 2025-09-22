@@ -7,101 +7,240 @@ export class DocumentProcessor {
   private readonly chunkOverlap = 50; // characters
   
   /**
-   * Process lesson content and generate embeddings
+   * Process ALL lessons in database
    */
-  async processLessonContent(lessonId: string): Promise<void> {
-    console.log(`📄 Processing content for lesson: ${lessonId}`);
+  async processAllContent(): Promise<void> {
+    console.log('🔄 Processing all content for RAG...\n');
     
-    // Get lesson content
-    const content = await prisma.content.findUnique({
-      where: { lessonId },
+    const lessons = await prisma.lesson.findMany({
+      where: { isPublished: true },
+      include: { 
+        content: true,
+        unit: {
+          include: {
+            subject: true
+          }
+        }
+      }
     });
     
-    if (!content) {
-      throw new Error('Content not found for lesson');
+    if (lessons.length === 0) {
+      console.log('⚠️ No published lessons found to process');
+      return;
     }
     
-    // Create chunks
-    const chunks = this.createChunks(content.fullText);
-    console.log(`📝 Created ${chunks.length} chunks`);
+    console.log(`📚 Found ${lessons.length} lessons to process`);
+    
+    let processed = 0;
+    let failed = 0;
+    
+    for (const lesson of lessons) {
+      if (!lesson.content) {
+        console.log(`⚠️ Skipping lesson "${lesson.title}" - no content`);
+        continue;
+      }
+      
+      try {
+        console.log(`\n📝 Processing [${processed + 1}/${lessons.length}]: ${lesson.title}`);
+        await this.processLessonContent(lesson.id);
+        processed++;
+        console.log(`   ✅ Success`);
+      } catch (error: any) {
+        failed++;
+        console.error(`   ❌ Failed: ${error.message}`);
+      }
+    }
+    
+    console.log('\n' + '='.repeat(50));
+    console.log(`✅ Processing complete!`);
+    console.log(`   Processed: ${processed} lessons`);
+    console.log(`   Failed: ${failed} lessons`);
+    console.log(`   Total embeddings: ${await prisma.contentEmbedding.count()}`);
+    console.log('='.repeat(50));
+  }
+  
+  /**
+   * Process lesson content with better chunking
+   */
+  async processLessonContent(lessonId: string): Promise<void> {
+    // Get full lesson info
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        content: true,
+        unit: {
+          include: {
+            subject: true
+          }
+        }
+      }
+    });
+    
+    if (!lesson?.content) {
+      throw new Error('Lesson or content not found');
+    }
     
     // Delete existing embeddings
     await prisma.contentEmbedding.deleteMany({
-      where: { contentId: content.id },
+      where: { contentId: lesson.content.id },
     });
+    
+    // Prepare rich content for embedding
+    const fullContent = this.prepareRichContent(lesson);
+    
+    // Create smart chunks
+    const chunks = this.createSmartChunks(fullContent);
+    console.log(`   📄 Created ${chunks.length} chunks`);
     
     // Generate and store embeddings
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      console.log(`🔄 Processing chunk ${i + 1}/${chunks.length}`);
       
-      // Generate embedding
-      const { embedding } = await openAIService.generateEmbedding(chunk);
-      
-      // Store in database
-      await prisma.contentEmbedding.create({
-        data: {
-          contentId: content.id,
-          chunkIndex: i,
-          chunkText: chunk,
-          embedding: JSON.stringify(embedding),
-          metadata: JSON.stringify({
-            lessonId,
-            chunkLength: chunk.length,
-            position: i,
-            total: chunks.length,
-          }),
-        },
-      });
+      try {
+        // Generate embedding
+        const { embedding } = await openAIService.generateEmbedding(chunk);
+        
+        // Store in database with rich metadata
+        await prisma.contentEmbedding.create({
+          data: {
+            contentId: lesson.content.id,
+            chunkIndex: i,
+            chunkText: chunk,
+            embedding: JSON.stringify(embedding),
+            metadata: JSON.stringify({
+              lessonId: lesson.id,
+              lessonTitle: lesson.title,
+              lessonTitleEn: lesson.titleEn,
+              unitId: lesson.unit.id,
+              unitTitle: lesson.unit.title,
+              unitTitleEn: lesson.unit.titleEn,
+              subjectId: lesson.unit.subject.id,
+              subjectName: lesson.unit.subject.name,
+              subjectNameEn: lesson.unit.subject.nameEn,
+              grade: lesson.unit.subject.grade,
+              chunkNumber: i + 1,
+              totalChunks: chunks.length,
+              difficulty: lesson.difficulty,
+              keyPoints: lesson.content.keyPoints ? JSON.parse(lesson.content.keyPoints) : [],
+            }),
+          },
+        });
+      } catch (error: any) {
+        console.error(`      ❌ Failed to process chunk ${i + 1}: ${error.message}`);
+      }
     }
-    
-    console.log(`✅ Successfully processed lesson content`);
   }
   
   /**
-   * Create text chunks with overlap
+   * Prepare rich content including all lesson data
    */
-  createChunks(text: string): string[] {
+  private prepareRichContent(lesson: any): string {
+    const content = lesson.content;
+    const keyPoints = content.keyPoints ? JSON.parse(content.keyPoints) : [];
+    const examples = content.examples ? JSON.parse(content.examples) : [];
+    const exercises = content.exercises ? JSON.parse(content.exercises) : [];
+    
+    // Build comprehensive content
+    const parts = [
+      `الدرس: ${lesson.title}`,
+      lesson.titleEn ? `Lesson: ${lesson.titleEn}` : '',
+      `الوحدة: ${lesson.unit.title}`,
+      `المادة: ${lesson.unit.subject.name}`,
+      `الصف: ${lesson.unit.subject.grade}`,
+      '',
+      '=== المحتوى الرئيسي ===',
+      content.fullText || '',
+      '',
+      '=== النقاط الأساسية ===',
+      ...keyPoints.map((point: string, i: number) => `${i + 1}. ${point}`),
+      '',
+      '=== الأمثلة التوضيحية ===',
+      ...examples.map((ex: any) => {
+        if (typeof ex === 'string') return ex;
+        return `المثال: ${ex.problem || ex.question || ''}\nالحل: ${ex.solution || ex.answer || ''}`;
+      }),
+      '',
+      '=== الملخص ===',
+      content.summary || '',
+    ];
+    
+    // Add exercises if available
+    if (exercises.length > 0) {
+      parts.push('', '=== التمارين ===');
+      parts.push(...exercises.map((ex: any, i: number) => `${i + 1}. ${ex}`));
+    }
+    
+    return parts.filter(p => p !== undefined && p !== '').join('\n');
+  }
+  
+  /**
+   * Create smart chunks that preserve context
+   */
+  private createSmartChunks(text: string): string[] {
     const chunks: string[] = [];
-    const sentences = this.splitIntoSentences(text);
     
-    let currentChunk = '';
-    let overlap = '';
+    // Split by sections first
+    const sections = text.split(/===/g);
     
-    for (const sentence of sentences) {
-      // If adding this sentence exceeds chunk size, save current chunk
-      if (currentChunk.length + sentence.length > this.chunkSize && currentChunk.length > 0) {
-        chunks.push(currentChunk.trim());
-        
-        // Keep last part for overlap
-        const words = currentChunk.split(' ');
-        const overlapWords = words.slice(-Math.floor(this.chunkOverlap / 5));
-        overlap = overlapWords.join(' ');
-        
-        currentChunk = overlap + ' ' + sentence;
+    for (const section of sections) {
+      if (section.trim().length === 0) continue;
+      
+      // If section is small enough, keep as one chunk
+      if (section.length <= this.chunkSize) {
+        chunks.push(section.trim());
       } else {
-        currentChunk += ' ' + sentence;
+        // Split large sections into sentences
+        const sentences = this.splitIntoSentences(section);
+        let currentChunk = '';
+        
+        for (const sentence of sentences) {
+          if (currentChunk.length + sentence.length > this.chunkSize && currentChunk.length > 0) {
+            chunks.push(currentChunk.trim());
+            
+            // Add overlap from previous chunk
+            const words = currentChunk.split(' ');
+            const overlapWords = words.slice(-10); // Last 10 words
+            currentChunk = overlapWords.join(' ') + ' ' + sentence;
+          } else {
+            currentChunk += (currentChunk ? ' ' : '') + sentence;
+          }
+        }
+        
+        if (currentChunk.trim().length > 0) {
+          chunks.push(currentChunk.trim());
+        }
       }
     }
     
-    // Add remaining chunk
-    if (currentChunk.trim().length > 0) {
-      chunks.push(currentChunk.trim());
-    }
-    
-    return chunks;
+    return chunks.filter(c => c.length > 20); // Filter out very small chunks
   }
   
   /**
-   * Split text into sentences (works with Arabic and English)
+   * Split text into sentences (Arabic & English)
    */
   private splitIntoSentences(text: string): string[] {
-    // Split by common sentence endings
-    const sentences = text.split(/[.!?؟।।॥]\s+|\n\n/);
-    
-    return sentences
+    // Enhanced sentence splitting for Arabic and English
+    const sentences = text
+      .split(/[.!?؟।।॥]\s+|\n\n|\n(?=[A-Z\u0600-\u06FF])/)
       .map(s => s.trim())
       .filter(s => s.length > 0);
+    
+    // Merge very short sentences
+    const merged: string[] = [];
+    let current = '';
+    
+    for (const sentence of sentences) {
+      if (sentence.length < 30 && current) {
+        current += '. ' + sentence;
+      } else {
+        if (current) merged.push(current);
+        current = sentence;
+      }
+    }
+    
+    if (current) merged.push(current);
+    
+    return merged;
   }
   
   /**
@@ -126,12 +265,9 @@ export class DocumentProcessor {
    */
   cleanText(text: string): string {
     return text
-      // Remove extra whitespace
       .replace(/\s+/g, ' ')
-      // Remove HTML tags
       .replace(/<[^>]*>/g, '')
-      // Remove special characters but keep Arabic
-      .replace(/[^\w\s\u0600-\u06FF\u0750-\u077F]/g, ' ')
+      .replace(/[^\w\s\u0600-\u06FF\u0750-\u077F.!?؟،]/g, ' ')
       .trim();
   }
   
@@ -139,19 +275,20 @@ export class DocumentProcessor {
    * Extract key points from text using AI
    */
   async extractKeyPoints(text: string): Promise<string[]> {
-    const prompt = `Extract 3-5 key points from this text. Return as a JSON array of strings:
+    const prompt = `استخرج 3-5 نقاط رئيسية من هذا النص. أرجع النتيجة كـ JSON array:
 
-Text: ${text}
+النص: ${text}
 
-Key points (JSON array):`;
+النقاط الرئيسية (JSON array):`;
     
     const response = await openAIService.chat([
-      { role: 'system', content: 'You are a helpful assistant that extracts key points from educational content.' },
+      { role: 'system', content: 'أنت مساعد يستخرج النقاط المهمة من المحتوى التعليمي.' },
       { role: 'user', content: prompt },
     ], { temperature: 0.3, maxTokens: 200 });
     
     try {
-      return JSON.parse(response);
+      const cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      return JSON.parse(cleaned);
     } catch {
       return [];
     }
@@ -161,18 +298,36 @@ Key points (JSON array):`;
    * Generate summary using AI
    */
   async generateSummary(text: string): Promise<string> {
-    const prompt = `Summarize this educational content in 2-3 sentences in Arabic:
+    const prompt = `لخص هذا المحتوى التعليمي في 2-3 جمل بالعربية:
 
 ${text}
 
-Summary:`;
+الملخص:`;
     
     const response = await openAIService.chat([
-      { role: 'system', content: 'You are a helpful assistant that creates concise summaries of educational content in Arabic.' },
+      { role: 'system', content: 'أنت مساعد يقوم بتلخيص المحتوى التعليمي بإيجاز.' },
       { role: 'user', content: prompt },
     ], { temperature: 0.5, maxTokens: 150 });
     
     return response.trim();
+  }
+  
+  /**
+   * Verify embeddings are working
+   */
+  async verifyEmbeddings(): Promise<void> {
+    const count = await prisma.contentEmbedding.count();
+    console.log(`\n📊 Embeddings Status:`);
+    console.log(`   Total embeddings: ${count}`);
+    
+    if (count > 0) {
+      const sample = await prisma.contentEmbedding.findFirst();
+      if (sample) {
+        const embedding = JSON.parse(sample.embedding);
+        console.log(`   Embedding dimensions: ${embedding.length}`);
+        console.log(`   Sample text: ${sample.chunkText.substring(0, 50)}...`);
+      }
+    }
   }
 }
 

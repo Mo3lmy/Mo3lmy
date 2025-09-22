@@ -18,14 +18,24 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "db:seed": "prisma db seed",
+    "db:seed": "tsx prisma/seeds/seed-curriculum.ts",
     "db:seed:clean": "tsx prisma/seeds/seed-curriculum.ts --clean",
     "db:reset": "prisma migrate reset --force",
     "db:push": "prisma db push",
     
+    "// Complete Setup": "",
+    "setup:complete": "npm run db:reset && npm run db:migrate && npm run db:seed && npm run content:process",
+    "setup:quick": "npm run db:seed && npm run content:process",
+    
+    "// RAG & Content Processing": "",
+    "content:process": "tsx src/scripts/process-content.ts",
+    "content:verify": "tsx src/scripts/verify-content.ts",
+    "embeddings:generate": "tsx src/scripts/generate-embeddings.ts",
+    "rag:index": "tsx src/scripts/index-rag.ts",
+    
     "// Test Scripts": "",
     "test": "tsx src/test-integration.ts",
-    "test:integration": "tsx src/test-integration.ts",
+    "test:content": "node test-content.js",
     "test:rag": "tsx src/test-rag.ts",
     "test:openai": "node test-openai.js",
     "test:unit": "jest",
@@ -39,15 +49,9 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist",
     
-    "// Setup Scripts": "",
+    "// Utility Scripts": "",
     "setup": "npm run db:generate && npm run db:migrate && npm run db:seed",
-    "setup:fresh": "npm run db:reset && npm run setup",
-    "setup:clean": "npm run db:reset && npm run db:migrate && npm run db:seed:clean",
-    
-    "// RAG & Content Processing": "",
-    "content:process": "tsx scripts/process-all-content.ts",
-    "embeddings:generate": "tsx scripts/generate-embeddings.ts",
-    "rag:index": "tsx scripts/index-rag.ts"
+    "setup:fresh": "npm run db:reset && npm run setup"
   },
   "keywords": [
     "education",

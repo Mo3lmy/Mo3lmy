@@ -468,6 +468,19 @@ export class VectorSearchService {
       }
     }
   }
+  /**
+   * Initialize and verify search system
+   */
+  async initialize(): Promise<void> {
+    const embeddingCount = await prisma.contentEmbedding.count();
+    
+    if (embeddingCount === 0) {
+      console.log('⚠️ No embeddings found in database!');
+      console.log('   Run: npm run content:process');
+    } else {
+      console.log(`✅ Vector search ready with ${embeddingCount} embeddings`);
+    }
+  }
 }
 
 // Export singleton instance with debugging
@@ -478,4 +491,7 @@ if (process.env.NODE_ENV === 'development') {
   setTimeout(() => {
     vectorSearch.debugEmbeddings();
   }, 5000);
+ 
+
 }
+

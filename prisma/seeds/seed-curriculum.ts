@@ -222,7 +222,7 @@ async function seedMathCurriculum() {
           totalEmbeddings++;
           console.log('    ✅ تم إنشاء embedding');
           
-        } catch (error) {
+        } catch (error: any) {
           console.log('    ⚠️ فشل إنشاء embedding:', error.message);
         }
         
@@ -438,15 +438,13 @@ async function seedMathCurriculum() {
   }
 }
 
-// دالة لحذف البيانات القديمة (اختيارية)
+// دالة لحذف البيانات القديمة
 async function cleanDatabase() {
   console.log('🧹 حذف البيانات القديمة...');
   
-  // حذف بالترتيب الصحيح (من الأطفال للآباء)
   await prisma.question.deleteMany();
   await prisma.contentEmbedding.deleteMany();
   
-  // حذف النماذج الجديدة إذا كانت موجودة
   if ((prisma as any).rAGContent) {
     await (prisma as any).rAGContent.deleteMany();
   }
@@ -468,20 +466,47 @@ async function cleanDatabase() {
   console.log('✅ تم حذف البيانات القديمة');
 }
 
-// تنفيذ السكريبت
+// دالة معالجة المحتوى الإضافية
+async function processAdditionalContent() {
+  console.log('\n🤖 معالجة محتوى إضافي لـ RAG...');
+  
+  try {
+    const documentProcessorModule = await import('../../src/core/rag/document.processor');
+    const { documentProcessor } = documentProcessorModule;
+    
+    await documentProcessor.processAllContent();
+    console.log('✅ اكتملت معالجة المحتوى الإضافية!');
+    return true;
+  } catch (error: any) {
+    console.log('⚠️ لم تتم معالجة إضافية:', error.message);
+    console.log('   يمكن تشغيلها لاحقاً: npm run content:process');
+    return false;
+  }
+}
+
+// الدالة الرئيسية
 async function main() {
   console.log('🔄 بدء عملية إدخال البيانات...\n');
   
-  // اسأل إذا كان يريد حذف البيانات القديمة
   const args = process.argv.slice(2);
+  
   if (args.includes('--clean')) {
     await cleanDatabase();
   }
   
+  // إدخال البيانات الأساسية
   await seedMathCurriculum();
+  
+  // معالجة إضافية (اختيارية)
+  if (args.includes('--process')) {
+    await processAdditionalContent();
+  } else {
+    console.log('\n💡 نصيحة: لمعالجة محتوى إضافي، شغل:');
+    console.log('   npm run content:process');
+  }
 }
 
-// تشغيل السكريبت
+// تشغيل البرنامج
 main()
   .then(() => {
     console.log('\n🎉 اكتمل بنجاح!');
