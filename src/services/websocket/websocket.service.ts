@@ -84,19 +84,61 @@ export class WebSocketService {
     });
     
     // Authentication middleware - مُحدث للتطوير
-    this.io.use(async (socket, next) => {
+this.io.use(async (socket, next) => {
   try {
     // 🔴 للاختبار والتطوير فقط
     if (config.NODE_ENV === 'development') {
-      socket.data.user = {
-        id: 'dev-user-123',
-        email: 'dev@test.com',
-        firstName: 'Dev',
-        lastName: 'User',
-        role: 'STUDENT',
-        grade: 9
-      };
-      return next();
+      // احصل على مستخدم حقيقي من قاعدة البيانات
+      const realUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: 'dev@test.com' },
+            { email: 'student@test.com' },
+            { email: 'test@test.com' }
+          ]
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          grade: true
+        }
+      });
+      
+      if (realUser) {
+        console.log(`✅ Using real user from DB: ${realUser.email} (ID: ${realUser.id})`);
+        socket.data.user = realUser;
+        return next();
+      } else {
+        // إذا لم يجد أي مستخدم، أنشئ واحد
+        console.log('⚠️ No test users found, creating dev@test.com...');
+        
+        const newUser = await prisma.user.create({
+          data: {
+            email: 'dev@test.com',
+            password: '$2b$10$dummy', // dummy password hash
+            firstName: 'Dev',
+            lastName: 'User',
+            role: 'STUDENT',
+            grade: 6,
+            isActive: true,
+            emailVerified: true
+          }
+        });
+        
+        console.log(`✅ Created new user: ${newUser.email} (ID: ${newUser.id})`);
+        socket.data.user = {
+          id: newUser.id,
+          email: newUser.email,
+          firstName: newUser.firstName,
+          lastName: newUser.lastName,
+          role: newUser.role,
+          grade: newUser.grade
+        };
+        return next();
+      }
     }
     
     // الكود الأصلي للإنتاج
@@ -126,6 +168,7 @@ export class WebSocketService {
     next();
     
   } catch (error) {
+    console.error('Authentication error:', error);
     next(new Error('Authentication failed'));
   }
 });
@@ -313,117 +356,145 @@ export class WebSocketService {
       /**
        * إرسال قائمة الدروس المتاحة
        */
-      socket.on('get_available_lessons', async (options?: {
-        grade?: number;
-        subjectId?: string;
-        search?: string;
-        limit?: number;
-      }) => {
-        try {
-          console.log(`📚 Fetching available lessons for ${user.email}`);
-          
-          // Build query filters
-          const where: any = {
-            isPublished: true
-          };
-          
-          // Filter by grade if specified or use user's grade
-          const targetGrade = options?.grade || user.grade;
-          if (targetGrade) {
-            where.unit = {
-              subject: {
-                grade: targetGrade
-              }
-            };
-          }
-          
-          // Filter by subject if specified
-          if (options?.subjectId) {
-            where.unit = {
-              ...where.unit,
-              subjectId: options.subjectId
-            };
-          }
-          
-          // Search in title if specified
-          if (options?.search) {
-            where.OR = [
-              { title: { contains: options.search } },
-              { titleAr: { contains: options.search } },
-              { description: { contains: options.search } }
-            ];
-          }
-          
-          // Fetch lessons with pagination
-          const lessons = await prisma.lesson.findMany({
-            where,
-            select: {
-              id: true,
-              title: true,
-              titleAr: true,
-              description: true,
-              difficulty: true,
-              estimatedMinutes: true,
-              unit: {
-                select: {
-                  title: true,
-                  subject: {
-                    select: { 
-                      name: true,
-                      nameAr: true,
-                      grade: true,
-                      icon: true
-                    }
-                  }
-                }
-              }
-            },
-            take: options?.limit || 50,
-            orderBy: [
-              { unit: { subject: { grade: 'asc' } } },
-              { unit: { order: 'asc' } },
-              { order: 'asc' }
-            ]
-          });
-          
-          // Format lessons for client
-          const formattedLessons = lessons.map(lesson => ({
-            id: lesson.id,
-            title: lesson.title,
-            titleAr: lesson.titleAr,
-            description: lesson.description,
-            difficulty: lesson.difficulty,
-            estimatedMinutes: lesson.estimatedMinutes,
-            subject: lesson.unit.subject.nameAr || lesson.unit.subject.name,
-            subjectIcon: lesson.unit.subject.icon,
-            unit: lesson.unit.title,
-            grade: lesson.unit.subject.grade,
-            isMath: lesson.unit.subject.name.includes('رياضيات') || 
-                   lesson.unit.subject.name.toLowerCase().includes('math')
-          }));
-          
-          socket.emit('available_lessons', {
-            lessons: formattedLessons,
-            total: formattedLessons.length,
-            grade: targetGrade,
-            filters: {
-              grade: targetGrade,
-              subjectId: options?.subjectId,
-              search: options?.search
-            }
-          });
-          
-          console.log(`   ✅ Sent ${formattedLessons.length} lessons to ${user.email}`);
-          
-        } catch (error) {
-          console.error('Error fetching lessons:', error);
-          socket.emit('available_lessons', {
-            lessons: [],
-            total: 0,
-            error: 'فشل تحميل الدروس'
-          });
+      // src/services/websocket/websocket.service.ts
+
+
+socket.on('get_available_lessons', async (options?: {
+  grade?: number;
+  subjectId?: string;
+  search?: string;
+  limit?: number;
+}) => {
+  try {
+    console.log(`📚 Fetching available lessons for ${user.email}`);
+    console.log(`   User grade: ${user.grade || 'not set'}`);
+    console.log(`   Requested grade: ${options?.grade || 'not specified'}`);
+    
+    // Build query filters
+    const where: any = {
+      isPublished: true
+    };
+    
+    // ⚠️ تعليق فلتر الصف مؤقتاً للتطوير
+    // إذا كنت تريد تفعيل الفلتر، قم بإلغاء التعليق
+    /*
+    const targetGrade = options?.grade || user.grade;
+    if (targetGrade) {
+      where.unit = {
+        subject: {
+          grade: targetGrade
         }
+      };
+    }
+    */
+    
+    // Filter by subject if specified (keep this)
+    if (options?.subjectId) {
+      where.unit = {
+        ...where.unit,
+        subjectId: options.subjectId
+      };
+    }
+    
+    // Search in title if specified (keep this)
+    if (options?.search) {
+      where.OR = [
+        { title: { contains: options.search } },
+        { titleAr: { contains: options.search } },
+        { description: { contains: options.search } }
+      ];
+    }
+    
+    // Debug: طباعة الـ where clause
+    console.log('   Where clause:', JSON.stringify(where, null, 2));
+    
+    // Fetch lessons with pagination
+    const lessons = await prisma.lesson.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        titleAr: true,
+        description: true,
+        difficulty: true,
+        estimatedMinutes: true,
+        unit: {
+          select: {
+            title: true,
+            subject: {
+              select: { 
+                name: true,
+                nameAr: true,
+                grade: true,
+                icon: true
+              }
+            }
+          }
+        }
+      },
+      take: options?.limit || 50,
+      orderBy: [
+        { unit: { subject: { grade: 'asc' } } },
+        { unit: { order: 'asc' } },
+        { order: 'asc' }
+      ]
+    });
+    
+    // Debug logs
+    console.log(`   📊 Total lessons found: ${lessons.length}`);
+    if (lessons.length > 0) {
+      const grades = [...new Set(lessons.map(l => l.unit.subject.grade))];
+      console.log(`   📚 Grades available: ${grades.join(', ')}`);
+      
+      // عرض أول 3 دروس للتأكد
+      console.log('   📝 Sample lessons:');
+      lessons.slice(0, 3).forEach((lesson, i) => {
+        console.log(`      ${i + 1}. ${lesson.titleAr || lesson.title} (Grade ${lesson.unit.subject.grade})`);
       });
+    }
+    
+    // Format lessons for client
+    const formattedLessons = lessons.map(lesson => ({
+      id: lesson.id,
+      title: lesson.titleAr || lesson.title, // استخدم العنوان العربي أولاً
+      titleEn: lesson.title,
+      description: lesson.description,
+      difficulty: lesson.difficulty,
+      estimatedMinutes: lesson.estimatedMinutes,
+      subject: lesson.unit.subject.nameAr || lesson.unit.subject.name,
+      subjectIcon: lesson.unit.subject.icon,
+      unit: lesson.unit.title,
+      grade: lesson.unit.subject.grade,
+      isMath: lesson.unit.subject.name.includes('رياضيات') || 
+             lesson.unit.subject.name.toLowerCase().includes('math')
+    }));
+    
+    // إرسال النتائج
+    socket.emit('available_lessons', {
+      lessons: formattedLessons,
+      total: formattedLessons.length,
+      grade: options?.grade || user.grade || 'all',
+      filters: {
+        grade: options?.grade || user.grade,
+        subjectId: options?.subjectId,
+        search: options?.search
+      },
+      message: formattedLessons.length === 0 ? 
+        'لا توجد دروس متاحة. تأكد من وجود دروس منشورة في قاعدة البيانات.' :
+        `تم تحميل ${formattedLessons.length} درس بنجاح`
+    });
+    
+    console.log(`   ✅ Sent ${formattedLessons.length} lessons to ${user.email}`);
+    
+  } catch (error) {
+    console.error('❌ Error fetching lessons:', error);
+    socket.emit('available_lessons', {
+      lessons: [],
+      total: 0,
+      error: 'فشل تحميل الدروس: ' + (error as Error).message
+    });
+  }
+});
       
       /**
        * إرسال قائمة المواد المتاحة

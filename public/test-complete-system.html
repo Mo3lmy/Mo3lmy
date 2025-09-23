@@ -874,12 +874,19 @@
             });
             
             // NEW: Handle available lessons
-            socket.on('available_lessons', (lessons) => {
-                log(`📥 تم استقبال قائمة الدروس (${lessons ? lessons.length : 0} درس)`, 'info');
-                updateLessonSelect(lessons);
-                joinLessonBtn.disabled = lessonSelect.value === '';
-            });
-            
+            socket.on('available_lessons', (data) => {
+    // تحقق من وجود البيانات بالشكل الصحيح
+    if (data && data.lessons) {
+        log(`📥 تم استقبال قائمة الدروس (${data.lessons.length} درس)`, 'info');
+        updateLessonSelect(data.lessons);  // ← التصحيح هنا: data.lessons بدلاً من data
+        joinLessonBtn.disabled = lessonSelect.value === '';
+    } else {
+        // في حالة عدم وجود lessons، ربما البيانات بشكل مختلف
+        log('⚠️ صيغة البيانات غير متوقعة', 'warning');
+        console.log('البيانات المستلمة:', data);
+        updateLessonSelect([]);
+    }
+});
             socket.on('disconnect', (reason) => {
                 loadingSpinner.style.display = 'none';
                 updateConnectionStatus(false);
