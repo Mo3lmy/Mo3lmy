@@ -1,5 +1,6 @@
 // 📍 المكان: src/core/ai/multi-agent.system.ts
 // الوظيفة: نظام متعدد الوكلاء الذكي لتحسين المحتوى التعليمي
+// النسخة: 2.0 - محسّنة للمحتوى الطويل والتفصيلي
 
 import { openAIService } from '../../services/ai/openai.service';
 import { prisma } from '../../config/database.config';
@@ -214,6 +215,7 @@ export class MultiAgentSystem {
     const processingTime = Date.now() - startTime;
     console.log(`\n✅ Multi-Agent Processing Complete in ${processingTime}ms`);
     console.log(`📈 Enrichment Level: ${enrichedContent.metadata.enrichmentLevel}/10`);
+    console.log(`📝 Enriched content length: ${enrichedContent.enrichedText.length} chars`);
     
     return enrichedContent;
   }
@@ -228,32 +230,40 @@ export class MultiAgentSystem {
     visuals: any,
     pedagogicalContent: any
   ): EnrichedContent {
+    // بناء المحتوى المُحسن الكامل
+    const enrichedText = this.buildEnrichedText(
+      lesson,
+      expertAnalysis,
+      examples,
+      pedagogicalContent
+    );
+    
     return {
-      originalContent: lesson.content.fullText || '',
-      enrichedText: expertAnalysis.detailedExplanation,
+      originalContent: lesson.content?.fullText || '',
+      enrichedText: enrichedText,
       
-      detailedExplanation: expertAnalysis.detailedExplanation,
-      realWorldExamples: examples.examples,
-      practiceProblems: pedagogicalContent.problems,
-      visualElements: visuals.elements,
+      detailedExplanation: expertAnalysis?.detailedExplanation || lesson.content?.fullText || '',
+      realWorldExamples: examples?.examples || [],
+      practiceProblems: pedagogicalContent?.problems || [],
+      visualElements: visuals?.elements || [],
       
-      keyConceptsExplained: expertAnalysis.concepts,
-      commonMisconceptions: expertAnalysis.misconceptions,
-      prerequisiteKnowledge: expertAnalysis.prerequisites,
-      learningObjectives: pedagogicalContent.objectives,
+      keyConceptsExplained: expertAnalysis?.concepts || [],
+      commonMisconceptions: expertAnalysis?.misconceptions || [],
+      prerequisiteKnowledge: expertAnalysis?.prerequisites || [],
+      learningObjectives: pedagogicalContent?.objectives || [],
       
-      interactiveComponents: visuals.interactiveComponents,
-      animations: visuals.animations,
+      interactiveComponents: visuals?.interactiveComponents || [],
+      animations: visuals?.animations || [],
       
-      assessmentQuestions: pedagogicalContent.assessmentQuestions,
-      selfCheckPoints: pedagogicalContent.checkPoints,
+      assessmentQuestions: pedagogicalContent?.assessmentQuestions || [],
+      selfCheckPoints: pedagogicalContent?.checkPoints || [],
       
       metadata: {
         grade: lesson.unit.subject.grade,
         subject: lesson.unit.subject.name,
         difficulty: lesson.difficulty || 'medium',
         estimatedLearningTime: Math.ceil(
-          (lesson.content.fullText?.length || 1000) / 200 // 200 كلمة في الدقيقة
+          enrichedText.length / 200 // تحديث بناءً على المحتوى المُحسن
         ),
         enrichmentLevel: this.calculateEnrichmentLevel(
           expertAnalysis,
@@ -266,12 +276,100 @@ export class MultiAgentSystem {
   }
   
   /**
+   * بناء نص محسن كامل من كل المساهمات
+   */
+  private buildEnrichedText(
+    lesson: any,
+    expertAnalysis: any,
+    examples: any,
+    pedagogicalContent: any
+  ): string {
+    const parts: string[] = [];
+    
+    // العنوان والمقدمة
+    parts.push(`# ${lesson.title}\n`);
+    parts.push(`## الصف: ${lesson.unit.subject.grade} - ${lesson.unit.subject.name}\n`);
+    
+    // الشرح التفصيلي
+    if (expertAnalysis?.detailedExplanation) {
+      parts.push('\n## الشرح التفصيلي:\n');
+      parts.push(expertAnalysis.detailedExplanation);
+    }
+    
+    // المفاهيم الأساسية
+    if (expertAnalysis?.concepts?.length > 0) {
+      parts.push('\n\n## المفاهيم الأساسية:\n');
+      expertAnalysis.concepts.forEach((concept: any, index: number) => {
+        parts.push(`\n### ${index + 1}. ${concept.concept}\n`);
+        parts.push(`**الشرح البسيط:** ${concept.simpleExplanation}\n`);
+        parts.push(`**الشرح التفصيلي:** ${concept.detailedExplanation}\n`);
+        if (concept.analogies?.length > 0) {
+          parts.push(`**تشبيهات:** ${concept.analogies.join('، ')}\n`);
+        }
+      });
+    }
+    
+    // الأمثلة من الواقع
+    if (examples?.examples?.length > 0) {
+      parts.push('\n\n## أمثلة من الحياة الواقعية:\n');
+      examples.examples.forEach((example: any, index: number) => {
+        parts.push(`\n### مثال ${index + 1}: ${example.title}\n`);
+        parts.push(example.description);
+        parts.push('\n');
+      });
+    }
+    
+    // المفاهيم الخاطئة الشائعة
+    if (expertAnalysis?.misconceptions?.length > 0) {
+      parts.push('\n\n## تصحيح المفاهيم الخاطئة:\n');
+      expertAnalysis.misconceptions.forEach((misc: any) => {
+        parts.push(`\n**❌ الخطأ الشائع:** ${misc.commonMistake}\n`);
+        parts.push(`**✅ الفهم الصحيح:** ${misc.correctUnderstanding}\n`);
+        parts.push(`**💡 كيفية التجنب:** ${misc.howToAvoid}\n`);
+      });
+    }
+    
+    // التمارين والأنشطة
+    if (pedagogicalContent?.problems?.length > 0) {
+      parts.push('\n\n## التمارين التطبيقية:\n');
+      pedagogicalContent.problems.forEach((problem: any, index: number) => {
+        parts.push(`\n### تمرين ${index + 1}:\n`);
+        parts.push(`**السؤال:** ${problem.question}\n`);
+        if (problem.hints?.length > 0) {
+          parts.push(`**تلميحات:** ${problem.hints.join('، ')}\n`);
+        }
+        parts.push(`**الحل:** ${problem.solution}\n`);
+      });
+    }
+    
+    // الأهداف التعليمية
+    if (pedagogicalContent?.objectives?.length > 0) {
+      parts.push('\n\n## الأهداف التعليمية:\n');
+      pedagogicalContent.objectives.forEach((objective: string) => {
+        parts.push(`• ${objective}\n`);
+      });
+    }
+    
+    // نقاط التحقق الذاتي
+    if (pedagogicalContent?.checkPoints?.length > 0) {
+      parts.push('\n\n## نقاط التحقق الذاتي:\n');
+      pedagogicalContent.checkPoints.forEach((point: string) => {
+        parts.push(`✓ ${point}\n`);
+      });
+    }
+    
+    return parts.join('');
+  }
+  
+  /**
    * حساب مستوى التحسين
    */
   private calculateEnrichmentLevel(...contributions: any[]): number {
     let score = 0;
     contributions.forEach(contrib => {
-      if (contrib) score += 2.5;
+      if (contrib && Object.keys(contrib).length > 0) {
+        score += 2.5;
+      }
     });
     return Math.min(10, Math.round(score));
   }
@@ -286,67 +384,113 @@ class ContentExpertAgent {
   async analyzeContent(lesson: any): Promise<any> {
     console.log('   🔍 Content Expert analyzing...');
     
-    const prompt = `أنت خبير تعليمي متخصص في المناهج المصرية.
-تحليل محتوى الدرس التالي وتحسينه:
+    const prompt = `أنت خبير تعليمي متخصص في المناهج المصرية للصف ${lesson.unit.subject.grade}.
+مهمتك: تحليل وتحسين محتوى الدرس التالي بشكل شامل ومفصل.
 
-الدرس: ${lesson.title}
-الصف: ${lesson.unit.subject.grade}
-المادة: ${lesson.unit.subject.name}
-المحتوى الأصلي:
-${lesson.content.fullText}
+📚 معلومات الدرس:
+- العنوان: ${lesson.title}
+- الصف: ${lesson.unit.subject.grade}
+- المادة: ${lesson.unit.subject.name}
+- المحتوى الأصلي: ${lesson.content.fullText}
 
-المطلوب:
-1. شرح تفصيلي محسّن لكل المفاهيم
-2. تحديد المفاهيم الأساسية وشرحها بعمق
-3. تحديد المفاهيم الخاطئة الشائعة وتصحيحها
+📋 المطلوب منك:
+1. كتابة شرح تفصيلي شامل للدرس (على الأقل 1500 حرف) يغطي كل جوانب الموضوع
+2. تحديد وشرح 3-5 مفاهيم أساسية بالتفصيل
+3. تحديد 2-3 مفاهيم خاطئة شائعة مع التصحيح المفصل
 4. تحديد المتطلبات السابقة للفهم
-5. ربط المفاهيم ببعضها
+5. ربط المفاهيم بدروس أخرى
 
-قدم الإجابة بصيغة JSON:
+⚠️ مهم جداً:
+- اكتب شرح طويل ومفصل (لا يقل عن 1500 حرف)
+- اشرح كل مفهوم بالتفصيل (لا يقل عن 200 حرف لكل مفهوم)
+- استخدم أمثلة توضيحية في الشرح
+- اكتب بلغة عربية فصحى مبسطة مناسبة للطلاب
+
+قدم الإجابة بصيغة JSON بالشكل التالي:
 {
-  "detailedExplanation": "الشرح المحسن الكامل",
+  "detailedExplanation": "شرح تفصيلي شامل للدرس (1500+ حرف)",
   "concepts": [
     {
-      "concept": "المفهوم",
-      "simpleExplanation": "شرح بسيط",
-      "detailedExplanation": "شرح تفصيلي",
-      "analogies": ["تشبيه 1", "تشبيه 2"],
-      "visualRepresentation": "وصف للتمثيل المرئي"
+      "concept": "اسم المفهوم الأول",
+      "simpleExplanation": "شرح بسيط للمفهوم (100+ حرف)",
+      "detailedExplanation": "شرح تفصيلي عميق للمفهوم (200+ حرف)",
+      "analogies": ["تشبيه أول من الحياة", "تشبيه ثاني"],
+      "visualRepresentation": "وصف لكيفية تمثيل المفهوم بصرياً"
     }
   ],
   "misconceptions": [
     {
-      "commonMistake": "الخطأ الشائع",
-      "whyItHappens": "سبب حدوثه",
-      "correctUnderstanding": "الفهم الصحيح",
-      "howToAvoid": "كيفية تجنبه"
+      "commonMistake": "الخطأ الشائع الأول",
+      "whyItHappens": "سبب حدوث هذا الخطأ",
+      "correctUnderstanding": "الفهم الصحيح المفصل",
+      "howToAvoid": "خطوات تجنب الخطأ"
     }
   ],
-  "prerequisites": ["متطلب 1", "متطلب 2"],
-  "connections": ["ربط بمفهوم آخر"]
+  "prerequisites": ["متطلب سابق 1", "متطلب سابق 2", "متطلب سابق 3"],
+  "connections": ["ربط بدرس آخر", "ربط بموضوع مرتبط"]
 }`;
     
     try {
-      const response = await openAIService.chat([
-        { role: 'system', content: 'You are an expert educator specializing in Egyptian curriculum.' },
+      const response = await openAIService.chatJSON([
+        { 
+          role: 'system', 
+          content: 'You are an expert Egyptian curriculum educator. Always provide detailed, comprehensive explanations in Arabic. Your responses must be thorough and educational.' 
+        },
         { role: 'user', content: prompt }
       ], {
         temperature: 0.7,
-        maxTokens: 2000,
+        maxTokens: 4000, // زيادة كبيرة للحصول على محتوى أطول
       });
       
-      const parsed = JSON.parse(response);
       console.log('   ✅ Content Expert completed');
-      return parsed;
+      
+      // التحقق من طول المحتوى
+      if (response.detailedExplanation && response.detailedExplanation.length < 1000) {
+        console.log('   ⚠️ Content is short, requesting expansion...');
+        // طلب توسيع إضافي إذا كان المحتوى قصيراً
+        response.detailedExplanation = await this.expandContent(response.detailedExplanation, lesson);
+      }
+      
+      return response;
     } catch (error) {
       console.error('   ❌ Content Expert failed:', error);
       return this.getFallbackAnalysis(lesson);
     }
   }
   
+  /**
+   * توسيع المحتوى إذا كان قصيراً
+   */
+  private async expandContent(currentContent: string, lesson: any): Promise<string> {
+    const expansionPrompt = `المحتوى الحالي:
+${currentContent}
+
+هذا المحتوى قصير جداً. قم بتوسيعه وإضافة:
+1. المزيد من التفاصيل والشروحات
+2. أمثلة إضافية توضيحية
+3. ربط بالحياة اليومية للطلاب
+4. نصائح للفهم والحفظ
+
+اكتب على الأقل 1500 حرف. كن مفصلاً وشاملاً.`;
+    
+    try {
+      const expanded = await openAIService.chat([
+        { role: 'user', content: expansionPrompt }
+      ], {
+        temperature: 0.7,
+        maxTokens: 3000,
+      });
+      
+      return currentContent + '\n\n' + expanded;
+    } catch (error) {
+      console.error('Failed to expand content:', error);
+      return currentContent;
+    }
+  }
+  
   private getFallbackAnalysis(lesson: any): any {
     return {
-      detailedExplanation: lesson.content.fullText || 'محتوى الدرس',
+      detailedExplanation: lesson.content?.fullText || 'محتوى الدرس',
       concepts: [],
       misconceptions: [],
       prerequisites: [],
@@ -368,20 +512,22 @@ class ExampleGeneratorAgent {
   ): Promise<any> {
     console.log(`   💡 Generating ${count} real-world examples...`);
     
-    const prompt = `أنت خبير في إنشاء الأمثلة التعليمية الواقعية.
+    const prompt = `أنت خبير في إنشاء الأمثلة التعليمية الواقعية للطلاب المصريين.
 
-الدرس: ${lesson.title}
-الصف: ${lesson.unit.subject.grade}
-المادة: ${lesson.unit.subject.name}
-المفاهيم الأساسية: ${expertAnalysis.concepts?.map((c: any) => c.concept).join(', ') || 'غير محدد'}
+📚 معلومات الدرس:
+- العنوان: ${lesson.title}
+- الصف: ${lesson.unit.subject.grade}
+- المادة: ${lesson.unit.subject.name}
+- المفاهيم الأساسية: ${expertAnalysis.concepts?.map((c: any) => c.concept).join(', ') || 'المفاهيم الأساسية للدرس'}
 
-المطلوب: إنشاء ${count} أمثلة متنوعة من الحياة الواقعية توضح المفاهيم.
+📋 المطلوب: إنشاء ${count} أمثلة متنوعة وشاملة من الحياة الواقعية
 
-لكل مثال يجب أن يكون:
-- من الحياة اليومية للطلاب المصريين
-- مناسب للعمر والثقافة
-- تدريجي في الصعوبة
-- يحتوي على عناصر بصرية يمكن رسمها
+⚠️ شروط كل مثال:
+- من الحياة اليومية للطلاب المصريين (البيت، المدرسة، الشارع، السوق)
+- شرح تفصيلي لا يقل عن 150 حرف
+- مناسب للعمر والثقافة المصرية
+- تدرج في الصعوبة من البسيط للمعقد
+- يحتوي على تفاصيل بصرية يمكن رسمها أو تخيلها
 
 قدم الإجابة بصيغة JSON:
 {
@@ -389,27 +535,29 @@ class ExampleGeneratorAgent {
     {
       "id": "ex1",
       "type": "real-world",
-      "title": "عنوان المثال",
-      "description": "شرح تفصيلي للمثال",
-      "visualAid": "وصف للصورة أو الرسم المطلوب",
-      "relatedConcept": "المفهوم المرتبط",
+      "title": "عنوان المثال الواضح والجذاب",
+      "description": "شرح تفصيلي للمثال يوضح كيف يرتبط بالمفهوم (150+ حرف)",
+      "visualAid": "وصف دقيق للصورة أو الرسم التوضيحي المطلوب",
+      "relatedConcept": "المفهوم المرتبط من الدرس",
       "difficulty": "basic"
     }
   ]
 }`;
     
     try {
-      const response = await openAIService.chat([
-        { role: 'system', content: 'You are an expert in creating educational examples.' },
+      const response = await openAIService.chatJSON([
+        { 
+          role: 'system', 
+          content: 'You are an expert in creating detailed educational examples for Egyptian students. Make examples relatable to Egyptian daily life and culture.' 
+        },
         { role: 'user', content: prompt }
       ], {
         temperature: 0.8,
-        maxTokens: 1500,
+        maxTokens: 3000, // زيادة للحصول على أمثلة مفصلة
       });
       
-      const parsed = JSON.parse(response);
-      console.log(`   ✅ Generated ${parsed.examples?.length || 0} examples`);
-      return parsed;
+      console.log(`   ✅ Generated ${response.examples?.length || 0} examples`);
+      return response;
     } catch (error) {
       console.error('   ❌ Example generation failed:', error);
       return { examples: [] };
@@ -435,24 +583,61 @@ class VisualDesignerAgent {
     console.log('   🎨 Designing visual elements...');
     
     const subject = lesson.unit.subject.name;
-    const ismath = subject.includes('رياضيات') || subject.includes('Math');
+    const isMath = subject.includes('رياضيات') || subject.includes('Math');
     const isScience = subject.includes('علوم') || subject.includes('Science');
     const isHistory = subject.includes('تاريخ') || subject.includes('History');
+    const isLanguage = subject.includes('لغة') || subject.includes('Language');
     
     const prompt = `أنت مصمم تعليمي متخصص في العناصر المرئية والتفاعلية.
 
-الدرس: ${lesson.title}
-المادة: ${subject}
-الصف: ${lesson.unit.subject.grade}
-المفاهيم: ${expertAnalysis.concepts?.map((c: any) => c.concept).join(', ') || 'غير محدد'}
+📚 معلومات الدرس:
+- العنوان: ${lesson.title}
+- المادة: ${subject}
+- الصف: ${lesson.unit.subject.grade}
+- المفاهيم: ${expertAnalysis.concepts?.map((c: any) => c.concept).join(', ') || 'المفاهيم الأساسية'}
 
-المطلوب تصميم:
-${ismath ? '- معادلات رياضية تفاعلية\n- رسوم بيانية\n- أشكال هندسية' : ''}
-${isScience ? '- رسوم توضيحية علمية\n- تجارب تفاعلية\n- نماذج 3D' : ''}
-${isHistory ? '- خرائط تفاعلية\n- خطوط زمنية\n- صور تاريخية' : ''}
-- مخططات ورسوم بيانية
-- عناصر تفاعلية (آلة حاسبة، محاكيات، إلخ)
-- حركات توضيحية
+📋 المطلوب تصميم عناصر مرئية وتفاعلية مناسبة:
+
+${isMath ? `
+للرياضيات:
+- معادلات رياضية تفاعلية مع خطوات الحل
+- رسوم بيانية ديناميكية
+- أشكال هندسية تفاعلية
+- آلة حاسبة علمية
+- محاكي للعمليات الحسابية
+` : ''}
+
+${isScience ? `
+للعلوم:
+- رسوم توضيحية علمية مفصلة
+- تجارب تفاعلية افتراضية
+- نماذج 3D للجزيئات والأعضاء
+- محاكيات للظواهر الطبيعية
+- مخططات تشريحية
+` : ''}
+
+${isHistory ? `
+للتاريخ:
+- خرائط تفاعلية تاريخية
+- خطوط زمنية مفصلة
+- صور تاريخية مع شروحات
+- مقارنات بين الحضارات
+- رسوم توضيحية للأحداث
+` : ''}
+
+${isLanguage ? `
+للغة:
+- مخططات نحوية تفاعلية
+- بطاقات المفردات
+- تمارين تفاعلية
+- ألعاب لغوية تعليمية
+` : ''}
+
+⚠️ مواصفات مطلوبة:
+- وصف تفصيلي لكل عنصر (100+ حرف)
+- مواصفات تقنية واضحة
+- تعليمات الاستخدام
+- إمكانية الوصول
 
 قدم الإجابة بصيغة JSON:
 {
@@ -460,36 +645,39 @@ ${isHistory ? '- خرائط تفاعلية\n- خطوط زمنية\n- صور تا
     {
       "id": "vis1",
       "type": "diagram",
-      "title": "عنوان العنصر",
-      "description": "وصف تفصيلي",
+      "title": "عنوان العنصر المرئي",
+      "description": "وصف تفصيلي للعنصر ووظيفته التعليمية (100+ حرف)",
       "specifications": {
         "width": 800,
         "height": 600,
-        "colors": ["#color1", "#color2"],
+        "colors": ["#لون1", "#لون2"],
         "labels": ["تسمية 1", "تسمية 2"],
         "data": {}
       },
-      "alternativeText": "وصف نصي للإتاحة"
+      "alternativeText": "وصف نصي بديل للإتاحة"
     }
   ],
   "interactiveComponents": [
     {
       "id": "int1",
       "type": "calculator",
-      "title": "آلة حاسبة للكسور",
-      "instructions": "كيفية الاستخدام",
-      "config": {}
+      "title": "اسم المكون التفاعلي",
+      "instructions": "تعليمات الاستخدام التفصيلية",
+      "config": {
+        "features": ["ميزة 1", "ميزة 2"],
+        "settings": {}
+      }
     }
   ],
   "animations": [
     {
       "id": "anim1",
-      "concept": "المفهوم المُوضح",
+      "concept": "المفهوم الذي توضحه الحركة",
       "steps": [
         {
-          "description": "الخطوة 1",
-          "visualChanges": "ما يحدث بصرياً",
-          "narration": "التعليق الصوتي",
+          "description": "وصف الخطوة الأولى",
+          "visualChanges": "التغييرات البصرية",
+          "narration": "النص المصاحب",
           "duration": 3
         }
       ],
@@ -499,17 +687,19 @@ ${isHistory ? '- خرائط تفاعلية\n- خطوط زمنية\n- صور تا
 }`;
     
     try {
-      const response = await openAIService.chat([
-        { role: 'system', content: 'You are an educational visual designer.' },
+      const response = await openAIService.chatJSON([
+        { 
+          role: 'system', 
+          content: 'You are an educational visual designer specializing in interactive learning materials. Create detailed, educationally valuable visual elements.' 
+        },
         { role: 'user', content: prompt }
       ], {
         temperature: 0.8,
-        maxTokens: 2000,
+        maxTokens: 3500, // زيادة للحصول على تصاميم مفصلة
       });
       
-      const parsed = JSON.parse(response);
-      console.log(`   ✅ Designed ${parsed.elements?.length || 0} visuals`);
-      return parsed;
+      console.log(`   ✅ Designed ${response.elements?.length || 0} visuals`);
+      return response;
     } catch (error) {
       console.error('   ❌ Visual design failed:', error);
       return { elements: [], interactiveComponents: [], animations: [] };
@@ -529,76 +719,108 @@ class PedagogyExpertAgent {
   ): Promise<any> {
     console.log('   👩‍🏫 Pedagogical review and enhancement...');
     
-    const prompt = `أنت خبير تربوي متخصص في التصميم التعليمي.
+    const prompt = `أنت خبير تربوي متخصص في التصميم التعليمي للمناهج المصرية.
 
-الدرس: ${lesson.title}
-الصف: ${lesson.unit.subject.grade}
-المحتوى المحسن: ${agentContributions.expertAnalysis?.detailedExplanation || 'غير متوفر'}
+📚 معلومات الدرس:
+- العنوان: ${lesson.title}
+- الصف: ${lesson.unit.subject.grade}
+- المادة: ${lesson.unit.subject.name}
+- المحتوى المحسن: ${agentContributions.expertAnalysis?.detailedExplanation?.substring(0, 500) || 'محتوى الدرس'}...
 
-المطلوب:
-1. تحديد الأهداف التعليمية بدقة
-2. إنشاء تمارين متدرجة
-3. إنشاء أسئلة تقييم متنوعة
-4. تحديد نقاط التحقق الذاتي
-5. اقتراح أنشطة جماعية
+📋 المطلوب بالتفصيل:
+
+1. **الأهداف التعليمية** (5-7 أهداف):
+   - أهداف معرفية (يتعرف، يفهم، يحلل)
+   - أهداف مهارية (يطبق، يحل، يستخدم)
+   - أهداف وجدانية (يقدر، يهتم، يشارك)
+
+2. **التمارين المتدرجة** (8-10 تمارين):
+   - تمارين أساسية للفهم
+   - تمارين تطبيقية
+   - تمارين تحدي للمتميزين
+   - مسائل كلامية من الواقع
+
+3. **أسئلة التقييم** (6-8 أسئلة):
+   - اختيار من متعدد
+   - صح وخطأ مع التصحيح
+   - أسئلة مقالية قصيرة
+   - أسئلة تحليلية
+
+4. **نقاط التحقق الذاتي** (5-6 نقاط):
+   - معايير واضحة للتقييم الذاتي
+   - أسئلة للمراجعة الذاتية
+
+5. **الأنشطة الجماعية** (2-3 أنشطة):
+   - أنشطة تعاونية
+   - مشاريع صغيرة
+   - ألعاب تعليمية
+
+⚠️ مهم جداً:
+- كل تمرين يجب أن يحتوي على حل تفصيلي
+- كل سؤال يجب أن يحتوي على شرح للإجابة
+- التدرج في الصعوبة واضح
 
 قدم الإجابة بصيغة JSON:
 {
   "objectives": [
-    "هدف تعليمي 1",
-    "هدف تعليمي 2"
+    "هدف تعليمي واضح وقابل للقياس",
+    "هدف آخر محدد"
   ],
   "problems": [
     {
       "id": "prob1",
       "type": "exercise",
-      "question": "نص السؤال",
-      "solution": "الحل",
-      "stepByStepSolution": ["خطوة 1", "خطوة 2"],
-      "hints": ["تلميح 1", "تلميح 2"],
+      "question": "نص السؤال التفصيلي",
+      "solution": "الحل الكامل المفصل",
+      "stepByStepSolution": ["خطوة 1 بالتفصيل", "خطوة 2", "خطوة 3"],
+      "hints": ["تلميح مساعد 1", "تلميح 2"],
       "difficulty": 1,
       "estimatedTime": 5,
-      "skills": ["مهارة 1", "مهارة 2"]
+      "skills": ["مهارة مطلوبة 1", "مهارة 2"]
     }
   ],
   "assessmentQuestions": [
     {
       "id": "q1",
       "type": "mcq",
-      "question": "السؤال",
+      "question": "نص السؤال الواضح",
       "options": ["خيار أ", "خيار ب", "خيار ج", "خيار د"],
       "correctAnswer": "خيار أ",
-      "explanation": "شرح الإجابة",
+      "explanation": "شرح تفصيلي للإجابة الصحيحة ولماذا الخيارات الأخرى خاطئة",
       "difficulty": 1,
-      "learningObjective": "الهدف المرتبط"
+      "learningObjective": "الهدف التعليمي المرتبط"
     }
   ],
   "checkPoints": [
-    "نقطة تحقق 1: هل تستطيع...",
-    "نقطة تحقق 2: هل يمكنك..."
+    "نقطة تحقق 1: هل تستطيع شرح...؟",
+    "نقطة تحقق 2: هل يمكنك حل...؟"
   ],
   "groupActivities": [
     {
-      "title": "نشاط جماعي",
-      "description": "وصف النشاط",
+      "title": "اسم النشاط الجماعي",
+      "description": "وصف تفصيلي للنشاط وخطوات تنفيذه",
       "duration": 15,
-      "materials": ["مواد مطلوبة"]
+      "materials": ["الأدوات المطلوبة"],
+      "groupSize": 4,
+      "objectives": ["هدف النشاط"]
     }
   ]
 }`;
     
     try {
-      const response = await openAIService.chat([
-        { role: 'system', content: 'You are an expert educational pedagogue.' },
+      const response = await openAIService.chatJSON([
+        { 
+          role: 'system', 
+          content: 'You are an expert educational pedagogue specializing in Egyptian curriculum. Create comprehensive, detailed educational assessments and activities.' 
+        },
         { role: 'user', content: prompt }
       ], {
         temperature: 0.7,
-        maxTokens: 2000,
+        maxTokens: 4000, // زيادة للحصول على تمارين وأسئلة مفصلة
       });
       
-      const parsed = JSON.parse(response);
       console.log('   ✅ Pedagogical enhancement complete');
-      return parsed;
+      return response;
     } catch (error) {
       console.error('   ❌ Pedagogical review failed:', error);
       return {

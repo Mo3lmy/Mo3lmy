@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مكونات الرياضيات التفاعلية</title>
+    
+    <!-- KaTeX for Math Equations -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    
+    <!-- Chart.js for Graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .components-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .component-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s;
+        }
+        
+        .component-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .component-title {
+            color: #667eea;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        /* Math Equation Styles */
+        .equation-container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+            font-size: 1.2rem;
+        }
+        
+        .equation-steps {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-right: 3px solid #4CAF50;
+            border-radius: 5px;
+        }
+        
+        /* Calculator Styles */
+        .calculator {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+        }
+        
+        .calc-display {
+            background: #1a202c;
+            padding: 15px;
+            font-size: 1.5rem;
+            text-align: left;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            min-height: 50px;
+            font-family: monospace;
+        }
+        
+        .calc-buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        
+        .calc-btn {
+            padding: 20px;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #4a5568;
+            color: white;
+        }
+        
+        .calc-btn:hover {
+            background: #667eea;
+            transform: scale(1.05);
+        }
+        
+        .calc-btn.operator {
+            background: #667eea;
+        }
+        
+        .calc-btn.equals {
+            background: #48bb78;
+            grid-column: span 2;
+        }
+        
+        .calc-btn.clear {
+            background: #f56565;
+            grid-column: span 2;
+        }
+        
+        /* Interactive Graph */
+        .graph-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+        
+        .graph-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .control-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .control-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+        
+        /* Practice Problem */
+        .practice-problem {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        .problem-text {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: #2d3748;
+        }
+        
+        .answer-input {
+            width: 100%;
+            padding: 12px;
+            font-size: 1.1rem;
+            border: 2px solid #cbd5e0;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .answer-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .check-btn {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: all 0.3s;
+        }
+        
+        .check-btn:hover {
+            background: #764ba2;
+        }
+        
+        .feedback {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            display: none;
+        }
+        
+        .feedback.correct {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 2px solid #48bb78;
+            display: block;
+        }
+        
+        .feedback.incorrect {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 2px solid #f56565;
+            display: block;
+        }
+        
+        .hint {
+            background: #fef5e7;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            border-right: 3px solid #f39c12;
+            color: #7d6608;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 مكونات الرياضيات التفاعلية</h1>
+        
+        <div class="components-grid">
+            <!-- Component 1: Math Equations with Steps -->
+            <div class="component-card">
+                <h2 class="component-title">📐 معادلات رياضية مع الخطوات</h2>
+                
+                <div class="equation-container">
+                    <div id="equation1">
+                        حل المعادلة: \(2x + 5 = 13\)
+                    </div>
+                </div>
+                
+                <div class="equation-steps">
+                    <div class="step">الخطوة 1: اطرح 5 من الطرفين<br>\(2x + 5 - 5 = 13 - 5\)</div>
+                    <div class="step">الخطوة 2: بسّط<br>\(2x = 8\)</div>
+                    <div class="step">الخطوة 3: اقسم على 2<br>\(x = 4\)</div>
+                </div>
+                
+                <div class="equation-container">
+                    <div id="equation2">
+                        قابلية القسمة: \(\frac{24}{6} = 4\)
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Component 2: Interactive Calculator -->
+            <div class="component-card">
+                <h2 class="component-title">🔢 آلة حاسبة تفاعلية</h2>
+                
+                <div class="calculator">
+                    <div class="calc-display" id="display">0</div>
+                    <div class="calc-buttons">
+                        <button class="calc-btn" onclick="appendNumber('7')">7</button>
+                        <button class="calc-btn" onclick="appendNumber('8')">8</button>
+                        <button class="calc-btn" onclick="appendNumber('9')">9</button>
+                        <button class="calc-btn operator" onclick="appendOperator('/')">÷</button>
+                        
+                        <button class="calc-btn" onclick="appendNumber('4')">4</button>
+                        <button class="calc-btn" onclick="appendNumber('5')">5</button>
+                        <button class="calc-btn" onclick="appendNumber('6')">6</button>
+                        <button class="calc-btn operator" onclick="appendOperator('*')">×</button>
+                        
+                        <button class="calc-btn" onclick="appendNumber('1')">1</button>
+                        <button class="calc-btn" onclick="appendNumber('2')">2</button>
+                        <button class="calc-btn" onclick="appendNumber('3')">3</button>
+                        <button class="calc-btn operator" onclick="appendOperator('-')">-</button>
+                        
+                        <button class="calc-btn" onclick="appendNumber('0')">0</button>
+                        <button class="calc-btn" onclick="appendDecimal()">.</button>
+                        <button class="calc-btn operator" onclick="appendOperator('+')">+</button>
+                        <button class="calc-btn operator" onclick="calculate()">=</button>
+                        
+                        <button class="calc-btn clear" onclick="clearDisplay()">مسح</button>
+                        <button class="calc-btn equals" onclick="calculate()">احسب</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Component 3: Interactive Graph -->
+            <div class="component-card">
+                <h2 class="component-title">📊 رسم بياني تفاعلي</h2>
+                
+                <div class="graph-container">
+                    <canvas id="myChart"></canvas>
+                </div>
+                
+                <div class="graph-controls">
+                    <button class="control-btn" onclick="addDataPoint()">أضف نقطة</button>
+                    <button class="control-btn" onclick="removeDataPoint()">احذف نقطة</button>
+                    <button class="control-btn" onclick="changeGraphType()">غيّر النوع</button>
+                    <button class="control-btn" onclick="resetGraph()">إعادة تعيين</button>
+                </div>
+            </div>
+            
+            <!-- Component 4: Practice Problem -->
+            <div class="component-card">
+                <h2 class="component-title">✏️ تمرين تفاعلي</h2>
+                
+                <div class="practice-problem">
+                    <div class="problem-text">
+                        إذا كان لديك 24 قطعة حلوى وتريد توزيعها بالتساوي على 6 أطفال، كم قطعة سيحصل عليها كل طفل؟
+                    </div>
+                    
+                    <input type="number" class="answer-input" id="answer" placeholder="اكتب إجابتك هنا...">
+                    
+                    <button class="check-btn" onclick="checkAnswer()">تحقق من الإجابة</button>
+                    
+                    <div id="feedback" class="feedback"></div>
+                    
+                    <div class="hint">
+                        💡 تلميح: استخدم عملية القسمة (24 ÷ 6)
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Component 5: Divisibility Checker -->
+            <div class="component-card">
+                <h2 class="component-title">🎯 فاحص قابلية القسمة</h2>
+                
+                <div class="practice-problem">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 10px; font-size: 1.1rem;">أدخل العدد:</label>
+                        <input type="number" id="checkNumber" class="answer-input" placeholder="مثال: 24">
+                    </div>
+                    
+                    <button class="check-btn" onclick="checkDivisibility()">فحص قابلية القسمة</button>
+                    
+                    <div id="divisibilityResults" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+            
+            <!-- Component 6: Fraction Visualizer -->
+            <div class="component-card">
+                <h2 class="component-title">🍰 عرض الكسور بصرياً</h2>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <canvas id="fractionCanvas" width="300" height="300"></canvas>
+                </div>
+                
+                <div class="graph-controls">
+                    <button class="control-btn" onclick="showFraction(1,2)">1/2</button>
+                    <button class="control-btn" onclick="showFraction(1,4)">1/4</button>
+                    <button class="control-btn" onclick="showFraction(3,4)">3/4</button>
+                    <button class="control-btn" onclick="showFraction(2,3)">2/3</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize KaTeX
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ]
+            });
+        });
+        
+        // Calculator Functions
+        let display = document.getElementById('display');
+        let currentInput = '0';
+        let operator = null;
+        let previousInput = null;
+        
+        function updateDisplay() {
+            display.textContent = currentInput;
+        }
+        
+        function appendNumber(num) {
+            if (currentInput === '0') {
+                currentInput = num;
+            } else {
+                currentInput += num;
+            }
+            updateDisplay();
+        }
+        
+        function appendOperator(op) {
+            if (previousInput === null) {
+                previousInput = currentInput;
+                currentInput = '0';
+                operator = op;
+            } else {
+                calculate();
+                operator = op;
+            }
+        }
+        
+        function appendDecimal() {
+            if (!currentInput.includes('.')) {
+                currentInput += '.';
+                updateDisplay();
+            }
+        }
+        
+        function clearDisplay() {
+            currentInput = '0';
+            previousInput = null;
+            operator = null;
+            updateDisplay();
+        }
+        
+        function calculate() {
+            if (previousInput !== null && operator !== null) {
+                let result;
+                const prev = parseFloat(previousInput);
+                const current = parseFloat(currentInput);
+                
+                switch(operator) {
+                    case '+': result = prev + current; break;
+                    case '-': result = prev - current; break;
+                    case '*': result = prev * current; break;
+                    case '/': result = prev / current; break;
+                }
+                
+                currentInput = result.toString();
+                previousInput = null;
+                operator = null;
+                updateDisplay();
+            }
+        }
+        
+        // Graph Functions
+        const ctx = document.getElementById('myChart').getContext('2d');
+        let chartData = {
+            labels: ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'],
+            datasets: [{
+                label: 'درجات الاختبار',
+                data: [85, 90, 78, 92, 88],
+                backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                borderColor: 'rgba(102, 126, 234, 1)',
+                borderWidth: 2,
+                tension: 0.4
+            }]
+        };
+        
+        let myChart = new Chart(ctx, {
+            type: 'line',
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+        
+        function addDataPoint() {
+            const randomValue = Math.floor(Math.random() * 30) + 70;
+            myChart.data.datasets[0].data.push(randomValue);
+            myChart.data.labels.push('يوم ' + (myChart.data.labels.length + 1));
+            myChart.update();
+        }
+        
+        function removeDataPoint() {
+            if (myChart.data.datasets[0].data.length > 2) {
+                myChart.data.datasets[0].data.pop();
+                myChart.data.labels.pop();
+                myChart.update();
+            }
+        }
+        
+        function changeGraphType() {
+            myChart.config.type = myChart.config.type === 'line' ? 'bar' : 'line';
+            myChart.update();
+        }
+        
+        function resetGraph() {
+            myChart.data.datasets[0].data = [85, 90, 78, 92, 88];
+            myChart.data.labels = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+            myChart.update();
+        }
+        
+        // Practice Problem
+        function checkAnswer() {
+            const answer = document.getElementById('answer').value;
+            const feedback = document.getElementById('feedback');
+            
+            if (answer == 4) {
+                feedback.textContent = '🎉 إجابة صحيحة! 24 ÷ 6 = 4';
+                feedback.className = 'feedback correct';
+            } else {
+                feedback.textContent = '❌ حاول مرة أخرى. تذكر: 24 ÷ 6 = ؟';
+                feedback.className = 'feedback incorrect';
+            }
+        }
+        
+        // Divisibility Checker
+        function checkDivisibility() {
+            const num = parseInt(document.getElementById('checkNumber').value);
+            const results = document.getElementById('divisibilityResults');
+            
+            if (isNaN(num)) {
+                results.innerHTML = '<div class="feedback incorrect">من فضلك أدخل رقماً صحيحاً</div>';
+                return;
+            }
+            
+            let html = '<h3 style="margin-bottom: 15px;">نتائج قابلية القسمة للعدد ' + num + ':</h3>';
+            const divisors = [2, 3, 4, 5, 6, 8, 9, 10];
+            
+            divisors.forEach(divisor => {
+                const isDivisible = num % divisor === 0;
+                const result = num / divisor;
+                const statusClass = isDivisible ? 'correct' : 'incorrect';
+                const icon = isDivisible ? '✅' : '❌';
+                
+                html += `
+                    <div class="step" style="margin: 10px 0;">
+                        ${icon} قابل للقسمة على ${divisor}: ${isDivisible ? 'نعم' : 'لا'}
+                        ${isDivisible ? ` (${num} ÷ ${divisor} = ${result})` : ''}
+                    </div>
+                `;
+            });
+            
+            results.innerHTML = html;
+        }
+        
+        // Fraction Visualizer
+        function showFraction(numerator, denominator) {
+            const canvas = document.getElementById('fractionCanvas');
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 100;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw circle background
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fill();
+            ctx.strokeStyle = '#2d3748';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw fraction
+            const angle = (2 * Math.PI * numerator) / denominator;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, -Math.PI/2, -Math.PI/2 + angle);
+            ctx.closePath();
+            ctx.fillStyle = '#667eea';
+            ctx.fill();
+            
+            // Draw lines for divisions
+            for (let i = 0; i < denominator; i++) {
+                const divAngle = (2 * Math.PI * i) / denominator - Math.PI/2;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(
+                    centerX + radius * Math.cos(divAngle),
+                    centerY + radius * Math.sin(divAngle)
+                );
+                ctx.strokeStyle = '#2d3748';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+            
+            // Draw text
+            ctx.font = '24px Tajawal';
+            ctx.fillStyle = '#2d3748';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${numerator}/${denominator}`, centerX, centerY + radius + 40);
+        }
+        
+        // Show initial fraction
+        showFraction(1, 2);
+    </script>
+</body>
+</html>

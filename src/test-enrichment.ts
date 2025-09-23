@@ -1,4 +1,3 @@
-// 📍 المكان: src/test-enrichment.ts
 // الوظيفة: اختبار نظام التحسين الجديد
 
 import { multiAgentSystem } from './core/ai/multi-agent.system';
@@ -43,8 +42,8 @@ async function testEnrichmentSystem() {
       targetDepth: 'intermediate',
       includeVisuals: true,
       includeInteractive: true,
-      maxExamples: 3,
-      maxProblems: 5,
+      maxExamples: 10,
+      maxProblems: 15,
     });
     
     console.log('✅ Content enriched successfully!');
@@ -82,7 +81,7 @@ async function testEnrichmentSystem() {
     console.log('\n🔍 Test 4: Enhanced RAG Processing...');
     console.log('─'.repeat(50));
     
-  await documentProcessor.processLessonWithEnrichment(lesson.id, {
+    await documentProcessor.processLessonWithEnrichment(lesson.id, {
       enrichmentLevel: 'intermediate',
     });
     
@@ -140,8 +139,6 @@ async function testEnrichmentSystem() {
       console.log('\n💡 Sample Example:');
       const example = enrichedContent.realWorldExamples[0];
       console.log(`   Title: ${example.title}`);
-      console.log(`   Type: ${example.type}`);
-      console.log(`   Difficulty: ${example.difficulty}`);
       console.log(`   ${example.description.substring(0, 200)}...`);
     }
     
@@ -161,7 +158,7 @@ async function testEnrichmentSystem() {
     console.log('1. Run enrichment on all lessons:');
     console.log('   await contentEnricher.enrichAllLessons()');
     console.log('2. Process all with enhanced RAG:');
-  console.log('   await documentProcessor.processAllLessonsWithEnrichment()');
+    console.log('   await enhancedDocumentProcessor.processAllLessonsWithEnrichment()');
     console.log('3. Test interactive components in frontend');
     console.log('4. Monitor quality scores and adjust parameters');
     

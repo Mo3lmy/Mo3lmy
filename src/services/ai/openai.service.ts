@@ -58,6 +58,55 @@ export class OpenAIService {
   }
   
   /**
+   * تنظيف JSON من markdown blocks - دالة جديدة مهمة
+   */
+  private cleanJsonResponse(text: string): string {
+    // إزالة markdown code blocks
+    let cleaned = text;
+    
+    // إزالة ```json من البداية و``` من النهاية
+    cleaned = cleaned.replace(/^```json\s*\n?/i, '');
+    cleaned = cleaned.replace(/^```\s*\n?/i, '');
+    cleaned = cleaned.replace(/\n?```\s*$/i, '');
+    
+    // إزالة أي markdown blocks أخرى
+    cleaned = cleaned.replace(/```[a-z]*\n?/gi, '');
+    
+    // تنظيف المسافات الزائدة
+    cleaned = cleaned.trim();
+    
+    return cleaned;
+  }
+  
+  /**
+   * Chat completion expecting JSON response - دالة جديدة للـ Multi-Agent
+   */
+  async chatJSON(
+    messages: ChatMessage[],
+    options: CompletionOptions = {}
+  ): Promise<any> {
+    const response = await this.chat(messages, {
+      ...options,
+      temperature: options.temperature ?? 0.5, // أقل عشوائية للـ JSON
+    });
+    
+    try {
+      // تنظيف الـ JSON أولاً
+      const cleaned = this.cleanJsonResponse(response);
+      
+      // محاولة parse
+      return JSON.parse(cleaned);
+    } catch (error) {
+      console.error('❌ JSON parsing failed even after cleaning');
+      console.log('Raw response (first 200 chars):', response.substring(0, 200));
+      console.log('Cleaned response (first 200 chars):', this.cleanJsonResponse(response).substring(0, 200));
+      
+      // Return empty object as fallback
+      return {};
+    }
+  }
+  
+  /**
    * Calculate cost for API usage
    */
   private calculateCost(model: string, inputTokens: number, outputTokens: number): number {
