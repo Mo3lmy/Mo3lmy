@@ -1,8 +1,33 @@
-// src/core/rag/document.processor.ts (النسخة العامة الكاملة)
+// src/core/rag/document.processor.ts (النسخة المحدثة مع إصلاح الأخطاء)
 
 import { openAIService } from '../../services/ai/openai.service';
 import { prisma } from '../../config/database.config';
 import type { DocumentChunk } from '../../types/rag.types';
+
+// محاولة استيراد contentEnricher (اختياري)
+let contentEnricher: any;
+try {
+  const module = require('../ai/content-enricher.service');
+  contentEnricher = module.contentEnricher;
+} catch (error) {
+  console.log('⚠️ Content enricher not found, using basic processing');
+}
+
+// Extended type للتعامل مع الحقول الإضافية
+interface ExtendedContent {
+  id: string;
+  lessonId: string;
+  fullText: string;
+  summary: string | null;
+  keyPoints: string | null;
+  examples: string | null;
+  exercises: string | null;
+  enrichedContent?: string | null;
+  lastEnrichedAt?: Date | null;
+  enrichmentLevel?: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export class DocumentProcessor {
   private readonly chunkSize = 500;
@@ -10,8 +35,13 @@ export class DocumentProcessor {
   
   /**
    * Process ALL lessons - works with ANY subject
+   * Now with optional content enrichment!
    */
-  async processAllContent(): Promise<void> {
+  async processAllContent(options?: {
+    enrichContent?: boolean;
+    enrichmentLevel?: 'basic' | 'intermediate' | 'advanced' | 'comprehensive';
+    batchSize?: number;
+  }): Promise<void> {
     console.log('🔄 Processing all content for RAG...\n');
     
     const lessons = await prisma.lesson.findMany({
@@ -32,24 +62,56 @@ export class DocumentProcessor {
     }
     
     console.log(`📚 Found ${lessons.length} lessons to process`);
+    if (options?.enrichContent && contentEnricher) {
+      console.log(`✨ Content enrichment enabled (Level: ${options.enrichmentLevel || 'intermediate'})`);
+    } else if (options?.enrichContent && !contentEnricher) {
+      console.log('⚠️ Enrichment requested but enricher not available');
+    }
     
     let processed = 0;
     let failed = 0;
     
-    for (const lesson of lessons) {
-      if (!lesson.content) {
-        console.log(`⚠️ Skipping lesson "${lesson.title}" - no content`);
-        continue;
+    // معالجة بـ batches إذا تم تحديد ذلك
+    const batchSize = options?.batchSize || lessons.length;
+    
+    for (let i = 0; i < lessons.length; i += batchSize) {
+      const batch = lessons.slice(i, i + batchSize);
+      
+      if (batchSize < lessons.length) {
+        console.log(`\n🔄 Processing batch ${Math.floor(i / batchSize) + 1}`);
+        console.log('─'.repeat(50));
       }
       
-      try {
-        console.log(`\n📝 Processing [${processed + 1}/${lessons.length}]: ${lesson.title}`);
-        await this.processLessonContent(lesson.id);
-        processed++;
-        console.log(`   ✅ Success`);
-      } catch (error: any) {
-        failed++;
-        console.error(`   ❌ Failed: ${error.message}`);
+      for (const lesson of batch) {
+        if (!lesson.content) {
+          console.log(`⚠️ Skipping lesson "${lesson.title}" - no content`);
+          continue;
+        }
+        
+        try {
+          console.log(`\n📝 Processing [${processed + 1}/${lessons.length}]: ${lesson.title}`);
+          
+          // معالجة مع أو بدون تحسين
+          if (options?.enrichContent && contentEnricher) {
+            await this.processLessonWithEnrichment(lesson.id, {
+              enrichmentLevel: options.enrichmentLevel
+            });
+          } else {
+            await this.processLessonContent(lesson.id);
+          }
+          
+          processed++;
+          console.log(`   ✅ Success`);
+        } catch (error: any) {
+          failed++;
+          console.error(`   ❌ Failed: ${error.message}`);
+        }
+      }
+      
+      // تأخير بين الـ batches
+      if (i + batchSize < lessons.length && options?.enrichContent) {
+        console.log('\n⏳ Waiting before next batch...');
+        await this.delay(5000);
       }
     }
     
@@ -62,7 +124,61 @@ export class DocumentProcessor {
   }
   
   /**
+   * Process lesson content with AI enrichment
+   * NEW METHOD - يحسن المحتوى قبل معالجته
+   */
+  async processLessonWithEnrichment(
+    lessonId: string,
+    options?: {
+      enrichmentLevel?: 'basic' | 'intermediate' | 'advanced' | 'comprehensive';
+      skipEnrichment?: boolean;
+    }
+  ): Promise<void> {
+    console.log('\n🚀 Enhanced Lesson Processing Started');
+    console.log('━'.repeat(60));
+    
+    try {
+      // المرحلة 1: تحسين المحتوى (إذا كان contentEnricher متاح)
+      if (!options?.skipEnrichment && contentEnricher) {
+        console.log('\n📈 Phase 1: Content Enrichment');
+        console.log('─'.repeat(40));
+        
+        const enrichmentResult = await contentEnricher.enrichLesson(lessonId, {
+          level: options?.enrichmentLevel || 'intermediate',
+        });
+        
+        console.log(`✅ Content enriched: ${enrichmentResult.enrichmentRatio}x increase`);
+        console.log(`📊 Quality Score: ${enrichmentResult.quality.overallScore}/100`);
+      } else if (!contentEnricher) {
+        console.log('⚠️ Enricher not available, using standard processing');
+      }
+      
+      // المرحلة 2: معالجة RAG
+      console.log('\n🔍 Phase 2: RAG Processing');
+      console.log('─'.repeat(40));
+      
+      // معالجة المحتوى المحسن
+      await this.processEnrichedContent(lessonId);
+      
+      // المرحلة 3: فهرسة المحتوى الإضافي
+      console.log('\n🔗 Phase 3: Indexing Additional Content');
+      console.log('─'.repeat(40));
+      
+      await this.indexAdditionalContent(lessonId);
+      
+      console.log('\n' + '━'.repeat(60));
+      console.log('✅ Enhanced Processing Complete!');
+      console.log('━'.repeat(60));
+      
+    } catch (error) {
+      console.error('❌ Enhanced processing failed:', error);
+      throw error;
+    }
+  }
+  
+  /**
    * Process lesson content - universal approach
+   * UPDATED to handle enriched content if available
    */
   async processLessonContent(lessonId: string): Promise<void> {
     const lesson = await prisma.lesson.findUnique({
@@ -86,11 +202,22 @@ export class DocumentProcessor {
       where: { contentId: lesson.content.id },
     });
     
-    // Create universal enriched content
-    const enrichedContent = await this.createUniversalEnrichedContent(lesson);
+    // Cast to extended type للتعامل مع الحقول الإضافية
+    const content = lesson.content as ExtendedContent;
+    
+    // التحقق من وجود محتوى محسن
+    let contentToProcess: string;
+    
+    if (content.enrichedContent) {
+      console.log('   📝 Using enriched content for embeddings');
+      contentToProcess = this.buildEnrichedText(lesson);
+    } else {
+      console.log('   📝 Using original content');
+      contentToProcess = await this.createUniversalEnrichedContent(lesson);
+    }
     
     // Create smart chunks
-    const chunks = this.createSmartChunks(enrichedContent);
+    const chunks = this.createSmartChunks(contentToProcess);
     console.log(`   📄 Created ${chunks.length} chunks`);
     
     // Generate and store embeddings
@@ -121,6 +248,8 @@ export class DocumentProcessor {
               totalChunks: chunks.length,
               difficulty: lesson.difficulty,
               keyPoints: lesson.content.keyPoints ? JSON.parse(lesson.content.keyPoints) : [],
+              isEnriched: !!(content.enrichedContent),
+              enrichmentLevel: content.enrichmentLevel || 0,
             }),
           },
         });
@@ -131,9 +260,358 @@ export class DocumentProcessor {
   }
   
   /**
+   * Process enriched content specifically
+   * NEW METHOD
+   */
+  private async processEnrichedContent(lessonId: string): Promise<void> {
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        content: true,
+        unit: {
+          include: {
+            subject: true
+          }
+        }
+      }
+    });
+    
+    if (!lesson?.content) {
+      throw new Error('Lesson content not found');
+    }
+    
+    // حذف embeddings القديمة
+    await prisma.contentEmbedding.deleteMany({
+      where: { contentId: lesson.content.id },
+    });
+    
+    // Cast to extended type
+    const content = lesson.content as ExtendedContent;
+    
+    // استخدام المحتوى المحسن إن وجد
+    let contentToProcess: string;
+    
+    if (content.enrichedContent) {
+      const enriched = JSON.parse(content.enrichedContent);
+      contentToProcess = this.buildEnrichedTextFromJSON(enriched);
+      console.log('📝 Using enriched content for embeddings');
+    } else {
+      contentToProcess = await this.createUniversalEnrichedContent(lesson);
+      console.log('📝 Using original content (no enrichment found)');
+    }
+    
+    // إنشاء chunks محسّنة
+    const chunks = this.createEnhancedChunks(contentToProcess, lesson);
+    console.log(`📄 Created ${chunks.length} enriched chunks`);
+    
+    // توليد embeddings
+    console.log('🧮 Generating embeddings...');
+    let processed = 0;
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      try {
+        const { embedding } = await openAIService.generateEmbedding(chunk.text);
+        
+        await prisma.contentEmbedding.create({
+          data: {
+            contentId: lesson.content.id,
+            chunkIndex: i,
+            chunkText: chunk.text,
+            embedding: JSON.stringify(embedding),
+            metadata: JSON.stringify(chunk.metadata),
+          },
+        });
+        
+        processed++;
+        
+        // Progress indicator
+        if (processed % 5 === 0) {
+          console.log(`   Processed ${processed}/${chunks.length} chunks`);
+        }
+        
+      } catch (error) {
+        console.error(`   ❌ Failed to process chunk ${i + 1}:`, error);
+      }
+    }
+    
+    console.log(`✅ Successfully processed ${processed}/${chunks.length} chunks`);
+  }
+  
+  /**
+   * Index additional content (examples, questions, visuals)
+   * NEW METHOD
+   */
+  private async indexAdditionalContent(lessonId: string): Promise<void> {
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { content: true }
+    });
+    
+    if (!lesson?.content) return;
+    
+    // فهرسة الأمثلة
+    const examples = await prisma.example.findMany({
+      where: { lessonId: lesson.id },
+    });
+    
+    for (const example of examples) {
+      const text = `مثال: ${example.problem}\nالحل: ${example.solution}`;
+      const { embedding } = await openAIService.generateEmbedding(text);
+      
+      // توليد index number آمن
+      const indexNum = 10000 + (parseInt(example.id.replace(/[^0-9]/g, '').substring(0, 4)) || 0);
+      
+      await prisma.contentEmbedding.create({
+        data: {
+          contentId: lesson.content.id,
+          chunkIndex: indexNum,
+          chunkText: text,
+          embedding: JSON.stringify(embedding),
+          metadata: JSON.stringify({
+            type: 'example',
+            exampleId: example.id,
+            lessonId: lesson.id,
+          }),
+        },
+      }).catch(() => {});
+    }
+    
+    console.log(`   📌 Indexed ${examples.length} examples`);
+    
+    // فهرسة الأسئلة
+    const questions = await prisma.question.findMany({
+      where: { lessonId: lesson.id },
+    });
+    
+    for (const question of questions) {
+      const text = `سؤال: ${question.question}\nالإجابة: ${question.correctAnswer}${question.explanation ? '\nالشرح: ' + question.explanation : ''}`;
+      const { embedding } = await openAIService.generateEmbedding(text);
+      
+      // توليد index number آمن
+      const indexNum = 20000 + (parseInt(question.id.replace(/[^0-9]/g, '').substring(0, 4)) || 0);
+      
+      await prisma.contentEmbedding.create({
+        data: {
+          contentId: lesson.content.id,
+          chunkIndex: indexNum,
+          chunkText: text,
+          embedding: JSON.stringify(embedding),
+          metadata: JSON.stringify({
+            type: 'question',
+            questionId: question.id,
+            lessonId: lesson.id,
+          }),
+        },
+      }).catch(() => {});
+    }
+    
+    console.log(`   📌 Indexed ${questions.length} questions`);
+    
+    // فهرسة العناصر المرئية (إن وجدت الجداول في DB)
+    try {
+      const visualElements = await (prisma as any).visualElement?.findMany({
+        where: { lessonId: lesson.id },
+      }) || [];
+      
+      for (const visual of visualElements) {
+        const text = `${visual.title}: ${visual.description || ''}`;
+        const { embedding } = await openAIService.generateEmbedding(text);
+        
+        // توليد index number آمن
+        const indexNum = 30000 + (parseInt(visual.id.replace(/[^0-9]/g, '').substring(0, 4)) || 0);
+        
+        await prisma.contentEmbedding.create({
+          data: {
+            contentId: lesson.content.id,
+            chunkIndex: indexNum,
+            chunkText: text,
+            embedding: JSON.stringify(embedding),
+            metadata: JSON.stringify({
+              type: 'visual',
+              visualId: visual.id,
+              visualType: visual.type,
+              lessonId: lesson.id,
+            }),
+          },
+        }).catch(() => {});
+      }
+      
+      if (visualElements.length > 0) {
+        console.log(`   📌 Indexed ${visualElements.length} visual elements`);
+      }
+    } catch (error) {
+      // الجدول غير موجود بعد، لا مشكلة
+    }
+  }
+  
+  /**
+   * Build enriched text from JSON
+   * NEW METHOD
+   */
+  private buildEnrichedTextFromJSON(enriched: any): string {
+    const parts: string[] = [];
+    
+    // المحتوى الأساسي
+    parts.push('=== المحتوى المحسّن ===');
+    parts.push(enriched.enrichedText || enriched.detailedExplanation || '');
+    
+    // المفاهيم الأساسية
+    if (enriched.keyConceptsExplained?.length > 0) {
+      parts.push('\n=== المفاهيم الأساسية ===');
+      enriched.keyConceptsExplained.forEach((concept: any) => {
+        parts.push(`\n📌 ${concept.concept}`);
+        parts.push(concept.simpleExplanation);
+        parts.push(concept.detailedExplanation);
+        if (concept.analogies?.length > 0) {
+          parts.push(`تشبيهات: ${concept.analogies.join('، ')}`);
+        }
+      });
+    }
+    
+    // الأمثلة
+    if (enriched.realWorldExamples?.length > 0) {
+      parts.push('\n=== أمثلة من الواقع ===');
+      enriched.realWorldExamples.forEach((example: any, index: number) => {
+        parts.push(`\nمثال ${index + 1}: ${example.title}`);
+        parts.push(example.description);
+      });
+    }
+    
+    // التمارين
+    if (enriched.practiceProblems?.length > 0) {
+      parts.push('\n=== تمارين تطبيقية ===');
+      enriched.practiceProblems.forEach((problem: any, index: number) => {
+        parts.push(`\nتمرين ${index + 1}: ${problem.question}`);
+        if (problem.hints?.length > 0) {
+          parts.push(`تلميحات: ${problem.hints.join('، ')}`);
+        }
+        parts.push(`الحل: ${problem.solution}`);
+      });
+    }
+    
+    // المفاهيم الخاطئة الشائعة
+    if (enriched.commonMisconceptions?.length > 0) {
+      parts.push('\n=== تصحيح المفاهيم الخاطئة ===');
+      enriched.commonMisconceptions.forEach((misc: any) => {
+        parts.push(`\n❌ الخطأ الشائع: ${misc.commonMistake}`);
+        parts.push(`✅ الفهم الصحيح: ${misc.correctUnderstanding}`);
+      });
+    }
+    
+    // الأهداف التعليمية
+    if (enriched.learningObjectives?.length > 0) {
+      parts.push('\n=== الأهداف التعليمية ===');
+      enriched.learningObjectives.forEach((objective: string) => {
+        parts.push(`• ${objective}`);
+      });
+    }
+    
+    return parts.filter(p => p).join('\n');
+  }
+  
+  /**
+   * Build enriched text from existing content
+   * NEW METHOD - للتوافق مع الكود القديم
+   */
+  private buildEnrichedText(lesson: any): string {
+    const content = lesson.content as ExtendedContent;
+    if (content.enrichedContent) {
+      const enriched = JSON.parse(content.enrichedContent);
+      return this.buildEnrichedTextFromJSON(enriched);
+    }
+    
+    // Fallback to original content
+    return this.createUniversalEnrichedContentSync(lesson);
+  }
+  
+  /**
+   * Create enhanced chunks with better metadata
+   * NEW METHOD
+   */
+  private createEnhancedChunks(
+    content: string,
+    lesson: any
+  ): Array<{ text: string; metadata: any }> {
+    const chunks: Array<{ text: string; metadata: any }> = [];
+    const sections = content.split(/={3,}/);
+    
+    sections.forEach((section, sectionIndex) => {
+      if (!section.trim()) return;
+      
+      const paragraphs = section.split(/\n\n+/);
+      let currentChunk = '';
+      
+      paragraphs.forEach((paragraph) => {
+        if ((currentChunk.length + paragraph.length) > 800) {
+          if (currentChunk.trim()) {
+            chunks.push({
+              text: currentChunk.trim(),
+              metadata: this.buildChunkMetadata(lesson, sectionIndex, chunks.length),
+            });
+          }
+          currentChunk = paragraph;
+        } else {
+          currentChunk += '\n\n' + paragraph;
+        }
+      });
+      
+      if (currentChunk.trim()) {
+        chunks.push({
+          text: currentChunk.trim(),
+          metadata: this.buildChunkMetadata(lesson, sectionIndex, chunks.length),
+        });
+      }
+    });
+    
+    return chunks;
+  }
+  
+  /**
+   * Build metadata for chunk
+   * NEW METHOD
+   */
+  private buildChunkMetadata(lesson: any, sectionIndex: number, chunkIndex: number): any {
+    const content = lesson.content as ExtendedContent;
+    return {
+      lessonId: lesson.id,
+      lessonTitle: lesson.title,
+      lessonTitleEn: lesson.titleEn,
+      unitId: lesson.unit.id,
+      unitTitle: lesson.unit.title,
+      subjectId: lesson.unit.subject.id,
+      subjectName: lesson.unit.subject.name,
+      grade: lesson.unit.subject.grade,
+      sectionIndex,
+      chunkIndex,
+      isEnriched: true,
+      enrichmentDate: new Date().toISOString(),
+      enrichmentLevel: content.enrichmentLevel || 0,
+    };
+  }
+  
+  /**
+   * Synchronous version of createUniversalEnrichedContent
+   * NEW METHOD - للتوافق
+   */
+  private createUniversalEnrichedContentSync(lesson: any): string {
+    return this.createUniversalEnrichedContentInternal(lesson);
+  }
+  
+  /**
    * Create universal enriched content for ANY subject
+   * UPDATED - جعلها async/sync compatible
    */
   private async createUniversalEnrichedContent(lesson: any): Promise<string> {
+    return this.createUniversalEnrichedContentInternal(lesson);
+  }
+  
+  /**
+   * Internal method for content creation
+   * EXTRACTED للاستخدام من كلا النوعين
+   */
+  private createUniversalEnrichedContentInternal(lesson: any): string {
     const content = lesson.content;
     const keyPoints = content.keyPoints ? JSON.parse(content.keyPoints) : [];
     const examples = content.examples ? JSON.parse(content.examples) : [];
@@ -356,7 +834,13 @@ export class DocumentProcessor {
     return merged;
   }
   
-  // باقي الدوال كما هي...
+  /**
+   * Delay helper
+   * NEW METHOD
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
   
   /**
    * Verify embeddings are working
@@ -387,12 +871,64 @@ export class DocumentProcessor {
       
       if (sample) {
         const embedding = JSON.parse(sample.embedding);
+        const metadata = sample.metadata ? JSON.parse(sample.metadata) : {};
         console.log(`   Embedding dimensions: ${embedding.length}`);
         console.log(`   Subject: ${sample.content.lesson.unit.subject.name}`);
         console.log(`   Lesson: ${sample.content.lesson.title}`);
         console.log(`   Sample text: ${sample.chunkText.substring(0, 50)}...`);
+        console.log(`   Is Enriched: ${metadata.isEnriched || false}`);
+        console.log(`   Enrichment Level: ${metadata.enrichmentLevel || 0}`);
       }
     }
+  }
+  
+  /**
+   * Get statistics about content enrichment
+   * NEW METHOD
+   */
+  async getEnrichmentStats(): Promise<void> {
+    console.log('\n📊 Content Enrichment Statistics:');
+    console.log('─'.repeat(50));
+    
+    const totalLessons = await prisma.lesson.count({
+      where: { isPublished: true }
+    });
+    
+    // التعامل مع عدم وجود حقل enrichedContent
+    const enrichedLessons = await prisma.content.count({
+  where: {
+    lesson: {
+      isPublished: true
+    }
+  }
+});
+    
+    // محاولة الحصول على contentQuality إذا كان موجود
+    let contentQualities: any[] = [];
+    try {
+      contentQualities = await (prisma as any).contentQuality?.findMany({
+        orderBy: { overallScore: 'desc' },
+        take: 5,
+        include: {
+          lesson: true
+        }
+      }) || [];
+    } catch (error) {
+      // الجدول غير موجود، لا مشكلة
+    }
+    
+    console.log(`   Total Lessons: ${totalLessons}`);
+    console.log(`   Processed Lessons: ${enrichedLessons}`);
+    console.log(`   Processing Rate: ${((enrichedLessons / totalLessons) * 100).toFixed(1)}%`);
+    
+    if (contentQualities.length > 0) {
+      console.log('\n   Top Quality Lessons:');
+      contentQualities.forEach((q: any, i: number) => {
+        console.log(`   ${i + 1}. ${q.lesson.title} - Score: ${q.overallScore}/100`);
+      });
+    }
+    
+    console.log('─'.repeat(50));
   }
 }
 

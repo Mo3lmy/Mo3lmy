@@ -144,7 +144,10 @@ model Lesson {
   examples        Example[]
   formulas        Formula[]
   ragContent      RAGContent[]
-  learningSessions LearningSession[]  
+  learningSessions LearningSession[]
+  visualElements  VisualElement[]      // جديد
+  interactiveComponents InteractiveComponent[] // جديد
+  contentQuality  ContentQuality?       // جديد
   
   @@index([unitId])
   @@index([isPublished])
@@ -164,6 +167,12 @@ model Content {
   keyPoints       String?   // JSON array للنقاط الرئيسية
   examples        String?   // JSON array للأمثلة
   exercises       String?   // JSON array للتمارين
+  
+  // حقول جديدة للمحتوى المحسن
+  enrichedContent String?   // JSON للمحتوى المحسن بالكامل
+  lastEnrichedAt  DateTime? // آخر تحسين
+  enrichmentLevel Int       @default(0) // مستوى التحسين 0-10
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
@@ -172,6 +181,66 @@ model Content {
   embeddings      ContentEmbedding[]
   
   @@index([lessonId])
+  @@index([enrichmentLevel])
+}
+
+// ============= NEW ENRICHMENT MODELS =============
+
+// جدول العناصر المرئية
+model VisualElement {
+  id              String    @id @default(uuid())
+  lessonId        String
+  type            String    // diagram, chart, infographic, mindmap, 3d-model, animation
+  title           String
+  description     String?
+  specifications  String?   // JSON object للمواصفات
+  url             String?   // رابط الصورة أو الملف
+  alternativeText String?   // للإتاحة Accessibility
+  order           Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
+  
+  @@index([lessonId])
+}
+
+// جدول المكونات التفاعلية
+model InteractiveComponent {
+  id              String    @id @default(uuid())
+  lessonId        String
+  type            String    // calculator, simulator, quiz, drag-drop, timeline, map
+  title           String
+  instructions    String?
+  config          String?   // JSON configuration
+  isActive        Boolean   @default(true)
+  order           Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
+  
+  @@index([lessonId])
+}
+
+// جدول جودة المحتوى
+model ContentQuality {
+  id                String    @id @default(uuid())
+  lessonId          String    @unique
+  contentScore      Int       @default(0)     // 0-100
+  pedagogicalScore  Int       @default(0)     // 0-100
+  engagementScore   Int       @default(0)     // 0-100
+  overallScore      Int       @default(0)     // 0-100
+  lastAssessedAt    DateTime  @default(now())
+  assessmentDetails String?   // JSON with detailed assessment
+  
+  // Relations
+  lesson            Lesson    @relation(fields: [lessonId], references: [id])
+  
+  @@index([lessonId])
+  @@index([overallScore])
 }
 
 // ============= RAG SYSTEM MODELS =============
@@ -191,12 +260,20 @@ model Concept {
   @@index([lessonId])
 }
 
+// Example model محدث ليتوافق مع نظام التحسين
 model Example {
   id              String    @id @default(uuid())
-  problem         String
-  solution        String
-  order           Int
   lessonId        String
+  problem         String    // العنوان أو المشكلة
+  solution        String    // الحل أو الوصف
+  order           Int       @default(0)
+  
+  // حقول إضافية للمحتوى المحسن
+  type            String?   // real-world, mathematical, scientific, historical
+  difficulty      String?   // basic, intermediate, advanced
+  visualAid       String?   // وصف للعنصر المرئي المصاحب
+  relatedConcept  String?   // المفهوم المرتبط
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
@@ -305,6 +382,11 @@ model Question {
   // New fields for RAG
   tags            String?   // JSON array للـ tags
   isActive        Boolean   @default(true)
+  
+  // حقول جديدة للمحتوى المحسن
+  learningObjective String?  // الهدف التعليمي المرتبط
+  hints           String?   // JSON array للتلميحات
+  stepByStepSolution String? // JSON array للحل خطوة بخطوة
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
