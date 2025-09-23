@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/websocket/orchestrator-events.ts
-// الوظيفة: ربط Orchestrator مع WebSocket events مع دعم Flow Manager والمكونات الرياضية
+// الوظيفة: ربط Orchestrator مع WebSocket events مع دعم Flow Manager والشرائح التفاعلية
 
 import { Socket } from 'socket.io';
 import { lessonFlowManager, FlowState } from '../flow/lesson-flow-manager.service';
@@ -14,11 +14,11 @@ import { latexRenderer, type MathExpression } from '../../core/interactive/math/
 import { mathSlideGenerator } from '../../core/video/enhanced-slide.generator';
 
 /**
- * إضافة Event Handlers للـ Orchestrator مع Flow Manager
+ * إضافة Event Handlers للـ Orchestrator مع Flow Manager المحسن
  */
 export function setupOrchestratorEvents(socket: Socket, user: any): void {
   
-  // ============= LESSON FLOW EVENTS (محدث مع Flow Manager) =============
+  // ============= LESSON FLOW EVENTS (محسن) =============
   
   /**
    * بدء درس بنظام Flow Manager الذكي
@@ -45,7 +45,7 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
         socket.id
       );
       
-      // Create flow using Flow Manager instead of Orchestrator
+      // Create flow using Flow Manager
       const flowContext = await lessonFlowManager.createFlow(
         user.id,
         data.lessonId,
@@ -55,6 +55,7 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
           autoAdvance: data.preferences?.autoAdvance ?? true,
           voiceEnabled: data.preferences?.voiceEnabled ?? true,
           progressiveReveal: data.preferences?.progressiveReveal ?? true,
+          playbackSpeed: data.preferences?.playbackSpeed || 1,
           startWithChat: data.startWithChat
         }
       );
@@ -74,90 +75,155 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
       const isMathLesson = lesson?.unit.subject.name.includes('رياضيات') || 
                            lesson?.unit.subject.nameEn?.toLowerCase().includes('math');
       
-      // Listen for flow state changes
-      lessonFlowManager.on('stateChanged', (stateData) => {
-        if (stateData.userId === user.id) {
-          socket.emit('flow_state_changed', {
-            lessonId: stateData.lessonId,
-            currentState: stateData.currentState,
-            previousState: stateData.previousState,
-            event: stateData.event
-          });
+      if (isMathLesson && flowContext) {
+        flowContext.isMathLesson = true;
+        flowContext.mathInteractive = data.preferences?.mathInteractive ?? true;
+      }
+      
+      // Setup event listeners ONCE per lesson
+      setupFlowEventListeners(socket, user.id, data.lessonId);
+      
+      // Send success response
+      socket.emit('lesson_started', {
+        success: true,
+        lessonId: data.lessonId,
+        sessionId: session.id,
+        mode: flowContext.mode,
+        totalSlides: flowContext.totalSlides,
+        isMathLesson,
+        features: {
+          voiceEnabled: flowContext.voiceEnabled,
+          progressiveReveal: flowContext.progressiveReveal,
+          autoAdvance: flowContext.autoAdvance,
+          mathInteractive: isMathLesson && flowContext.mathInteractive
         }
       });
       
-      // Listen for orchestrator events (still needed for slides)
-      lessonOrchestrator.on('slideChanged', (data) => {
-        if (data.userId === user.id) {
-          socket.emit('slide_changed', data);
-        }
-      });
-      
-      lessonOrchestrator.on('pointRevealed', (data) => {
-        if (data.userId === user.id) {
-          socket.emit('point_revealed', data);
-        }
-      });
-      
-      lessonOrchestrator.on('sectionChanged', (data) => {
-        if (data.userId === user.id) {
-          socket.emit('section_changed', data);
-        }
-      });
-      
-      console.log(`✅ Flow Manager lesson started: ${flowContext.totalSlides} slides in ${flowContext.mode} mode`);
+      console.log(`✅ Lesson started successfully: ${flowContext.totalSlides} slides in ${flowContext.mode} mode`);
       
     } catch (error: any) {
       console.error('Failed to start orchestrated lesson:', error);
       socket.emit('error', {
         code: 'ORCHESTRATION_FAILED',
-        message: 'فشل بدء الدرس التفاعلي'
+        message: 'فشل بدء الدرس التفاعلي',
+        details: error.message
       });
     }
   });
   
   /**
-   * معالجة اختيار المستخدم لطريقة العرض (محدث)
+   * معالجة اختيار المستخدم لطريقة العرض (محسن)
    */
   socket.on('user_mode_choice', async (data: {
     lessonId: string;
-    choice: 'chat_only' | 'slides_only' | 'slides_with_voice' | 'interactive';
+    choice: 'chat_only' | 'slides_only' | 'slides_with_voice' | 'interactive' | string;
   }) => {
     try {
-      // Process through Flow Manager
-      await lessonFlowManager.handleUserMessage(
-        user.id,
-        data.lessonId,
-        data.choice
-      );
+      // Handle both button clicks and text input
+      let mode = data.choice;
       
-      // Transition to appropriate state
+      // If it's text input, process through Flow Manager
+      if (!['chat_only', 'slides_only', 'slides_with_voice', 'interactive'].includes(mode)) {
+        await lessonFlowManager.handleUserMessage(user.id, data.lessonId, mode);
+        return;
+      }
+      
+      // Direct mode selection
       await lessonFlowManager.transition(
         user.id,
         data.lessonId,
         'mode_selected',
-        { mode: data.choice }
+        { mode }
       );
       
       socket.emit('mode_selected', {
-        mode: data.choice,
-        message: `تم اختيار ${
-          data.choice === 'chat_only' ? 'المحادثة فقط' :
-          data.choice === 'slides_only' ? 'الشرائح التفاعلية' :
-          data.choice === 'slides_with_voice' ? 'الشرائح مع الشرح الصوتي' :
-          'التجربة التفاعلية الكاملة'
-        }`
+        success: true,
+        mode,
+        message: getModeMessage(mode)
       });
       
-    } catch (error) {
+    } catch (error: any) {
       socket.emit('choice_error', {
-        message: 'فشل معالجة الاختيار'
+        message: 'فشل معالجة الاختيار',
+        error: error.message
       });
     }
   });
   
   /**
-   * التنقل الذكي بين الشرائح (محدث للعمل مع Flow Manager)
+   * عرض الشريحة عندما تكون جاهزة (جديد)
+   */
+  socket.on('request_slide', async (data: {
+    lessonId: string;
+    slideNumber?: number;
+  }) => {
+    try {
+      const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
+      if (!flow) {
+        socket.emit('slide_error', { message: 'لا يوجد درس نشط' });
+        return;
+      }
+      
+      const slideNumber = data.slideNumber ?? flow.currentSlide;
+      
+      // Check if slide is already generated
+      if (flow.slidesGenerated?.has(slideNumber)) {
+        socket.emit('slide_ready', {
+          slideNumber,
+          html: flow.slidesGenerated.get(slideNumber),
+          fromCache: true,
+          navigation: getNavigationInfo(flow, slideNumber)
+        });
+      } else {
+        // Request slide generation
+        const slide = flow.sections[flow.currentSection]?.slides[slideNumber];
+        if (slide) {
+          socket.emit('generating_slide', { slideNumber });
+          
+          // Generate slide HTML (will be cached in Flow Manager)
+          await lessonFlowManager.transition(user.id, data.lessonId, 'generate_slide', {
+            slideNumber
+          });
+        }
+      }
+    } catch (error: any) {
+      socket.emit('slide_error', { 
+        message: 'فشل عرض الشريحة',
+        error: error.message
+      });
+    }
+  });
+  
+  /**
+   * التحكم في العرض التقديمي (محسن)
+   */
+  socket.on('presentation_control', async (data: {
+    lessonId: string;
+    action: 'pause' | 'resume' | 'next' | 'previous' | 'skip' | 'repeat';
+  }) => {
+    try {
+      await lessonFlowManager.handlePresentationControl(
+        user.id,
+        data.lessonId,
+        data.action
+      );
+      
+      socket.emit('control_success', {
+        action: data.action,
+        message: getControlMessage(data.action)
+      });
+      
+    } catch (error: any) {
+      socket.emit('control_error', {
+        action: data.action,
+        message: 'فشل التحكم في العرض',
+        error: error.message
+      });
+    }
+  });
+  
+  /**
+   * التنقل الذكي بين الشرائح (محسن)
    */
   socket.on('navigate_smart', async (data: {
     lessonId: string;
@@ -167,103 +233,73 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
     try {
       const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
       if (!flow) {
-        socket.emit('navigation_error', {
-          message: 'لا يوجد درس نشط'
-        });
+        socket.emit('navigation_error', { message: 'لا يوجد درس نشط' });
         return;
       }
       
-      let slide = null;
+      let targetSlide: number | null = null;
       
-      // Still use orchestrator for navigation (it manages slides)
       switch (data.direction) {
         case 'next':
-          slide = await lessonOrchestrator.navigateNext(user.id, data.lessonId);
+          targetSlide = flow.currentSlide + 1;
+          if (targetSlide < flow.totalSlides) {
+            await lessonFlowManager.transition(user.id, data.lessonId, 'next_slide');
+          } else {
+            await lessonFlowManager.transition(user.id, data.lessonId, 'section_finished');
+          }
           break;
           
         case 'previous':
-          slide = await lessonOrchestrator.navigatePrevious(user.id, data.lessonId);
+          if (flow.currentSlide > 0) {
+            await lessonFlowManager.transition(user.id, data.lessonId, 'previous_slide');
+          }
           break;
           
         case 'section':
           if (typeof data.target === 'string') {
             const sectionIndex = flow.sections.findIndex(s => s.id === data.target);
             if (sectionIndex >= 0) {
-              const firstSlideOfSection = flow.sections
-                .slice(0, sectionIndex)
-                .reduce((sum, s) => sum + s.slides.length, 0);
-              slide = await lessonOrchestrator.jumpToSlide(
-                user.id, 
-                data.lessonId, 
-                firstSlideOfSection
-              );
+              flow.currentSection = sectionIndex;
+              flow.currentSlide = flow.sections[sectionIndex].slides[0]?.number || 0;
+              await notifySlideChange(socket, flow);
             }
           }
           break;
           
         case 'slide':
-          if (typeof data.target === 'number') {
-            slide = await lessonOrchestrator.jumpToSlide(
-              user.id,
-              data.lessonId,
-              data.target
-            );
+          if (typeof data.target === 'number' && data.target >= 0 && data.target < flow.totalSlides) {
+            flow.currentSlide = data.target;
+            await notifySlideChange(socket, flow);
           }
           break;
       }
       
-      if (slide && slide.html) {
-        socket.emit('slide_ready', {
-          slideNumber: slide.number,
-          html: slide.html,
-          type: slide.type,
-          duration: slide.duration,
-          progressive: slide.points ? {
-            totalPoints: slide.points.length,
-            currentPoint: 0,
-            timings: slide.pointTimings
-          } : null,
-          navigation: {
-            canGoBack: slide.number > 0,
-            canGoForward: slide.number < (flow?.totalSlides || 0) - 1,
-            currentSlide: slide.number + 1,
-            totalSlides: flow?.totalSlides || 0
-          }
-        });
-      } else if (!slide && data.direction === 'next') {
-        // Lesson completed - transition to completion state
-        await lessonFlowManager.transition(
-          user.id,
-          data.lessonId,
-          'next_section'
-        );
-      }
-      
-    } catch (error) {
+    } catch (error: any) {
       socket.emit('navigation_error', {
-        message: 'فشل الانتقال'
+        message: 'فشل الانتقال',
+        error: error.message
       });
     }
   });
   
   /**
-   * معالجة رسالة مع تحليل الإجراءات (محدث للعمل مع Flow Manager)
+   * معالجة رسالة مع تحليل الإجراءات (محسن)
    */
   socket.on('chat_with_action', async (data: {
     lessonId: string;
     message: string;
   }) => {
     try {
-      console.log(`💬 Chat with action analysis via Flow Manager: "${data.message}"`);
+      console.log(`💬 Processing message: "${data.message}"`);
       
-      // Process message through Flow Manager
+      // Process through Flow Manager
       await lessonFlowManager.handleUserMessage(
         user.id,
         data.lessonId,
         data.message
       );
       
-      // Also send through realtime chat for response
+      // Get response from chat service
       await realtimeChatService.handleUserMessage(
         user.id,
         data.lessonId,
@@ -271,11 +307,10 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
         socket.id
       );
       
-      // Check flow state to determine if action was taken
+      // Check if any action was triggered
       const flowState = lessonFlowManager.getFlowState(user.id, data.lessonId);
       
-      if (flowState !== null && 
-          (flowState === FlowState.ANSWERING_QUESTION || flowState === FlowState.SHOWING_EXAMPLE)) {
+      if (flowState && isActionState(flowState)) {
         socket.emit('action_detected', {
           state: flowState,
           message: data.message,
@@ -286,126 +321,32 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
     } catch (error: any) {
       console.error('Chat action processing failed:', error);
       socket.emit('chat_error', {
-        message: 'فشل معالجة الرسالة'
+        message: 'فشل معالجة الرسالة',
+        error: error.message
       });
     }
   });
   
   /**
-   * إيقاف/استئناف العرض (محدث للعمل مع Flow Manager)
-   */
-  socket.on('control_presentation', async (data: {
-    lessonId: string;
-    action: 'pause' | 'resume' | 'restart' | 'skip_point' | 'repeat_point';
-  }) => {
-    try {
-      const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
-      if (!flow) {
-        socket.emit('control_error', {
-          action: data.action,
-          message: 'لا يوجد درس نشط'
-        });
-        return;
-      }
-      
-      let transitionEvent = '';
-      let message = '';
-      
-      switch (data.action) {
-        case 'pause':
-          transitionEvent = 'pause';
-          message = 'تم إيقاف العرض';
-          break;
-          
-        case 'resume':
-          transitionEvent = 'resume';
-          message = 'تم استئناف العرض';
-          break;
-          
-        case 'restart':
-          // Restart current slide from beginning
-          flow.progressiveState.currentPointIndex = 0;
-          flow.progressiveState.pointsRevealed = [];
-          await lessonOrchestrator.presentSlideProgressive(flow, flow.currentSlide);
-          socket.emit('slide_restarted', {
-            slideNumber: flow.currentSlide
-          });
-          message = 'تمت إعادة الشريحة';
-          break;
-          
-        case 'skip_point':
-          // Skip to next point immediately
-          const currentSection = flow.sections[flow.currentSection];
-          const currentSlideIndex = flow.currentSlide - flow.sections
-            .slice(0, flow.currentSection)
-            .reduce((sum, s) => sum + s.slides.length, 0);
-          const currentSlide = currentSection.slides[currentSlideIndex];
-          
-          if (currentSlide?.points && 
-              flow.progressiveState.currentPointIndex < currentSlide.points.length - 1) {
-            flow.progressiveState.currentPointIndex++;
-            socket.emit('point_skipped', {
-              newPointIndex: flow.progressiveState.currentPointIndex
-            });
-          }
-          message = 'تم تخطي النقطة';
-          break;
-          
-        case 'repeat_point':
-          // Repeat current point
-          const pointIndex = flow.progressiveState.currentPointIndex;
-          const section = flow.sections[flow.currentSection];
-          const slideIdx = flow.currentSlide - flow.sections
-            .slice(0, flow.currentSection)
-            .reduce((sum, s) => sum + s.slides.length, 0);
-          const slide = section.slides[slideIdx];
-          
-          socket.emit('repeat_point', {
-            pointIndex,
-            content: slide?.points?.[pointIndex]
-          });
-          message = 'تم تكرار النقطة';
-          break;
-      }
-      
-      // Transition if needed
-      if (transitionEvent) {
-        await lessonFlowManager.transition(
-          user.id,
-          data.lessonId,
-          transitionEvent
-        );
-      }
-      
-      socket.emit('control_success', {
-        action: data.action,
-        message
-      });
-      
-    } catch (error) {
-      socket.emit('control_error', {
-        action: data.action,
-        message: 'فشل التحكم في العرض'
-      });
-    }
-  });
-  
-  /**
-   * معالجة مقاطعة أثناء العرض (محدث للعمل مع Flow Manager)
+   * معالجة مقاطعة أثناء العرض (محسن)
    */
   socket.on('interrupt_presentation', async (data: {
     lessonId: string;
     question: string;
   }) => {
     try {
-      // Process interruption through Flow Manager
-      await lessonFlowManager.handleUserMessage(
-        user.id,
-        data.lessonId,
-        data.question
-      );
+      const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
+      if (!flow) {
+        socket.emit('interruption_error', { message: 'لا يوجد درس نشط' });
+        return;
+      }
       
-      // Transition to answering question state
+      // Pause presentation
+      if (!flow.isPaused) {
+        await lessonFlowManager.handlePresentationControl(user.id, data.lessonId, 'pause');
+      }
+      
+      // Process question
       await lessonFlowManager.transition(
         user.id,
         data.lessonId,
@@ -416,10 +357,11 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
       socket.emit('interruption_handled', {
         question: data.question,
         presentationPaused: true,
-        waitingForResponse: true
+        waitingForResponse: true,
+        willResume: flow.mode !== 'chat_only'
       });
       
-      // The answer will come through chat
+      // Get answer through chat
       await realtimeChatService.handleUserMessage(
         user.id,
         data.lessonId,
@@ -427,9 +369,22 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
         socket.id
       );
       
-    } catch (error) {
+      // Auto-resume after delay if not chat mode
+      if (flow.mode !== 'chat_only') {
+        setTimeout(async () => {
+          if (flow.isPaused && !flow.isInterrupted) {
+            await lessonFlowManager.handlePresentationControl(user.id, data.lessonId, 'resume');
+            socket.emit('presentation_resumed', {
+              message: 'نستكمل الدرس...'
+            });
+          }
+        }, 5000);
+      }
+      
+    } catch (error: any) {
       socket.emit('interruption_error', {
-        message: 'فشل معالجة السؤال'
+        message: 'فشل معالجة السؤال',
+        error: error.message
       });
     }
   });
@@ -444,22 +399,72 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
     try {
       const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
       if (flow) {
-        flow.playbackSpeed = data.speed;
-        flow.revealDelay = 3 / data.speed; // Adjust reveal delay
+        flow.playbackSpeed = Math.max(0.5, Math.min(2, data.speed));
+        flow.revealDelay = 3 / flow.playbackSpeed;
         
         socket.emit('speed_changed', {
-          speed: data.speed,
-          message: `السرعة الآن ${data.speed}x`
+          speed: flow.playbackSpeed,
+          message: `سرعة العرض الآن ${flow.playbackSpeed}x`
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       socket.emit('speed_error', {
-        message: 'فشل تغيير السرعة'
+        message: 'فشل تغيير السرعة',
+        error: error.message
       });
     }
   });
   
-  // ============= MATH-SPECIFIC EVENTS (كما هي) =============
+  /**
+   * طلب صوت الشريحة (جديد)
+   */
+  socket.on('request_slide_audio', async (data: {
+    lessonId: string;
+    slideNumber: number;
+  }) => {
+    try {
+      const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
+      if (!flow || !flow.voiceEnabled) {
+        socket.emit('audio_not_available', { 
+          message: 'الصوت غير متاح' 
+        });
+        return;
+      }
+      
+      // Check audio queue/cache
+      if (flow.audioQueue && flow.audioQueue.length > data.slideNumber) {
+        socket.emit('audio_ready', {
+          slideNumber: data.slideNumber,
+          audioUrl: flow.audioQueue[data.slideNumber],
+          duration: 15, // Default duration
+          fromCache: true
+        });
+      } else {
+        // Generate audio
+        socket.emit('generating_audio', { slideNumber: data.slideNumber });
+        
+        // This would trigger audio generation through appropriate service
+        const slide = flow.sections[flow.currentSection]?.slides[data.slideNumber];
+        if (slide) {
+          // Simulate audio generation (replace with actual service call)
+          setTimeout(() => {
+            socket.emit('audio_ready', {
+              slideNumber: data.slideNumber,
+              audioUrl: `/api/audio/slide-${data.slideNumber}.mp3`,
+              duration: slide.duration || 20
+            });
+          }, 1000);
+        }
+      }
+    } catch (error: any) {
+      socket.emit('audio_error', {
+        message: 'فشل توليد الصوت',
+        error: error.message
+      });
+    }
+  });
+  
+  // ============= MATH-SPECIFIC EVENTS =============
   
   /**
    * طلب شريحة معادلة رياضية
@@ -545,6 +550,12 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
           break;
       }
       
+      // Update flow if exists
+      const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
+      if (flow) {
+        flow.mathProblemsAttempted = (flow.mathProblemsAttempted || 0) + 1;
+      }
+      
       socket.emit('math_slide_ready', {
         html: slideHtml,
         type: data.type,
@@ -557,7 +568,8 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
       console.error('Math slide generation failed:', error);
       socket.emit('error', {
         code: 'MATH_SLIDE_FAILED',
-        message: 'فشل توليد الشريحة الرياضية'
+        message: 'فشل توليد الشريحة الرياضية',
+        error: error.message
       });
     }
   });
@@ -588,14 +600,21 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
             stepNumber: 1,
             latex: data.equation,
             explanation: 'المعادلة الأصلية'
-          }
+          },
+          // Add more solution steps here
         ],
-        answer: 'x = 2'
+        answer: 'x = 2' // Placeholder - would use actual solver
       };
       
       const solutionHtml = data.showSteps 
         ? latexRenderer.renderWithSteps(expression)
         : latexRenderer.renderExpression(data.equation);
+      
+      // Update flow stats
+      const flow = lessonFlowManager.getFlow(user.id, data.equation); // lessonId from context
+      if (flow) {
+        flow.mathProblemsSolved = (flow.mathProblemsSolved || 0) + 1;
+      }
       
       socket.emit('equation_solved', {
         equation: data.equation,
@@ -604,9 +623,10 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
         steps: data.showSteps ? solution.steps : undefined
       });
       
-    } catch (error) {
+    } catch (error: any) {
       socket.emit('solve_error', {
-        message: 'فشل حل المعادلة'
+        message: 'فشل حل المعادلة',
+        error: error.message
       });
     }
   });
@@ -642,9 +662,10 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
         variables: data.variables
       });
       
-    } catch (error) {
+    } catch (error: any) {
       socket.emit('update_error', {
-        message: 'فشل تحديث المتغيرات'
+        message: 'فشل تحديث المتغيرات',
+        error: error.message
       });
     }
   });
@@ -662,7 +683,9 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
     try {
       console.log(`🎯 Direct action requested: ${data.action}`);
       
-      if (data.action === 'math_equation') {
+      const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
+      
+      if (data.action === 'math_equation' && flow?.isMathLesson) {
         const mathSlide = await mathSlideGenerator.generateMathSlide({
           title: 'معادلة تفاعلية',
           mathExpressions: [latexRenderer.getCommonExpressions().quadratic],
@@ -683,7 +706,7 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
       }
       
       // Process action through Flow Manager
-      const actionMessage = data.context || `طلب ${data.action}`;
+      const actionMessage = `${data.action} ${data.context || ''}`.trim();
       await lessonFlowManager.handleUserMessage(
         user.id,
         data.lessonId,
@@ -695,10 +718,11 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
         success: true
       });
       
-    } catch (error) {
+    } catch (error: any) {
       socket.emit('action_error', {
         action: data.action,
-        message: 'فشل تنفيذ الإجراء'
+        message: 'فشل تنفيذ الإجراء',
+        error: error.message
       });
     }
   });
@@ -713,20 +737,19 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
     const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
     if (flow) {
       // Convert string level to number
-      let levelNum = 50;
-      if (data.level === 'low') levelNum = 25;
-      else if (data.level === 'high') levelNum = 90;
-      flow.comprehensionLevel = levelNum;
+      flow.comprehensionLevel = 
+        data.level === 'low' ? 25 :
+        data.level === 'high' ? 90 : 50;
+      
+      socket.emit('comprehension_updated', {
+        level: data.level,
+        message: `تم تعديل مستوى الشرح ليناسب ${
+          data.level === 'low' ? 'المبتدئين' :
+          data.level === 'medium' ? 'المستوى المتوسط' :
+          'المستوى المتقدم'
+        }`
+      });
     }
-    
-    socket.emit('comprehension_updated', {
-      level: data.level,
-      message: `تم تعديل مستوى الشرح ليناسب ${
-        data.level === 'low' ? 'المبتدئين' :
-        data.level === 'medium' ? 'المستوى المتوسط' :
-        'المستوى المتقدم'
-      }`
-    });
   });
   
   /**
@@ -744,13 +767,14 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
   }) => {
     console.log(`📊 Interaction tracked: ${data.interaction.type} on slide ${data.slideNumber}`);
     
-    if (data.interaction.type === 'math_interaction') {
-      console.log(`🧮 Math interaction: ${data.interaction.element} = ${data.interaction.value}`);
-    }
-    
     const flow = lessonFlowManager.getFlow(user.id, data.lessonId);
     if (flow) {
       flow.engagementScore = Math.min(100, flow.engagementScore + 1);
+      flow.hasUserEngaged = true;
+      
+      if (data.interaction.type === 'math_interaction') {
+        console.log(`🧮 Math interaction: ${data.interaction.element} = ${data.interaction.value}`);
+      }
     }
   });
   
@@ -764,25 +788,52 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
     
     if (flow) {
       const stats = lessonFlowManager.getFlowStats(user.id, data.lessonId);
+      const currentSection = flow.sections[flow.currentSection];
       
       socket.emit('lesson_progress', {
         lessonId: data.lessonId,
-        currentSlide: flow.currentSlide,
-        totalSlides: flow.totalSlides,
-        sectionsCompleted: flow.sections.filter(s => s.completed).length,
-        totalSections: flow.sections.length,
-        estimatedTimeRemaining: Math.max(0, 
-          flow.estimatedDuration - Math.floor(flow.actualDuration / 60)),
-        questionsAsked: flow.questionsAsked,
-        engagementScore: flow.engagementScore,
-        mathProblemsolved: flow.mathProblemsSolved || 0,
-        progressiveState: {
+        current: {
+          slide: flow.currentSlide + 1,
+          section: flow.currentSection + 1,
+          sectionTitle: currentSection?.title,
+          slideReady: flow.currentSlideReady
+        },
+        total: {
+          slides: flow.totalSlides,
+          sections: flow.sections.length
+        },
+        completion: {
+          sectionsCompleted: flow.sections.filter(s => s.completed).length,
+          slidesViewed: flow.currentSlide + 1,
+          percentComplete: Math.round(((flow.currentSlide + 1) / flow.totalSlides) * 100)
+        },
+        time: {
+          elapsed: Math.floor(flow.actualDuration / 60),
+          estimated: flow.estimatedDuration,
+          remaining: Math.max(0, flow.estimatedDuration - Math.floor(flow.actualDuration / 60))
+        },
+        engagement: {
+          questionsAsked: flow.questionsAsked,
+          engagementScore: flow.engagementScore,
+          comprehensionLevel: flow.comprehensionLevel,
+          mathProblemsSolved: flow.mathProblemsSolved || 0
+        },
+        progressive: {
           isRevealing: flow.progressiveState.isRevealing,
           currentPoint: flow.progressiveState.currentPointIndex,
           pointsRevealed: flow.progressiveState.pointsRevealed.length
         },
-        flowState: stats?.currentState,
-        flowStats: stats
+        state: {
+          current: stats?.currentState,
+          isPaused: flow.isPaused,
+          isPresenting: flow.isPresenting,
+          mode: flow.mode
+        },
+        audio: {
+          enabled: flow.voiceEnabled,
+          playing: flow.isAudioPlaying,
+          currentAudio: flow.currentAudioUrl
+        }
       });
     } else {
       socket.emit('lesson_progress', {
@@ -793,53 +844,141 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
   });
   
   /**
-   * طلب رسم بياني
+   * إنهاء الدرس
    */
-  socket.on('request_graph', async (data: {
-    function: string;
-    range?: { min: number; max: number };
-    type?: 'linear' | 'quadratic' | 'cubic' | 'trigonometric';
+  socket.on('end_lesson', async (data: {
+    lessonId: string;
+    reason?: string;
   }) => {
     try {
-      console.log(`📈 Graph requested for: ${data.function}`);
+      await lessonFlowManager.stopFlow(user.id, data.lessonId);
       
-      socket.emit('graph_ready', {
-        function: data.function,
-        message: 'Graph plotter will be implemented in next phase',
-        placeholder: true
+      socket.emit('lesson_ended', {
+        lessonId: data.lessonId,
+        reason: data.reason || 'user_request',
+        message: 'تم إنهاء الدرس'
       });
       
-    } catch (error) {
-      socket.emit('graph_error', {
-        message: 'فشل رسم الدالة'
-      });
-    }
-  });
-  
-  /**
-   * طلب آلة حاسبة
-   */
-  socket.on('open_calculator', async (data: {
-    type?: 'basic' | 'scientific' | 'graphing';
-  }) => {
-    try {
-      console.log(`🔢 Calculator requested: ${data.type || 'scientific'}`);
-      
-      socket.emit('calculator_ready', {
-        type: data.type || 'scientific',
-        message: 'Calculator will be implemented in next phase',
-        placeholder: true
-      });
-      
-    } catch (error) {
-      socket.emit('calculator_error', {
-        message: 'فشل فتح الآلة الحاسبة'
+    } catch (error: any) {
+      socket.emit('end_error', {
+        message: 'فشل إنهاء الدرس',
+        error: error.message
       });
     }
   });
 }
 
 // ============= HELPER FUNCTIONS =============
+
+/**
+ * Setup flow event listeners
+ */
+function setupFlowEventListeners(socket: Socket, userId: string, lessonId: string): void {
+  // Remove old listeners first
+  lessonFlowManager.removeAllListeners('stateChanged');
+  lessonOrchestrator.removeAllListeners('slideChanged');
+  lessonOrchestrator.removeAllListeners('pointRevealed');
+  lessonOrchestrator.removeAllListeners('sectionChanged');
+  
+  // Listen for flow state changes
+  lessonFlowManager.on('stateChanged', (stateData) => {
+    if (stateData.userId === userId && stateData.lessonId === lessonId) {
+      socket.emit('flow_state_changed', {
+        lessonId: stateData.lessonId,
+        currentState: stateData.currentState,
+        previousState: stateData.previousState,
+        event: stateData.event,
+        timestamp: new Date()
+      });
+    }
+  });
+  
+  // Listen for slide changes
+  lessonOrchestrator.on('slideChanged', (data) => {
+    if (data.userId === userId) {
+      socket.emit('slide_changed', data);
+    }
+  });
+  
+  // Listen for point reveals
+  lessonOrchestrator.on('pointRevealed', (data) => {
+    if (data.userId === userId) {
+      socket.emit('point_revealed', data);
+    }
+  });
+  
+  // Listen for section changes
+  lessonOrchestrator.on('sectionChanged', (data) => {
+    if (data.userId === userId) {
+      socket.emit('section_changed', data);
+    }
+  });
+}
+
+/**
+ * Get mode message
+ */
+function getModeMessage(mode: string): string {
+  const messages: Record<string, string> = {
+    'chat_only': 'تم اختيار المحادثة التعليمية',
+    'slides_only': 'تم اختيار الشرائح التفاعلية',
+    'slides_with_voice': 'تم اختيار الشرائح مع الشرح الصوتي',
+    'interactive': 'تم اختيار التجربة التفاعلية الكاملة'
+  };
+  return messages[mode] || 'تم اختيار طريقة العرض';
+}
+
+/**
+ * Get control message
+ */
+function getControlMessage(action: string): string {
+  const messages: Record<string, string> = {
+    'pause': 'تم إيقاف العرض مؤقتاً',
+    'resume': 'تم استئناف العرض',
+    'next': 'الانتقال للشريحة التالية',
+    'previous': 'الرجوع للشريحة السابقة',
+    'skip': 'تم تخطي الشريحة',
+    'repeat': 'إعادة الشريحة'
+  };
+  return messages[action] || 'تم تنفيذ الأمر';
+}
+
+/**
+ * Get navigation info
+ */
+function getNavigationInfo(flow: any, slideNumber: number): any {
+  return {
+    current: slideNumber + 1,
+    total: flow.totalSlides,
+    canGoBack: slideNumber > 0,
+    canGoForward: slideNumber < flow.totalSlides - 1,
+    section: flow.currentSection + 1,
+    totalSections: flow.sections.length
+  };
+}
+
+/**
+ * Check if state is action state
+ */
+function isActionState(state: FlowState): boolean {
+  return [
+    FlowState.ANSWERING_QUESTION,
+    FlowState.SHOWING_EXAMPLE,
+    FlowState.QUIZ_MODE,
+    FlowState.PRACTICE_MODE
+  ].includes(state);
+}
+
+/**
+ * Notify slide change
+ */
+async function notifySlideChange(socket: Socket, flow: any): Promise<void> {
+  socket.emit('slide_changed', {
+    slideNumber: flow.currentSlide,
+    sectionIndex: flow.currentSection,
+    navigation: getNavigationInfo(flow, flow.currentSlide)
+  });
+}
 
 /**
  * Broadcast slide to all in lesson
@@ -884,5 +1023,22 @@ function generateLatexWithVariables(variables: Record<string, number>): string {
   const b = variables.b || 0;
   const c = variables.c || 0;
   
-  return `${a}x^2 ${b >= 0 ? '+' : ''} ${b}x ${c >= 0 ? '+' : ''} ${c} = 0`;
+  let equation = '';
+  
+  // Build equation string based on values
+  if (a !== 0) {
+    equation += a === 1 ? 'x^2' : a === -1 ? '-x^2' : `${a}x^2`;
+  }
+  
+  if (b !== 0) {
+    equation += b > 0 ? ` + ${b}x` : ` - ${Math.abs(b)}x`;
+  }
+  
+  if (c !== 0) {
+    equation += c > 0 ? ` + ${c}` : ` - ${Math.abs(c)}`;
+  }
+  
+  equation += ' = 0';
+  
+  return equation.trim();
 }
