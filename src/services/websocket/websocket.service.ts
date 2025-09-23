@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/websocket/websocket.service.ts
-// النسخة المحدثة الكاملة مع دعم المكونات الرياضية التفاعلية + تحميل الدروس ديناميكياً
+// النسخة المحدثة الكاملة مع إصلاح جميع المشاكل
 
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -13,7 +13,7 @@ import { setupOrchestratorEvents } from './orchestrator-events';
 import { lessonOrchestrator } from '../orchestrator/lesson-orchestrator.service';
 import { openAIService } from '../ai/openai.service';
 
-// ============= NEW MATH IMPORTS =============
+// ============= MATH IMPORTS =============
 import { mathSlideGenerator } from '../../core/video/enhanced-slide.generator';
 import { latexRenderer, type MathExpression } from '../../core/interactive/math/latex-renderer';
 
@@ -39,7 +39,7 @@ export class WebSocketService {
   private io: SocketIOServer | null = null;
   private connectedUsers: Map<string, Socket> = new Map();
   private rooms: Map<string, Set<string>> = new Map();
-  private userSessions: Map<string, SessionInfo> = new Map(); // تتبع الجلسات النشطة
+  private userSessions: Map<string, SessionInfo> = new Map();
   
   /**
    * Initialize WebSocket server with proper configuration
@@ -48,11 +48,9 @@ export class WebSocketService {
     this.io = new SocketIOServer(httpServer, {
       cors: {
         origin: function(origin, callback) {
-          // السماح لكل Origins في development
           if (config.NODE_ENV === 'development') {
             callback(null, true);
           } else {
-            // في production، حدد domains معينة
             const allowedOrigins = ['https://yourdomain.com'];
             if (!origin || allowedOrigins.indexOf(origin) !== -1) {
               callback(null, true);
@@ -65,113 +63,106 @@ export class WebSocketService {
         methods: ['GET', 'POST']
       },
       
-      // مهم جداً: استخدم polling أولاً
       transports: ['polling', 'websocket'],
-      
-      // السماح بالـ upgrade
       allowUpgrades: true,
       
-      // Connection settings محدثة
-      pingTimeout: 120000, // 2 minutes
+      // Connection settings
+      pingTimeout: 120000,
       pingInterval: 25000,
       connectTimeout: 45000,
       
-      // Path
       path: '/socket.io/',
-      
-      // Allow EIO3 clients
       allowEIO3: true
     });
     
-    // Authentication middleware - مُحدث للتطوير
-this.io.use(async (socket, next) => {
-  try {
-    // 🔴 للاختبار والتطوير فقط
-    if (config.NODE_ENV === 'development') {
-      // احصل على مستخدم حقيقي من قاعدة البيانات
-      const realUser = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { email: 'dev@test.com' },
-            { email: 'student@test.com' },
-            { email: 'test@test.com' }
-          ]
-        },
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          role: true,
-          grade: true
+    // Authentication middleware
+    this.io.use(async (socket, next) => {
+      try {
+        // Development mode - use test user
+        if (config.NODE_ENV === 'development') {
+          const realUser = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: 'dev@test.com' },
+                { email: 'student@test.com' },
+                { email: 'test@test.com' }
+              ]
+            },
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+              grade: true
+            }
+          });
+          
+          if (realUser) {
+            console.log(`✅ Using real user from DB: ${realUser.email} (ID: ${realUser.id})`);
+            socket.data.user = realUser;
+            return next();
+          } else {
+            // Create test user if not exists
+            console.log('⚠️ No test users found, creating dev@test.com...');
+            
+            const newUser = await prisma.user.create({
+              data: {
+                email: 'dev@test.com',
+                password: '$2b$10$dummy',
+                firstName: 'Dev',
+                lastName: 'User',
+                role: 'STUDENT',
+                grade: 6,
+                isActive: true,
+                emailVerified: true
+              }
+            });
+            
+            console.log(`✅ Created new user: ${newUser.email} (ID: ${newUser.id})`);
+            socket.data.user = {
+              id: newUser.id,
+              email: newUser.email,
+              firstName: newUser.firstName,
+              lastName: newUser.lastName,
+              role: newUser.role,
+              grade: newUser.grade
+            };
+            return next();
+          }
         }
-      });
-      
-      if (realUser) {
-        console.log(`✅ Using real user from DB: ${realUser.email} (ID: ${realUser.id})`);
-        socket.data.user = realUser;
-        return next();
-      } else {
-        // إذا لم يجد أي مستخدم، أنشئ واحد
-        console.log('⚠️ No test users found, creating dev@test.com...');
         
-        const newUser = await prisma.user.create({
-          data: {
-            email: 'dev@test.com',
-            password: '$2b$10$dummy', // dummy password hash
-            firstName: 'Dev',
-            lastName: 'User',
-            role: 'STUDENT',
-            grade: 6,
-            isActive: true,
-            emailVerified: true
+        // Production authentication
+        const token = socket.handshake.auth.token;
+        if (!token) {
+          return next(new Error('Authentication required'));
+        }
+        
+        const decoded = jwt.verify(token, config.JWT_SECRET) as any;
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            grade: true
           }
         });
         
-        console.log(`✅ Created new user: ${newUser.email} (ID: ${newUser.id})`);
-        socket.data.user = {
-          id: newUser.id,
-          email: newUser.email,
-          firstName: newUser.firstName,
-          lastName: newUser.lastName,
-          role: newUser.role,
-          grade: newUser.grade
-        };
-        return next();
-      }
-    }
-    
-    // الكود الأصلي للإنتاج
-    const token = socket.handshake.auth.token;
-    if (!token) {
-      return next(new Error('Authentication required'));
-    }
-    
-    const decoded = jwt.verify(token, config.JWT_SECRET) as any;
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        grade: true
+        if (!user) {
+          return next(new Error('User not found'));
+        }
+        
+        socket.data.user = user;
+        next();
+        
+      } catch (error) {
+        console.error('Authentication error:', error);
+        next(new Error('Authentication failed'));
       }
     });
-    
-    if (!user) {
-      return next(new Error('User not found'));
-    }
-    
-    socket.data.user = user;
-    next();
-    
-  } catch (error) {
-    console.error('Authentication error:', error);
-    next(new Error('Authentication failed'));
-  }
-});
     
     // Setup event handlers
     this.setupEventHandlers();
@@ -219,12 +210,12 @@ this.io.use(async (socket, next) => {
         userId: user.id,
         socketId: socket.id,
         serverTime: new Date().toISOString(),
-        userGrade: user.grade,  // NEW: إرسال الصف للفلترة
+        userGrade: user.grade,
         features: {
           math: true,
           interactive: true,
           voice: false,
-          dynamicLessons: true  // NEW: إعلام بدعم الدروس الديناميكية
+          dynamicLessons: true
         },
         lastSession: lastSession ? {
           lessonId: lastSession.lessonId,
@@ -241,7 +232,7 @@ this.io.use(async (socket, next) => {
         totalUsers: this.connectedUsers.size
       });
       
-      // ============= ORCHESTRATOR EVENTS (NEW) =============
+      // ============= ORCHESTRATOR EVENTS =============
       
       // Setup orchestrator event handlers
       setupOrchestratorEvents(socket, user);
@@ -249,9 +240,16 @@ this.io.use(async (socket, next) => {
       // Additional orchestrator-specific events
       socket.on('get_lesson_structure', async (lessonId: string) => {
         try {
-          // Fetch the lesson with all its fields
+          // Verify lesson exists first
           const lesson = await prisma.lesson.findUnique({
-            where: { id: lessonId }
+            where: { id: lessonId },
+            include: {
+              unit: {
+                include: {
+                  subject: true
+                }
+              }
+            }
           });
           
           if (!lesson) {
@@ -262,80 +260,48 @@ this.io.use(async (socket, next) => {
             return;
           }
           
-          // Fetch related unit and subject
-          const unit = await prisma.unit.findUnique({
-            where: { id: lesson.unitId },
-            include: {
-              subject: true
-            }
-          });
-          
-          if (!unit) {
-            socket.emit('error', {
-              code: 'UNIT_NOT_FOUND',
-              message: 'الوحدة غير موجودة'
-            });
-            return;
-          }
-          
           // Check if it's a math lesson
-          const isMathLesson = unit.subject.name.includes('رياضيات') || 
-                               unit.subject.name.toLowerCase().includes('math');
+          const isMathLesson = lesson.unit.subject.name.includes('رياضيات') || 
+                               lesson.unit.subject.name.toLowerCase().includes('math');
           
-          // Parse content - use only fields that exist in the model
-          const keyPoints = JSON.parse(lesson.keyPoints || '[]');
+          // Parse content safely
+          const keyPoints = lesson.keyPoints ? JSON.parse(lesson.keyPoints) : [];
           
-          // Note: The Lesson model doesn't have a 'content' field
-          // Examples and objectives might be stored in description or summary
-          let examples = [];
-          let objectives = [];
+          // Extract objectives and examples from summary or description if available
+          let objectives: string[] = [];
+          let examples: string[] = [];
           
-          // Try to extract from description or summary if they contain JSON
-          if (lesson.description) {
-            try {
-              const descData = typeof lesson.description === 'string' && 
-                              lesson.description.startsWith('{') ? 
-                              JSON.parse(lesson.description) : {};
-              examples = descData.examples || [];
-              objectives = descData.objectives || [];
-            } catch (e) {
-              // description is not JSON, it's plain text
-            }
-          }
-          
-          // If not found in description, try summary
-          if (examples.length === 0 && lesson.summary) {
+          if (lesson.summary) {
             try {
               const summaryData = typeof lesson.summary === 'string' && 
                                  lesson.summary.startsWith('{') ? 
                                  JSON.parse(lesson.summary) : {};
-              examples = summaryData.examples || examples;
               objectives = summaryData.objectives || objectives;
+              examples = summaryData.examples || examples;
             } catch (e) {
-              // summary is not JSON, it's plain text
+              // Not JSON, use as is
             }
           }
           
-          // If still not found, extract from keyPoints
+          // Use keyPoints as objectives if none found
           if (objectives.length === 0 && keyPoints.length > 0) {
-            // Use first few keyPoints as objectives
             objectives = keyPoints.slice(0, 3);
           }
           
           socket.emit('lesson_structure', {
             lessonId,
             title: lesson.title,
-            subject: unit.subject.name,
-            unit: unit.title,
-            grade: unit.subject.grade,
-            isMathLesson,  // NEW: indicate if it's a math lesson
+            subject: lesson.unit.subject.name,
+            unit: lesson.unit.title,
+            grade: lesson.unit.subject.grade,
+            isMathLesson,
             structure: {
               keyPoints: keyPoints.length,
               examples: examples.length,
               objectives: objectives.length,
-              hasVideo: false, // Since videoUrl doesn't exist in the model
-              hasInteractiveComponents: isMathLesson,  // NEW
-              estimatedDuration: Math.ceil((keyPoints.length * 5) + (examples.length * 3) + 10)
+              hasVideo: false,
+              hasInteractiveComponents: isMathLesson,
+              estimatedDuration: lesson.estimatedMinutes || 30
             },
             metadata: {
               createdAt: lesson.createdAt,
@@ -344,6 +310,7 @@ this.io.use(async (socket, next) => {
           });
           
         } catch (error) {
+          console.error('Error getting lesson structure:', error);
           socket.emit('error', {
             code: 'STRUCTURE_ERROR',
             message: 'فشل جلب هيكل الدرس'
@@ -351,153 +318,132 @@ this.io.use(async (socket, next) => {
         }
       });
       
-      // ============= DYNAMIC LESSONS LOADING (NEW) =============
+      // ============= DYNAMIC LESSONS LOADING =============
       
       /**
-       * إرسال قائمة الدروس المتاحة
+       * Get available lessons with proper filtering
        */
-      // src/services/websocket/websocket.service.ts
-
-
-socket.on('get_available_lessons', async (options?: {
-  grade?: number;
-  subjectId?: string;
-  search?: string;
-  limit?: number;
-}) => {
-  try {
-    console.log(`📚 Fetching available lessons for ${user.email}`);
-    console.log(`   User grade: ${user.grade || 'not set'}`);
-    console.log(`   Requested grade: ${options?.grade || 'not specified'}`);
-    
-    // Build query filters
-    const where: any = {
-      isPublished: true
-    };
-    
-    // ⚠️ تعليق فلتر الصف مؤقتاً للتطوير
-    // إذا كنت تريد تفعيل الفلتر، قم بإلغاء التعليق
-    /*
-    const targetGrade = options?.grade || user.grade;
-    if (targetGrade) {
-      where.unit = {
-        subject: {
-          grade: targetGrade
-        }
-      };
-    }
-    */
-    
-    // Filter by subject if specified (keep this)
-    if (options?.subjectId) {
-      where.unit = {
-        ...where.unit,
-        subjectId: options.subjectId
-      };
-    }
-    
-    // Search in title if specified (keep this)
-    if (options?.search) {
-      where.OR = [
-        { title: { contains: options.search } },
-        { titleAr: { contains: options.search } },
-        { description: { contains: options.search } }
-      ];
-    }
-    
-    // Debug: طباعة الـ where clause
-    console.log('   Where clause:', JSON.stringify(where, null, 2));
-    
-    // Fetch lessons with pagination
-    const lessons = await prisma.lesson.findMany({
-      where,
-      select: {
-        id: true,
-        title: true,
-        titleAr: true,
-        description: true,
-        difficulty: true,
-        estimatedMinutes: true,
-        unit: {
-          select: {
-            title: true,
-            subject: {
-              select: { 
-                name: true,
-                nameAr: true,
-                grade: true,
-                icon: true
-              }
-            }
+      socket.on('get_available_lessons', async (options?: {
+        grade?: number;
+        subjectId?: string;
+        search?: string;
+        limit?: number;
+      }) => {
+        try {
+          console.log(`📚 Fetching available lessons for ${user.email}`);
+          
+          // Build query filters
+          const where: any = {};
+          
+          // Always show published lessons only
+          where.isPublished = true;
+          
+          // Filter by subject if specified
+          if (options?.subjectId) {
+            where.unit = {
+              subjectId: options.subjectId
+            };
           }
+          
+          // Filter by grade if specified
+          if (options?.grade) {
+            where.unit = {
+              ...where.unit,
+              subject: {
+                grade: options.grade
+              }
+            };
+          }
+          
+          // Search filter
+          if (options?.search) {
+            where.OR = [
+              { title: { contains: options.search } },
+              { titleAr: { contains: options.search } },
+              { description: { contains: options.search } }
+            ];
+          }
+          
+          console.log('   Query filters:', JSON.stringify(where, null, 2));
+          
+          // Fetch lessons
+          const lessons = await prisma.lesson.findMany({
+            where,
+            select: {
+              id: true,
+              title: true,
+              titleAr: true,
+              description: true,
+              difficulty: true,
+              estimatedMinutes: true,
+              unit: {
+                select: {
+                  title: true,
+                  subject: {
+                    select: { 
+                      name: true,
+                      nameAr: true,
+                      grade: true,
+                      icon: true
+                    }
+                  }
+                }
+              }
+            },
+            take: options?.limit || 50,
+            orderBy: [
+              { unit: { subject: { grade: 'asc' } } },
+              { unit: { order: 'asc' } },
+              { order: 'asc' }
+            ]
+          });
+          
+          console.log(`   📊 Found ${lessons.length} lessons`);
+          
+          // Format lessons for client
+          const formattedLessons = lessons.map(lesson => ({
+            id: lesson.id,
+            title: lesson.titleAr || lesson.title,
+            titleEn: lesson.title,
+            description: lesson.description,
+            difficulty: lesson.difficulty,
+            estimatedMinutes: lesson.estimatedMinutes || 30,
+            subject: lesson.unit.subject.nameAr || lesson.unit.subject.name,
+            subjectIcon: lesson.unit.subject.icon,
+            unit: lesson.unit.title,
+            grade: lesson.unit.subject.grade,
+            isMath: lesson.unit.subject.name.includes('رياضيات') || 
+                   lesson.unit.subject.name.toLowerCase().includes('math')
+          }));
+          
+          socket.emit('available_lessons', {
+            lessons: formattedLessons,
+            total: formattedLessons.length,
+            grade: options?.grade || 'all',
+            filters: {
+              grade: options?.grade,
+              subjectId: options?.subjectId,
+              search: options?.search
+            },
+            message: formattedLessons.length === 0 ? 
+              'لا توجد دروس متاحة حالياً' :
+              `تم تحميل ${formattedLessons.length} درس`
+          });
+          
+          console.log(`   ✅ Sent ${formattedLessons.length} lessons`);
+          
+        } catch (error) {
+          console.error('❌ Error fetching lessons:', error);
+          socket.emit('available_lessons', {
+            lessons: [],
+            total: 0,
+            error: 'فشل تحميل الدروس'
+          });
         }
-      },
-      take: options?.limit || 50,
-      orderBy: [
-        { unit: { subject: { grade: 'asc' } } },
-        { unit: { order: 'asc' } },
-        { order: 'asc' }
-      ]
-    });
-    
-    // Debug logs
-    console.log(`   📊 Total lessons found: ${lessons.length}`);
-    if (lessons.length > 0) {
-      const grades = [...new Set(lessons.map(l => l.unit.subject.grade))];
-      console.log(`   📚 Grades available: ${grades.join(', ')}`);
-      
-      // عرض أول 3 دروس للتأكد
-      console.log('   📝 Sample lessons:');
-      lessons.slice(0, 3).forEach((lesson, i) => {
-        console.log(`      ${i + 1}. ${lesson.titleAr || lesson.title} (Grade ${lesson.unit.subject.grade})`);
       });
-    }
-    
-    // Format lessons for client
-    const formattedLessons = lessons.map(lesson => ({
-      id: lesson.id,
-      title: lesson.titleAr || lesson.title, // استخدم العنوان العربي أولاً
-      titleEn: lesson.title,
-      description: lesson.description,
-      difficulty: lesson.difficulty,
-      estimatedMinutes: lesson.estimatedMinutes,
-      subject: lesson.unit.subject.nameAr || lesson.unit.subject.name,
-      subjectIcon: lesson.unit.subject.icon,
-      unit: lesson.unit.title,
-      grade: lesson.unit.subject.grade,
-      isMath: lesson.unit.subject.name.includes('رياضيات') || 
-             lesson.unit.subject.name.toLowerCase().includes('math')
-    }));
-    
-    // إرسال النتائج
-    socket.emit('available_lessons', {
-      lessons: formattedLessons,
-      total: formattedLessons.length,
-      grade: options?.grade || user.grade || 'all',
-      filters: {
-        grade: options?.grade || user.grade,
-        subjectId: options?.subjectId,
-        search: options?.search
-      },
-      message: formattedLessons.length === 0 ? 
-        'لا توجد دروس متاحة. تأكد من وجود دروس منشورة في قاعدة البيانات.' :
-        `تم تحميل ${formattedLessons.length} درس بنجاح`
-    });
-    
-    console.log(`   ✅ Sent ${formattedLessons.length} lessons to ${user.email}`);
-    
-  } catch (error) {
-    console.error('❌ Error fetching lessons:', error);
-    socket.emit('available_lessons', {
-      lessons: [],
-      total: 0,
-      error: 'فشل تحميل الدروس: ' + (error as Error).message
-    });
-  }
-});
       
       /**
-       * إرسال قائمة المواد المتاحة
+       * Get available subjects
        */
       socket.on('get_available_subjects', async (grade?: number) => {
         try {
@@ -545,7 +491,7 @@ socket.on('get_available_lessons', async (options?: {
       });
       
       /**
-       * البحث في الدروس
+       * Search lessons
        */
       socket.on('search_lessons', async (query: string) => {
         try {
@@ -598,7 +544,7 @@ socket.on('get_available_lessons', async (options?: {
             count: lessons.length
           });
           
-          console.log(`   🔍 Search results: ${lessons.length} lessons for "${query}"`);
+          console.log(`   🔍 Found ${lessons.length} lessons for "${query}"`);
           
         } catch (error) {
           console.error('Search error:', error);
@@ -610,15 +556,16 @@ socket.on('get_available_lessons', async (options?: {
         }
       });
       
-      // ============= MATH-SPECIFIC EVENTS (NEW) =============
+      // ============= MATH-SPECIFIC EVENTS (FIXED) =============
       
       /**
-       * طلب شريحة رياضية تفاعلية
+       * Request math slide - WITH PROPER VALIDATION
        */
-      socket.on('request_math_slide', async (data: {
+      socket.on('request_math_slide', async (data?: {
         lessonId?: string;
-        slideNumber: number;
-        mathContent: {
+        slideNumber?: number;
+        type?: string;
+        mathContent?: {
           title?: string;
           subtitle?: string;
           expressions?: MathExpression[];
@@ -626,41 +573,111 @@ socket.on('get_available_lessons', async (options?: {
           interactive?: boolean;
           showSteps?: boolean;
         };
+        content?: any; // Legacy support
         theme?: string;
       }) => {
         try {
           console.log(`🧮 Math slide requested by ${user.email}`);
           
-          // Generate math slide HTML
-          const slideHTML = await mathSlideGenerator.generateMathSlide(
-            {
-              title: data.mathContent.title,
-              subtitle: data.mathContent.subtitle,
-              mathExpressions: data.mathContent.expressions || [],
-              showSteps: data.mathContent.showSteps,
-              interactive: data.mathContent.interactive,
-              mathLayout: data.mathContent.layout
-            },
-            (data.theme as any) || 'default',
-            {
-              enableInteractivity: data.mathContent.interactive !== false,
-              showSolveButton: true,
-              autoPlaySteps: false
-            }
-          );
+          // ✅ VALIDATION - Check if data exists
+          if (!data) {
+            data = { type: 'interactive' };
+          }
           
-          // Send back to user
+          // ✅ Ensure we have content
+          const content = data.mathContent || data.content || {};
+          const title = content.title || 'معادلة رياضية تفاعلية';
+          const subtitle = content.subtitle;
+          
+          // ✅ Default expressions if none provided
+          let expressions = content.expressions || [];
+          if (expressions.length === 0) {
+            // Use default quadratic expression
+            expressions = [latexRenderer.getCommonExpressions().quadratic];
+          }
+          
+          // ✅ Determine slide type
+          const slideType = data.type || 'interactive';
+          
+          // Generate appropriate slide based on type
+          let slideHTML = '';
+          
+          if (slideType === 'interactive' || slideType === 'equation') {
+            // Interactive math slide
+            slideHTML = await mathSlideGenerator.generateMathSlide(
+              {
+                title,
+                subtitle,
+                mathExpressions: expressions,
+                showSteps: content.showSteps !== false,
+                interactive: content.interactive !== false,
+                mathLayout: content.layout || 'single'
+              },
+              (data.theme as any) || 'default',
+              {
+                enableInteractivity: true,
+                showSolveButton: true,
+                autoPlaySteps: false
+              }
+            );
+          } else if (slideType === 'problem') {
+            // Math problem slide
+            slideHTML = await mathSlideGenerator.generateMathProblemSlide(
+              {
+                title,
+                question: content.problem || 'حل المعادلة التالية',
+                equation: content.equation,
+                hints: content.hints || ['فكر في القانون العام'],
+                solution: content.solution
+              },
+              (data.theme as any) || 'default'
+            );
+          } else if (slideType === 'comparison') {
+            // Comparison slide
+            const equations = content.equations || [
+              {
+                title: 'معادلة خطية',
+                latex: '2x + 3 = 7',
+                description: 'معادلة من الدرجة الأولى',
+                color: '#667eea'
+              },
+              {
+                title: 'معادلة تربيعية',
+                latex: 'x^2 - 4x + 3 = 0',
+                description: 'معادلة من الدرجة الثانية',
+                color: '#48bb78'
+              }
+            ];
+            slideHTML = await mathSlideGenerator.generateComparisonSlide(
+              equations,
+              (data.theme as any) || 'default'
+            );
+          } else {
+            // Default interactive slide
+            slideHTML = await mathSlideGenerator.generateMathSlide(
+              {
+                title,
+                mathExpressions: [latexRenderer.getCommonExpressions().quadratic],
+                interactive: true,
+                showSteps: true
+              },
+              'default'
+            );
+          }
+          
+          // Send response
           socket.emit('math_slide_ready', {
-            slideNumber: data.slideNumber,
+            slideNumber: data.slideNumber || 0,
             html: slideHTML,
-            type: 'math',
+            type: slideType,
+            lessonId: data.lessonId,
             timestamp: new Date().toISOString()
           });
           
           // Update session if lesson exists
           if (data.lessonId) {
             const sessionInfo = this.userSessions.get(user.id);
-            if (sessionInfo && sessionInfo.lessonId === data.lessonId) {
+            if (sessionInfo && sessionInfo.lessonId === data.lessonId && data.slideNumber !== undefined) {
               await sessionService.updateSlidePosition(
                 sessionInfo.sessionId, 
                 data.slideNumber
@@ -676,7 +693,7 @@ socket.on('get_available_lessons', async (options?: {
             }
           }
           
-          console.log(`   ✅ Math slide generated successfully`);
+          console.log(`   ✅ Math slide generated successfully (${slideType})`);
           
         } catch (error: any) {
           console.error('Error generating math slide:', error);
@@ -688,11 +705,11 @@ socket.on('get_available_lessons', async (options?: {
       });
       
       /**
-       * طلب شريحة مسألة رياضية
+       * Request math problem slide
        */
       socket.on('request_math_problem_slide', async (data: {
         lessonId?: string;
-        slideNumber: number;
+        slideNumber?: number;
         problem: {
           title: string;
           question: string;
@@ -706,14 +723,13 @@ socket.on('get_available_lessons', async (options?: {
         try {
           console.log(`📝 Math problem slide requested: "${data.problem.title}"`);
           
-          // Generate problem slide
           const slideHTML = await mathSlideGenerator.generateMathProblemSlide(
             data.problem,
             (data.theme as any) || 'default'
           );
           
           socket.emit('math_problem_slide_ready', {
-            slideNumber: data.slideNumber,
+            slideNumber: data.slideNumber || 0,
             html: slideHTML,
             problemTitle: data.problem.title,
             timestamp: new Date().toISOString()
@@ -731,7 +747,7 @@ socket.on('get_available_lessons', async (options?: {
       });
       
       /**
-       * طلب مقارنة معادلات
+       * Request equation comparison
        */
       socket.on('request_equation_comparison', async (data: {
         lessonId?: string;
@@ -746,7 +762,6 @@ socket.on('get_available_lessons', async (options?: {
         try {
           console.log(`📊 Equation comparison requested`);
           
-          // Generate comparison slide
           const slideHTML = await mathSlideGenerator.generateComparisonSlide(
             data.equations,
             (data.theme as any) || 'default'
@@ -770,7 +785,7 @@ socket.on('get_available_lessons', async (options?: {
       });
       
       /**
-       * تحديث متغير في معادلة تفاعلية
+       * Update equation variable
        */
       socket.on('update_equation_variable', async (data: {
         lessonId?: string;
@@ -780,7 +795,6 @@ socket.on('get_available_lessons', async (options?: {
       }) => {
         console.log(`🔧 Variable update: ${data.variable} = ${data.value}`);
         
-        // Broadcast to others in the lesson
         if (data.lessonId) {
           const roomName = `lesson:${data.lessonId}`;
           socket.to(roomName).emit('variable_updated', {
@@ -796,7 +810,7 @@ socket.on('get_available_lessons', async (options?: {
       });
       
       /**
-       * حل معادلة
+       * Solve equation
        */
       socket.on('solve_equation', async (data: {
         lessonId?: string;
@@ -806,8 +820,7 @@ socket.on('get_available_lessons', async (options?: {
         try {
           console.log(`🧮 Solving equation: ${data.equation}`);
           
-          // Here we could integrate with a math solver library
-          // For now, we'll use AI to solve
+          // Use AI to solve if available
           if (process.env.OPENAI_API_KEY) {
             const prompt = `
 حل المعادلة التالية خطوة بخطوة:
@@ -846,6 +859,19 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
                 timestamp: new Date().toISOString()
               });
             }
+          } else {
+            // Fallback solution
+            socket.emit('equation_solved', {
+              equation: data.equation,
+              solution: {
+                steps: [
+                  { stepNumber: 1, latex: data.equation, explanation: 'المعادلة الأصلية' }
+                ],
+                solution: 'يتطلب حل هذه المعادلة استخدام الذكاء الاصطناعي',
+                result: null
+              },
+              timestamp: new Date().toISOString()
+            });
           }
           
         } catch (error: any) {
@@ -858,168 +884,20 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
       });
       
       /**
-       * طلب معادلات جاهزة من المكتبة
+       * Get common equations
        */
-      socket.on('get_common_equations', async (data: {
+      socket.on('get_common_equations', async (data?: {
         subject?: 'algebra' | 'geometry' | 'trigonometry' | 'calculus';
         grade?: number;
       }) => {
-        console.log(`📚 Common equations requested for ${data.subject || 'all'}`);
+        console.log(`📚 Common equations requested for ${data?.subject || 'all'}`);
         
-        // Get common expressions from the library
         const commonExpressions = latexRenderer.getCommonExpressions();
         
-        // Filter by subject if specified
-        let filtered = Object.entries(commonExpressions);
-        if (data.subject) {
-          // Filter logic based on subject
-          // This is simplified - in production, you'd have better categorization
-        }
-        
         socket.emit('common_equations', {
-          equations: Object.fromEntries(filtered),
-          count: filtered.length,
-          subject: data.subject
-        });
-      });
-      
-      socket.on('generate_smart_slide', async (data: {
-        lessonId: string;
-        prompt: string;
-        type?: string;
-      }) => {
-        try {
-          console.log(`🎨 Smart slide generation requested: "${data.prompt}"`);
-          
-          // Check if it's a math-related request
-          const isMathRequest = data.prompt.includes('معادلة') || 
-                               data.prompt.includes('رياضي') ||
-                               data.prompt.includes('حل') ||
-                               data.prompt.includes('equation') ||
-                               data.prompt.includes('solve');
-          
-          if (isMathRequest) {
-            // Generate a math slide
-            const mathExpression: MathExpression = {
-              id: 'generated',
-              latex: 'x^2 + 2x + 1 = 0',  // Default, will be replaced by AI
-              description: data.prompt,
-              type: 'equation',
-              isInteractive: true
-            };
-            
-            // Use AI to generate appropriate equation
-            if (process.env.OPENAI_API_KEY) {
-              const aiPrompt = `
-قم بإنشاء معادلة رياضية بناء على الطلب التالي:
-"${data.prompt}"
-
-أرجع المعادلة بصيغة LaTeX فقط.`;
-              
-              try {
-                const response = await openAIService.chat([
-                  { role: 'user', content: aiPrompt }
-                ], {
-                  temperature: 0.5,
-                  maxTokens: 100
-                });
-                
-                mathExpression.latex = response.trim();
-              } catch (aiError) {
-                console.error('AI equation generation failed:', aiError);
-              }
-            }
-            
-            // Generate math slide
-            const slideHTML = await mathSlideGenerator.generateMathSlide(
-              {
-                title: 'معادلة مولدة بالذكاء الاصطناعي',
-                mathExpressions: [mathExpression],
-                interactive: true,
-                showSteps: true
-              },
-              'default'
-            );
-            
-            socket.emit('smart_slide_ready', {
-              html: slideHTML,
-              content: { type: 'math', expression: mathExpression },
-              prompt: data.prompt,
-              isMathSlide: true
-            });
-            
-          } else {
-            // Use original logic for non-math slides
-            let slideContent: any = {
-              title: 'شريحة مخصصة',
-              text: data.prompt
-            };
-            
-            if (process.env.OPENAI_API_KEY) {
-              const aiPrompt = `
-قم بإنشاء محتوى شريحة تعليمية بناء على الطلب التالي:
-"${data.prompt}"
-
-أرجع النتيجة بصيغة JSON:
-{
-  "type": "content|bullet|quiz",
-  "title": "عنوان الشريحة",
-  "content": "المحتوى" أو ["نقطة 1", "نقطة 2"] للـ bullets
-}`;
-
-              try {
-                const response = await openAIService.chat([
-                  { role: 'user', content: aiPrompt }
-                ], {
-                  temperature: 0.7,
-                  maxTokens: 300
-                });
-                
-                const parsed = JSON.parse(response);
-                slideContent = parsed.content;
-              } catch (aiError) {
-                console.error('AI slide generation failed:', aiError);
-              }
-            }
-            
-            // Generate HTML
-            await slideGenerator.initialize();
-            const slideHTML = slideGenerator.generateRealtimeSlideHTML(
-              {
-                id: `smart-slide-${Date.now()}`,
-                type: data.type as any || 'content',
-                content: slideContent,
-                duration: 15,
-                transitions: { in: 'fade', out: 'fade' }
-              },
-              'colorful'
-            );
-            
-            socket.emit('smart_slide_ready', {
-              html: slideHTML,
-              content: slideContent,
-              prompt: data.prompt,
-              isMathSlide: false
-            });
-          }
-          
-        } catch (error) {
-          socket.emit('slide_generation_error', {
-            message: 'فشل توليد الشريحة الذكية'
-          });
-        }
-      });
-      
-      socket.on('get_flow_state', async (lessonId: string) => {
-        // Get current orchestrator flow state
-        const flowKey = `${user.id}-${lessonId}`;
-        // This would need to be exposed from orchestrator
-        
-        socket.emit('flow_state', {
-          lessonId,
-          hasActiveFlow: false, // Check if exists
-          currentSection: null,
-          currentSlide: null
+          equations: commonExpressions,
+          count: Object.keys(commonExpressions).length,
+          subject: data?.subject
         });
       });
       
@@ -1029,7 +907,7 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
         try {
           console.log(`📚 ${user.email} joining lesson: ${lessonId}`);
           
-          // Verify lesson exists
+          // ✅ Verify lesson exists FIRST
           const lesson = await prisma.lesson.findUnique({
             where: { id: lessonId },
             select: { 
@@ -1039,7 +917,10 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
                 select: {
                   title: true,
                   subject: {
-                    select: { name: true }
+                    select: { 
+                      name: true,
+                      grade: true
+                    }
                   }
                 }
               }
@@ -1047,12 +928,16 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
           });
           
           if (!lesson) {
+            console.log(`   ❌ Lesson not found: ${lessonId}`);
             socket.emit('error', { 
               code: 'LESSON_NOT_FOUND',
-              message: 'الدرس غير موجود' 
+              message: `الدرس غير موجود: ${lessonId}`,
+              lessonId
             });
             return;
           }
+          
+          console.log(`   ✅ Lesson found: ${lesson.title}`);
           
           // Check if it's a math lesson
           const isMathLesson = lesson.unit.subject.name.includes('رياضيات') || 
@@ -1092,16 +977,16 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
           }
           this.rooms.get(lessonId)!.add(user.id);
           
-          // Get participants
           const participants = Array.from(this.rooms.get(lessonId)!);
           
-          // Send success response with session data
+          // Send success response
           socket.emit('joined_lesson', {
             lessonId,
             lessonTitle: lesson.title,
             unitTitle: lesson.unit.title,
             subjectName: lesson.unit.subject.name,
-            isMathLesson,  // NEW: indicate if it's a math lesson
+            grade: lesson.unit.subject.grade,
+            isMathLesson,
             participants: participants.length,
             participantIds: participants,
             session: {
@@ -1114,7 +999,7 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
             }
           });
           
-          // Notify others in room
+          // Notify others
           socket.to(roomName).emit('user_joined_lesson', {
             userId: user.id,
             userName: `${user.firstName} ${user.lastName}`,
@@ -1127,7 +1012,8 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
           console.error('Error joining lesson:', error);
           socket.emit('error', { 
             code: 'JOIN_FAILED',
-            message: 'فشل الانضمام للدرس' 
+            message: 'فشل الانضمام للدرس',
+            error: error.message
           });
         }
       });
@@ -1136,7 +1022,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
         const roomName = `lesson:${lessonId}`;
         socket.leave(roomName);
         
-        // End session if exists
         const sessionInfo = this.userSessions.get(user.id);
         if (sessionInfo && sessionInfo.lessonId === lessonId) {
           await sessionService.endSession(sessionInfo.sessionId);
@@ -1144,20 +1029,17 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
           console.log(`📝 Session ended: ${sessionInfo.sessionId}`);
         }
         
-        // Update tracking
         if (this.rooms.has(lessonId)) {
           this.rooms.get(lessonId)!.delete(user.id);
           
           const remaining = this.rooms.get(lessonId)!.size;
           
-          // Notify others
           socket.to(roomName).emit('user_left_lesson', {
             userId: user.id,
             userName: `${user.firstName} ${user.lastName}`,
             participants: remaining
           });
           
-          // Clean up empty rooms
           if (remaining === 0) {
             this.rooms.delete(lessonId);
           }
@@ -1180,7 +1062,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
         try {
           console.log(`🖼️ Generating slide ${data.slideNumber} for ${user.email}`);
           
-          // Generate HTML
           await slideGenerator.initialize();
           const slideHTML = slideGenerator.generateRealtimeSlideHTML(
             {
@@ -1193,7 +1074,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
             (data.theme as any) || 'default'
           );
           
-          // Send back to user
           socket.emit('slide_ready', {
             slideNumber: data.slideNumber,
             html: slideHTML,
@@ -1201,7 +1081,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
             timestamp: new Date().toISOString()
           });
           
-          // Update session if lesson exists
           if (data.lessonId) {
             const sessionInfo = this.userSessions.get(user.id);
             if (sessionInfo && sessionInfo.lessonId === data.lessonId) {
@@ -1210,7 +1089,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
                 data.slideNumber
               );
               
-              // Notify others in lesson room (optional)
               const roomName = `lesson:${data.lessonId}`;
               socket.to(roomName).emit('user_slide_generated', {
                 userId: user.id,
@@ -1232,138 +1110,7 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
         }
       });
       
-      socket.on('navigate_slide', async (data: {
-        direction: 'next' | 'previous' | 'goto';
-        slideNumber?: number;
-      }) => {
-        const sessionInfo = this.userSessions.get(user.id);
-        if (!sessionInfo) {
-          socket.emit('error', { 
-            code: 'NO_SESSION',
-            message: 'لا توجد جلسة نشطة' 
-          });
-          return;
-        }
-        
-        // Get current session
-        const session = await sessionService.getSessionByUserAndLesson(
-          user.id,
-          sessionInfo.lessonId
-        );
-        
-        if (!session) return;
-        
-        let newSlideNumber = session.currentSlide;
-        
-        switch (data.direction) {
-          case 'next':
-            newSlideNumber = Math.min(session.currentSlide + 1, session.totalSlides - 1);
-            break;
-          case 'previous':
-            newSlideNumber = Math.max(session.currentSlide - 1, 0);
-            break;
-          case 'goto':
-            if (data.slideNumber !== undefined) {
-              newSlideNumber = Math.max(0, Math.min(data.slideNumber, session.totalSlides - 1));
-            }
-            break;
-        }
-        
-        // Update position
-        const updated = await sessionService.updateSlidePosition(
-          sessionInfo.sessionId,
-          newSlideNumber
-        );
-        
-        if (updated) {
-          socket.emit('navigation_complete', {
-            currentSlide: newSlideNumber,
-            totalSlides: session.totalSlides
-          });
-        }
-      });
-      
-      // ============= SESSION EVENTS =============
-      
-      socket.on('update_slide', async (data: { slideNumber: number; totalSlides?: number }) => {
-        const sessionInfo = this.userSessions.get(user.id);
-        if (!sessionInfo) {
-          socket.emit('error', { 
-            code: 'NO_SESSION',
-            message: 'لا توجد جلسة نشطة' 
-          });
-          return;
-        }
-        
-        // Update slide position
-        const updated = await sessionService.updateSlidePosition(
-          sessionInfo.sessionId,
-          data.slideNumber,
-          data.totalSlides
-        );
-        
-        if (updated) {
-          socket.emit('slide_updated', {
-            currentSlide: updated.currentSlide,
-            totalSlides: updated.totalSlides
-          });
-          
-          // Notify others in room (optional)
-          const roomName = `lesson:${sessionInfo.lessonId}`;
-          socket.to(roomName).emit('user_slide_change', {
-            userId: user.id,
-            userName: `${user.firstName} ${user.lastName}`,
-            slideNumber: data.slideNumber
-          });
-        }
-      });
-      
-      socket.on('save_preferences', async (preferences: any) => {
-        const sessionInfo = this.userSessions.get(user.id);
-        if (!sessionInfo) return;
-        
-        await prisma.learningSession.update({
-          where: { id: sessionInfo.sessionId },
-          data: {
-            userPreferences: JSON.stringify(preferences),
-            lastActivityAt: new Date()
-          }
-        });
-        
-        socket.emit('preferences_saved', preferences);
-      });
-      
       // ============= CHAT EVENTS =============
-      
-      socket.on('send_message', async (data: { lessonId?: string; message: string }) => {
-        const { lessonId, message } = data;
-        
-        const messageData = {
-          id: Date.now().toString(),
-          userId: user.id,
-          userName: `${user.firstName} ${user.lastName}`,
-          message,
-          timestamp: new Date().toISOString()
-        };
-        
-        // Save to session if exists
-        const sessionInfo = this.userSessions.get(user.id);
-        if (sessionInfo && sessionInfo.lessonId === lessonId) {
-          await sessionService.addChatMessage(sessionInfo.sessionId, messageData);
-        }
-        
-        if (lessonId) {
-          // Send to lesson room
-          this.io!.to(`lesson:${lessonId}`).emit('new_message', messageData);
-        } else {
-          // Broadcast to all
-          this.io!.emit('new_message', messageData);
-        }
-        
-        console.log(`💬 Message from ${user.email}: ${message.substring(0, 50)}...`);
-      });
-      
-      // ============= AI CHAT EVENTS =============
       
       socket.on('chat_message', async (data: {
         lessonId: string;
@@ -1374,54 +1121,60 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
         
         console.log(`🤖 AI Chat request from ${user.email}: "${message.substring(0, 50)}..."`);
         
-        // Check if it's a math-related question
+        // ✅ Verify lesson exists first
+        const lesson = await prisma.lesson.findUnique({
+          where: { id: lessonId },
+          select: { id: true }
+        });
+        
+        if (!lesson) {
+          socket.emit('error', {
+            code: 'LESSON_NOT_FOUND',
+            message: 'الدرس غير موجود'
+          });
+          return;
+        }
+        
         const isMathQuestion = message.includes('معادلة') || 
                               message.includes('احسب') ||
                               message.includes('حل') ||
                               message.includes('رياضي');
         
-        if (isMathQuestion) {
-          // Generate a math slide as response
-          console.log('   🧮 Math question detected, generating interactive response');
+        if (isMathQuestion && process.env.OPENAI_API_KEY) {
+          console.log('   🧮 Math question detected');
           
-          // Use AI to understand and solve
-          if (process.env.OPENAI_API_KEY) {
-            const aiPrompt = `
+          const aiPrompt = `
 أجب على السؤال الرياضي التالي:
 "${message}"
 
 قدم الإجابة بشكل واضح مع الخطوات إذا لزم الأمر.
 إذا كان السؤال يتضمن معادلة، اكتبها بصيغة LaTeX.`;
+          
+          try {
+            const response = await openAIService.chat([
+              { role: 'user', content: aiPrompt }
+            ], {
+              temperature: 0.3,
+              maxTokens: 500
+            });
             
-            try {
-              const response = await openAIService.chat([
-                { role: 'user', content: aiPrompt }
-              ], {
-                temperature: 0.3,
-                maxTokens: 500
-              });
-              
-              // Send AI response
-              socket.emit('ai_response', {
-                lessonId,
-                message: response,
-                isMathResponse: true,
-                timestamp: new Date().toISOString()
-              });
-              
-              // Also offer to generate an interactive slide
-              socket.emit('math_slide_offer', {
-                message: 'هل تريد شريحة تفاعلية لهذه المعادلة؟',
-                lessonId
-              });
-              
-            } catch (error) {
-              console.error('Math AI response failed:', error);
-            }
+            socket.emit('ai_response', {
+              lessonId,
+              message: response,
+              isMathResponse: true,
+              timestamp: new Date().toISOString()
+            });
+            
+            socket.emit('math_slide_offer', {
+              message: 'هل تريد شريحة تفاعلية لهذه المعادلة؟',
+              lessonId
+            });
+            
+          } catch (error) {
+            console.error('Math AI response failed:', error);
           }
         } else {
           // Normal chat flow
-          // Check if message might trigger an action (integration with orchestrator)
           if (!streamMode) {
             const action = await lessonOrchestrator.processUserMessage(
               user.id,
@@ -1430,7 +1183,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
             );
             
             if (action && action.confidence > 0.7) {
-              // Notify user about action
               socket.emit('action_triggered', {
                 action: action.action,
                 trigger: action.trigger,
@@ -1440,14 +1192,12 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
           }
           
           if (streamMode) {
-            // Streaming mode للرسائل الطويلة
             await realtimeChatService.streamResponse(
               user.id,
               lessonId,
               message
             );
           } else {
-            // Normal mode
             await realtimeChatService.handleUserMessage(
               user.id,
               lessonId,
@@ -1455,89 +1205,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
               socket.id
             );
           }
-        }
-      });
-      
-      socket.on('get_chat_history', async (lessonId: string) => {
-        try {
-          const history = await prisma.chatMessage.findMany({
-            where: {
-              userId: user.id,
-              lessonId
-            },
-            orderBy: {
-              createdAt: 'asc'
-            },
-            take: 50
-          });
-          
-          socket.emit('chat_history', {
-            lessonId,
-            messages: history.map(msg => ({
-              userMessage: msg.userMessage,
-              aiResponse: msg.aiResponse,
-              timestamp: msg.createdAt,
-              rating: msg.rating
-            }))
-          });
-          
-          console.log(`📜 Sent ${history.length} chat messages to ${user.email}`);
-          
-        } catch (error) {
-          socket.emit('error', {
-            code: 'HISTORY_ERROR',
-            message: 'فشل جلب المحادثات'
-          });
-        }
-      });
-      
-      socket.on('rate_message', async (data: {
-        messageId: string;
-        rating: number;
-        feedback?: string;
-      }) => {
-        try {
-          await prisma.chatMessage.update({
-            where: { id: data.messageId },
-            data: {
-              rating: data.rating,
-              feedback: data.feedback
-            }
-          });
-          
-          socket.emit('rating_saved', {
-            messageId: data.messageId,
-            rating: data.rating
-          });
-          
-          console.log(`⭐ Message rated ${data.rating}/5 by ${user.email}`);
-          
-        } catch (error) {
-          console.error('Error saving rating:', error);
-        }
-      });
-      
-      socket.on('clear_chat', async (lessonId: string) => {
-        try {
-          const result = await prisma.chatMessage.deleteMany({
-            where: {
-              userId: user.id,
-              lessonId
-            }
-          });
-          
-          socket.emit('chat_cleared', { 
-            lessonId,
-            deletedCount: result.count
-          });
-          
-          console.log(`🗑️ Cleared ${result.count} messages for ${user.email}`);
-          
-        } catch (error) {
-          socket.emit('error', {
-            code: 'CLEAR_ERROR',
-            message: 'فشل مسح المحادثات'
-          });
         }
       });
       
@@ -1564,7 +1231,7 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
             math: true,
             interactive: true,
             voice: false,
-            dynamicLessons: true  // NEW
+            dynamicLessons: true
           }
         });
       });
@@ -1577,44 +1244,37 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
         console.log(`   📊 Reason: ${reason}`);
         console.log(`   👥 Remaining users: ${this.connectedUsers.size - 1}`);
         
-        // Don't end session on disconnect - allow resume
         const sessionInfo = this.userSessions.get(user.id);
         if (sessionInfo) {
-          // Just update last activity
           await prisma.learningSession.update({
             where: { id: sessionInfo.sessionId },
             data: { 
               lastActivityAt: new Date(),
-              socketId: null // Clear socket ID
+              socketId: null
             }
           });
           console.log(`📝 Session preserved for resume: ${sessionInfo.sessionId}`);
         }
         
-        // Remove from connected users
         this.connectedUsers.delete(user.id);
         this.userSessions.delete(user.id);
         
-        // Remove from all rooms
         this.rooms.forEach((users, lessonId) => {
           if (users.has(user.id)) {
             users.delete(user.id);
             
-            // Notify others in room
             this.io!.to(`lesson:${lessonId}`).emit('user_left_lesson', {
               userId: user.id,
               userName: `${user.firstName} ${user.lastName}`,
               participants: users.size
             });
             
-            // Clean up empty rooms
             if (users.size === 0) {
               this.rooms.delete(lessonId);
             }
           }
         });
         
-        // Notify all users
         socket.broadcast.emit('user_disconnected', {
           userId: user.id,
           userName: `${user.firstName} ${user.lastName}`,
@@ -1622,7 +1282,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
         });
       });
       
-      // Error handler
       socket.on('error', (error) => {
         console.error(`❌ Socket error for ${user.email}:`, error);
       });
@@ -1633,30 +1292,25 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
    * Start cleanup interval for inactive sessions
    */
   private startCleanupInterval(): void {
-    // Clean up inactive sessions every hour
     setInterval(async () => {
       const count = await sessionService.cleanupInactiveSessions();
       if (count > 0) {
         console.log(`🧹 Cleaned up ${count} inactive sessions`);
       }
-    }, 60 * 60 * 1000); // Every hour
+    }, 60 * 60 * 1000);
     
-    // Update activity for active sessions every 5 minutes
     setInterval(async () => {
       for (const [userId, sessionInfo] of this.userSessions) {
         await prisma.learningSession.update({
           where: { id: sessionInfo.sessionId },
           data: { lastActivityAt: new Date() }
-        });
+        }).catch(() => {});
       }
-    }, 5 * 60 * 1000); // Every 5 minutes
+    }, 5 * 60 * 1000);
   }
   
   // ============= PUBLIC METHODS =============
   
-  /**
-   * Send message to specific user
-   */
   sendToUser(userId: string, event: string, data: any): boolean {
     const socket = this.connectedUsers.get(userId);
     if (socket) {
@@ -1666,62 +1320,38 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
     return false;
   }
   
-  /**
-   * Send message to all users in a lesson
-   */
   sendToLesson(lessonId: string, event: string, data: any): void {
     if (this.io) {
       this.io.to(`lesson:${lessonId}`).emit(event, data);
     }
   }
   
-  /**
-   * Broadcast to all connected users
-   */
   broadcast(event: string, data: any): void {
     if (this.io) {
       this.io.emit(event, data);
     }
   }
   
-  /**
-   * Get connected users count
-   */
   getConnectedUsersCount(): number {
     return this.connectedUsers.size;
   }
   
-  /**
-   * Get lesson participants
-   */
   getLessonParticipants(lessonId: string): string[] {
     return Array.from(this.rooms.get(lessonId) || []);
   }
   
-  /**
-   * Check if user is connected
-   */
   isUserConnected(userId: string): boolean {
     return this.connectedUsers.has(userId);
   }
   
-  /**
-   * Get user's active session
-   */
   getUserSession(userId: string): SessionInfo | undefined {
     return this.userSessions.get(userId);
   }
   
-  /**
-   * Get IO instance
-   */
   getIO(): SocketIOServer | null {
     return this.io;
   }
   
-  /**
-   * Send orchestrated content to user (NEW)
-   */
   sendOrchestratedContent(
     userId: string,
     eventName: string,
@@ -1730,9 +1360,6 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
     return this.sendToUser(userId, eventName, data);
   }
   
-  /**
-   * Broadcast orchestrator updates to lesson (NEW)
-   */
   broadcastOrchestratorUpdate(
     lessonId: string,
     update: any
@@ -1740,17 +1367,10 @@ ${data.variables ? `مع القيم: ${JSON.stringify(data.variables)}` : ''}
     this.sendToLesson(lessonId, 'orchestrator_update', update);
   }
   
-  /**
-   * Get active flow for user (NEW)
-   */
   async getActiveFlow(userId: string, lessonId: string): Promise<any> {
-    // This would interact with orchestrator to get flow state
     return null;
   }
   
-  /**
-   * Send action result to user (NEW)
-   */
   sendActionResult(
     userId: string,
     action: string,
