@@ -1,11 +1,12 @@
 // 📍 المكان: src/services/websocket/realtime-chat.service.ts
-// الوظيفة: مدرس ذكي متكامل مع prompt templates محسنة
+// الوظيفة: مدرس ذكي متكامل مع Flow Manager و Prompt Templates
 
 import { websocketService } from './websocket.service';
 import { chatService } from '../ai/chat.service';
 import { sessionService } from './session.service';
+import { lessonFlowManager, FlowState } from '../flow/lesson-flow-manager.service';
 import { lessonOrchestrator } from '../orchestrator/lesson-orchestrator.service';
-import { mathSlideGenerator, MathEnabledSlideGenerator } from '../../core/video/enhanced-slide.generator';
+import { mathSlideGenerator } from '../../core/video/enhanced-slide.generator';
 import { EnhancedSlideGenerator } from '../../core/video/slide.generator';
 import { prisma } from '../../config/database.config';
 import { latexRenderer } from '../../core/interactive/math/latex-renderer';
@@ -35,34 +36,17 @@ interface ChatAction {
   parameters?: any;
 }
 
-interface LessonFlowState {
-  userId: string;
-  lessonId: string;
-  currentSlide: number;
-  totalSlides: number;
-  slides: any[];
-  isActive: boolean;
-  mode: 'chat_only' | 'slides_only' | 'slides_with_voice';
-  voiceEnabled: boolean;
-  autoAdvance: boolean;
-  speed: number;
-  comprehensionLevel: number;
-  conversationHistory: string[];
-  currentSection?: number;
-}
-
-// ============= ENHANCED CHAT SERVICE WITH TEMPLATES =============
+// ============= ENHANCED CHAT SERVICE WITH FLOW MANAGER =============
 
 export class RealtimeChatService {
   private slideGenerator: EnhancedSlideGenerator;
-  private activeLessonFlows: Map<string, LessonFlowState> = new Map();
   
   constructor() {
     this.slideGenerator = new EnhancedSlideGenerator();
   }
 
   /**
-   * معالجة رسالة من المستخدم مع Action Detection و Templates
+   * معالجة رسالة من المستخدم مع Flow Manager
    */
   async handleUserMessage(
     userId: string,
@@ -73,7 +57,7 @@ export class RealtimeChatService {
     const startTime = Date.now();
     
     try {
-      console.log(`🤖 Processing chat message from user ${userId}: "${message}"`);
+      console.log(`🤖 Processing chat message with Flow Manager: "${message}"`);
       
       // 1. إرسال إشعار "typing"
       websocketService.sendToUser(userId, 'ai_typing', {
@@ -81,17 +65,47 @@ export class RealtimeChatService {
         status: 'typing'
       });
       
-      // 2. كشف الأوامر في الرسالة
-      const action = await this.detectAction(message, lessonId);
+      // 2. التحقق من وجود flow نشط
+      let flow = lessonFlowManager.getFlow(userId, lessonId);
+      const flowState = lessonFlowManager.getFlowState(userId, lessonId);
       
-      // 3. تنفيذ الأمر إذا وجد
-      if (action.confidence > 0.7) {
-        await this.executeAction(action, userId, lessonId, message);
+      // 3. إذا لم يكن هناك flow، اكتشف إذا كان يريد بدء الدرس
+      if (!flow) {
+        const action = await this.detectAction(message, lessonId);
+        if (action.type === 'start_lesson' && action.confidence > 0.7) {
+          // بدء درس جديد عبر Flow Manager
+          const session = await sessionService.getOrCreateSession(userId, lessonId, socketId);
+          flow = await lessonFlowManager.createFlow(userId, lessonId, session.id, {
+            startWithChat: true
+          });
+          return; // Flow Manager will handle the rest
+        } else {
+          // رد بدون flow
+          await this.handleChatWithoutFlow(userId, lessonId, message);
+          return;
+        }
+      }
+      
+      // 4. معالجة الرسالة حسب الحالة الحالية
+      if (flowState === FlowState.WAITING_FOR_MODE || flowState === FlowState.WAITING_FOR_CHOICE) {
+        // دع Flow Manager يعالج الاختيار
+        await lessonFlowManager.handleUserMessage(userId, lessonId, message);
         return;
       }
       
-      // 4. إذا لم يكن أمر، تعامل معه كسؤال عادي مع Templates
-      await this.handleNormalChatWithTemplates(userId, lessonId, message);
+      // 5. كشف الأوامر في الرسالة
+      const action = await this.detectAction(message, lessonId);
+      
+      // 6. تنفيذ الأمر أو معالجته كسؤال
+      if (action.confidence > 0.7) {
+        await this.executeActionWithFlowManager(action, userId, lessonId, message);
+      } else {
+        // معالجة كرسالة عادية عبر Flow Manager
+        await lessonFlowManager.handleUserMessage(userId, lessonId, message);
+        
+        // إرسال رد AI
+        await this.sendAIResponseWithTemplate(userId, lessonId, message);
+      }
       
     } catch (error: any) {
       console.error('Chat error:', error);
@@ -206,59 +220,70 @@ export class RealtimeChatService {
   }
   
   /**
-   * تنفيذ الأمر المكتشف مع استخدام Templates
+   * تنفيذ الأمر مع Flow Manager
    */
-  private async executeAction(
+  private async executeActionWithFlowManager(
     action: ChatAction,
     userId: string,
     lessonId: string,
     originalMessage: string
   ): Promise<void> {
-    console.log(`⚡ Executing action: ${action.type}`);
+    console.log(`⚡ Executing action with Flow Manager: ${action.type}`);
+    
+    const flow = lessonFlowManager.getFlow(userId, lessonId);
+    if (!flow && action.type !== 'start_lesson') {
+      await this.handleChatWithoutFlow(userId, lessonId, originalMessage);
+      return;
+    }
     
     switch (action.type) {
-      case 'start_lesson':
-        await this.startLessonFlowWithTemplate(userId, lessonId, action.parameters);
-        break;
-        
       case 'show_slide':
+        // Transition to showing slide
+        await lessonFlowManager.transition(userId, lessonId, 'user_question', {
+          question: originalMessage,
+          action: 'show_slide'
+        });
         await this.generateAndShowSlideWithTemplate(userId, lessonId, originalMessage, action.parameters);
         break;
         
       case 'explain':
+        // Transition to explaining
+        await lessonFlowManager.transition(userId, lessonId, 'user_question', {
+          question: originalMessage,
+          action: 'explain'
+        });
         await this.explainConceptWithTemplate(userId, lessonId, action.parameters?.topic || 'current');
         break;
         
       case 'example':
+        // Transition to showing example
+        await lessonFlowManager.transition(userId, lessonId, 'user_question', {
+          question: originalMessage,
+          action: 'example'
+        });
         await this.showExampleWithTemplate(userId, lessonId, action.parameters?.topic);
         break;
         
       case 'exercise':
+      case 'quiz':
+        // Transition to quiz mode
+        await lessonFlowManager.transition(userId, lessonId, 'start_quiz');
         await this.showExerciseWithTemplate(userId, lessonId, action.parameters);
         break;
         
-      case 'repeat':
-        await this.repeatCurrentSlide(userId, lessonId);
-        break;
-        
       case 'next':
-        await this.navigateSlide(userId, lessonId, 'next');
-        break;
-        
       case 'previous':
-        await this.navigateSlide(userId, lessonId, 'previous');
+        // Navigation through orchestrator
+        await this.navigateSlide(userId, lessonId, action.type);
         break;
         
       case 'stop':
-        await this.pauseLessonFlow(userId, lessonId);
+        // Pause through Flow Manager
+        await lessonFlowManager.transition(userId, lessonId, 'pause');
         break;
         
       case 'summary':
         await this.showLessonSummaryWithTemplate(userId, lessonId);
-        break;
-        
-      case 'quiz':
-        await this.startQuizWithTemplate(userId, lessonId);
         break;
         
       case 'help':
@@ -266,18 +291,28 @@ export class RealtimeChatService {
         break;
         
       default:
-        await this.handleNormalChatWithTemplates(userId, lessonId, originalMessage);
+        await this.sendAIResponseWithTemplate(userId, lessonId, originalMessage);
+    }
+    
+    // Return to appropriate state after action
+    if (flow && action.type !== 'quiz' && action.type !== 'stop') {
+      setTimeout(async () => {
+        await lessonFlowManager.transition(userId, lessonId, 'answer_complete');
+      }, 2000);
     }
   }
   
   /**
-   * بناء السياق للـ Templates
+   * بناء السياق للـ Templates من Flow Manager
    */
   private async buildPromptContext(
     lessonId: string,
     userId: string,
     userMessage?: string
   ): Promise<PromptContext> {
+    // الحصول على Flow من Flow Manager
+    const flow = lessonFlowManager.getFlow(userId, lessonId);
+    
     // جلب معلومات الدرس
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
@@ -294,44 +329,20 @@ export class RealtimeChatService {
       throw new Error('Lesson not found');
     }
 
-    // جلب آخر جلسة نشطة
-    const session = await prisma.learningSession.findFirst({
-      where: {
-        userId,
-        lessonId,
-        isActive: true
-      }
-    });
-
-    // جلب آخر 5 رسائل للسياق
-    const chatHistory = await prisma.chatMessage.findMany({
-      where: {
-        userId,
-        lessonId
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: 5
-    });
-
-    // جلب flow state إذا كان موجود
-    const flowKey = `${userId}-${lessonId}`;
-    const flow = this.activeLessonFlows.get(flowKey);
-
-    // بناء السياق
+    // بناء السياق من Flow Manager data
     const context: PromptContext = {
-      lessonTitle: lesson.titleAr || lesson.title,
-      subject: lesson.unit.subject.nameAr || lesson.unit.subject.name,
-      grade: lesson.unit.subject.grade,
-  currentSection: flow?.currentSection !== undefined ? String(flow.currentSection) : undefined,
-      currentSlide: flow?.currentSlide || session?.currentSlide || 0,
+      lessonTitle: flow?.lessonTitle || lesson.titleAr || lesson.title,
+      subject: flow?.subjectName || lesson.unit.subject.nameAr || lesson.unit.subject.name,
+      grade: flow?.grade || lesson.unit.subject.grade,
+      currentSection: flow ? flow.sections[flow.currentSection]?.title : undefined,
+      currentSlide: flow?.currentSlide || 0,
       comprehensionLevel: flow?.comprehensionLevel || 75,
       userMessage,
-      conversationHistory: chatHistory.map(msg => 
-        `الطالب: ${msg.userMessage}\nالمساعد: ${msg.aiResponse}`
-      ).reverse(),
-      isMathLesson: lesson.unit.subject.name.includes('رياضيات') || 
+      conversationHistory: flow?.conversationState.messageHistory
+        .slice(-5)
+        .map(msg => `${msg.role === 'user' ? 'الطالب' : 'المساعد'}: ${msg.content}`) || [],
+      isMathLesson: flow?.isMathLesson || 
+                   lesson.unit.subject.name.includes('رياضيات') || 
                    lesson.unit.subject.name.toLowerCase().includes('math')
     };
 
@@ -339,80 +350,91 @@ export class RealtimeChatService {
   }
   
   /**
-   * بدء تدفق الدرس مع Template ترحيب
+   * إرسال رد AI مع Template
    */
-  private async startLessonFlowWithTemplate(
-    userId: string, 
+  private async sendAIResponseWithTemplate(
+    userId: string,
     lessonId: string,
-    params: any = {}
+    message: string
   ): Promise<void> {
     try {
       // بناء السياق
-      const context = await this.buildPromptContext(lessonId, userId);
+      const context = await this.buildPromptContext(lessonId, userId, message);
       
-      // الحصول على رسالة ترحيب من Template
-      const welcomePrompt = getLessonWelcomePrompt(context);
-      const welcomeMessage = await openAIService.chat([
-        { role: 'system', content: welcomePrompt }
+      // الحصول على prompt المحادثة
+      const chatPrompt = getChatResponsePrompt(context);
+      
+      // استدعاء AI
+      const aiResponse = await openAIService.chat([
+        { role: 'system', content: chatPrompt },
+        { role: 'user', content: message }
       ], {
         temperature: 0.7,
-        maxTokens: 200
+        maxTokens: 500
       });
       
-      // إرسال الترحيب
-      websocketService.sendToUser(userId, 'lesson_welcome', {
+      // إرسال الرد
+      websocketService.sendToUser(userId, 'ai_response', {
         lessonId,
-        message: welcomeMessage,
-        lesson: {
-          title: context.lessonTitle,
-          subject: context.subject,
-          grade: context.grade
-        }
+        message: aiResponse,
+        suggestions: this.getContextualSuggestions(context),
+        timestamp: new Date().toISOString()
       });
       
-      // جلب معلومات الدرس الكاملة
-      const lesson = await this.getLessonDetails(lessonId);
-      if (!lesson) {
-        throw new Error('Lesson not found');
-      }
-      
-      // إنشاء lesson flow
-      const flow: LessonFlowState = {
+      // حفظ في قاعدة البيانات
+      await this.saveChatInteraction(
         userId,
         lessonId,
-        currentSlide: 0,
-        totalSlides: 0,
-        slides: [],
-        isActive: true,
-        mode: params.chatOnly ? 'chat_only' : 
-              params.slidesOnly ? 'slides_only' : 'slides_with_voice',
-        voiceEnabled: params.withVoice !== false,
-        autoAdvance: params.autoAdvance !== false,
-        speed: params.speed || 1,
-        comprehensionLevel: 75,
-        conversationHistory: [welcomeMessage]
-      };
-      
-      // توليد الشرائح
-      const slides = await this.generateLessonSlides(lesson);
-      flow.slides = slides;
-      flow.totalSlides = slides.length;
-      
-      // حفظ الـ flow
-      const flowKey = `${userId}-${lessonId}`;
-      this.activeLessonFlows.set(flowKey, flow);
-      
-      // بدء عرض أول شريحة
-      await this.showSlide(userId, lessonId, 0);
-      
-      console.log(`✅ Lesson flow started with template: ${flow.totalSlides} slides`);
+        message,
+        aiResponse,
+        this.getContextualSuggestions(context),
+        Date.now() - Date.now() // Calculate actual response time
+      );
       
     } catch (error) {
-      console.error('Error starting lesson flow:', error);
-      websocketService.sendToUser(userId, 'error', {
-        message: 'حدث خطأ في بدء الدرس. دعني أحاول بطريقة أخرى.'
-      });
+      console.error('Error sending AI response:', error);
+      await this.handleChatWithoutFlow(userId, lessonId, message);
     }
+  }
+  
+  /**
+   * معالجة محادثة بدون Flow نشط
+   */
+  private async handleChatWithoutFlow(
+    userId: string,
+    lessonId: string,
+    message: string
+  ): Promise<void> {
+    // محاولة الحصول على معلومات الدرس
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        unit: {
+          include: {
+            subject: true
+          }
+        }
+      }
+    });
+    
+    if (!lesson) {
+      websocketService.sendToUser(userId, 'ai_response', {
+        lessonId,
+        message: 'عذراً، لم أتمكن من العثور على الدرس. تأكد من اختيار درس صحيح.',
+        suggestions: ['العودة للقائمة', 'مساعدة']
+      });
+      return;
+    }
+    
+    // رد بسيط بدون flow
+    const response = `مرحباً! أنا مدرسك الذكي لدرس "${lesson.title}". 
+قل "اشرح الدرس" لنبدأ رحلة التعلم معاً، أو اسأل أي سؤال عن ${lesson.unit.subject.name}.`;
+    
+    websocketService.sendToUser(userId, 'ai_response', {
+      lessonId,
+      message: response,
+      suggestions: ['اشرح الدرس', 'أعطني نبذة', 'ما أهمية هذا الدرس؟', 'مساعدة']
+    });
   }
   
   /**
@@ -425,13 +447,9 @@ export class RealtimeChatService {
     params: any
   ): Promise<void> {
     try {
-      // بناء السياق
       const context = await this.buildPromptContext(lessonId, userId, message);
-      
-      // تحديد نوع الشريحة
       const slideType = params.type || 'content';
       
-      // الحصول على prompt لتوليد الشريحة
       const slidePrompt = getSlideGenerationPrompt(context, slideType);
       const slideContentJson = await openAIService.chat([
         { role: 'system', content: slidePrompt }
@@ -440,7 +458,6 @@ export class RealtimeChatService {
         maxTokens: 400
       });
       
-      // محاولة parse JSON
       let slideData;
       try {
         slideData = JSON.parse(slideContentJson);
@@ -452,7 +469,6 @@ export class RealtimeChatService {
         };
       }
       
-      // توليد HTML للشريحة
       const slides = await this.slideGenerator.generateSlides(
         [slideData],
         'default'
@@ -462,7 +478,6 @@ export class RealtimeChatService {
         content: slideData 
       });
       
-      // إرسال الشريحة
       websocketService.sendToUser(userId, 'custom_slide', {
         lessonId,
         html: slideHtml,
@@ -485,11 +500,9 @@ export class RealtimeChatService {
     topic: string
   ): Promise<void> {
     try {
-      // بناء السياق
       const context = await this.buildPromptContext(lessonId, userId);
       context.currentSection = topic;
       
-      // الحصول على prompt الشرح
       const explainPrompt = getExplanationPrompt(context);
       const explanation = await openAIService.chat([
         { role: 'system', content: explainPrompt }
@@ -498,7 +511,6 @@ export class RealtimeChatService {
         maxTokens: 800
       });
       
-      // إنشاء شريحة شرح
       const slideContent = {
         title: `شرح: ${topic}`,
         text: explanation,
@@ -514,21 +526,12 @@ export class RealtimeChatService {
         content: slideContent 
       });
       
-      // إرسال الشريحة
       websocketService.sendToUser(userId, 'explanation_slide', {
         lessonId,
         html: slideHtml,
         topic,
         message: 'إليك شرح تفصيلي'
       });
-      
-      // تحديث comprehension level
-      const flowKey = `${userId}-${lessonId}`;
-      const flow = this.activeLessonFlows.get(flowKey);
-      if (flow) {
-        flow.conversationHistory.push(`شرح: ${topic}`);
-        flow.conversationHistory.push(explanation);
-      }
       
     } catch (error) {
       console.error('Error explaining concept:', error);
@@ -545,11 +548,9 @@ export class RealtimeChatService {
     topic?: string
   ): Promise<void> {
     try {
-      // بناء السياق
       const context = await this.buildPromptContext(lessonId, userId);
       if (topic) context.currentSection = topic;
       
-      // الحصول على prompt المثال
       const examplePrompt = getExamplePrompt(context);
       const exampleContent = await openAIService.chat([
         { role: 'system', content: examplePrompt }
@@ -559,7 +560,6 @@ export class RealtimeChatService {
       });
       
       if (context.isMathLesson) {
-        // مثال رياضي مع معادلات
         const mathPrompt = getMathProblemPrompt(context);
         const mathProblemJson = await openAIService.chat([
           { role: 'system', content: mathPrompt }
@@ -579,7 +579,6 @@ export class RealtimeChatService {
             message: 'مثال تفاعلي رياضي!'
           });
         } catch {
-          // Fallback للمثال العادي
           await this.sendNormalExample(userId, lessonId, exampleContent);
         }
       } else {
@@ -593,7 +592,7 @@ export class RealtimeChatService {
   }
   
   /**
-   * إرسال مثال عادي (helper)
+   * إرسال مثال عادي
    */
   private async sendNormalExample(
     userId: string,
@@ -632,10 +631,8 @@ export class RealtimeChatService {
     params: any
   ): Promise<void> {
     try {
-      // بناء السياق
       const context = await this.buildPromptContext(lessonId, userId);
       
-      // الحصول على prompt Quiz/Exercise
       const quizPrompt = getQuizPrompt(context);
       const quizJson = await openAIService.chat([
         { role: 'system', content: quizPrompt }
@@ -654,7 +651,6 @@ export class RealtimeChatService {
         });
         
       } catch {
-        // Fallback لتمرين بسيط
         websocketService.sendToUser(userId, 'exercise', {
           lessonId,
           exercise: {
@@ -672,14 +668,12 @@ export class RealtimeChatService {
   }
   
   /**
-   * عرض ملخص الدرس مع Template
+   * عرض ملخص الدرس
    */
   private async showLessonSummaryWithTemplate(userId: string, lessonId: string): Promise<void> {
     try {
-      // بناء السياق
       const context = await this.buildPromptContext(lessonId, userId);
       
-      // الحصول على prompt الملخص
       const completionPrompt = getLessonCompletionPrompt(context);
       const summaryMessage = await openAIService.chat([
         { role: 'system', content: completionPrompt }
@@ -688,7 +682,6 @@ export class RealtimeChatService {
         maxTokens: 500
       });
       
-      // إنشاء شريحة الملخص
       const summaryContent = {
         title: 'ملخص الدرس',
         text: summaryMessage,
@@ -717,170 +710,14 @@ export class RealtimeChatService {
   }
   
   /**
-   * بدء اختبار مع Template
+   * التنقل بين الشرائح
    */
-  private async startQuizWithTemplate(userId: string, lessonId: string): Promise<void> {
-    try {
-      // بناء السياق
-      const context = await this.buildPromptContext(lessonId, userId);
-      
-      // توليد 5 أسئلة
-      const questions = [];
-      for (let i = 0; i < 5; i++) {
-        const quizPrompt = getQuizPrompt(context);
-        const questionJson = await openAIService.chat([
-          { role: 'system', content: quizPrompt }
-        ], {
-          temperature: 0.7,
-          maxTokens: 300
-        });
-        
-        try {
-          const question = JSON.parse(questionJson);
-          questions.push(question);
-        } catch {
-          console.error(`Failed to parse question ${i + 1}`);
-        }
-      }
-      
-      websocketService.sendToUser(userId, 'quiz_start', {
-        lessonId,
-        questions,
-        message: 'اختبار تقييمي من 5 أسئلة',
-        instructions: 'أجب على كل سؤال واحصل على النتيجة فوراً'
-      });
-      
-    } catch (error) {
-      console.error('Error starting quiz:', error);
-      this.sendErrorResponse(userId, lessonId);
-    }
-  }
-  
-  /**
-   * التعامل مع المحادثة العادية مع Templates
-   */
-  private async handleNormalChatWithTemplates(
-    userId: string,
-    lessonId: string,
-    message: string
-  ): Promise<void> {
-    try {
-      // بناء السياق
-      const context = await this.buildPromptContext(lessonId, userId, message);
-      
-      // الحصول على prompt المحادثة
-      const chatPrompt = getChatResponsePrompt(context);
-      
-      // استدعاء AI
-      const aiResponse = await openAIService.chat([
-        { role: 'system', content: chatPrompt },
-        { role: 'user', content: message }
-      ], {
-        temperature: 0.7,
-        maxTokens: 500
-      });
-      
-      // تحليل الفهم (اختياري)
-      const flowKey = `${userId}-${lessonId}`;
-      const flow = this.activeLessonFlows.get(flowKey);
-      if (flow && flow.conversationHistory.length % 5 === 0) {
-        // كل 5 رسائل، حلل مستوى الفهم
-        const analysisPrompt = getPrompt('analyze', context);
-        const analysisJson = await openAIService.chat([
-          { role: 'system', content: analysisPrompt }
-        ], {
-          temperature: 0.5,
-          maxTokens: 200
-        });
-        
-        try {
-          const analysis = JSON.parse(analysisJson);
-          flow.comprehensionLevel = analysis.comprehensionLevel;
-          
-          // إرسال تحديث الفهم
-          websocketService.sendToUser(userId, 'comprehension_update', {
-            lessonId,
-            level: analysis.comprehensionLevel,
-            feedback: analysis.feedback
-          });
-        } catch {
-          // Ignore analysis errors
-        }
-      }
-      
-      // إرسال الرد
-      websocketService.sendToUser(userId, 'ai_response', {
-        lessonId,
-        message: aiResponse,
-        suggestions: this.getContextualSuggestions(context),
-        timestamp: new Date().toISOString()
-      });
-      
-      // حفظ في قاعدة البيانات
-      await this.saveChatInteraction(
-        userId,
-        lessonId,
-        message,
-        aiResponse,
-        this.getContextualSuggestions(context),
-        Date.now()
-      );
-      
-      // تحديث conversation history
-      if (flow) {
-        flow.conversationHistory.push(`الطالب: ${message}`);
-        flow.conversationHistory.push(`المساعد: ${aiResponse}`);
-        
-        // احتفظ بآخر 20 رسالة فقط
-        if (flow.conversationHistory.length > 20) {
-          flow.conversationHistory = flow.conversationHistory.slice(-20);
-        }
-      }
-      
-    } catch (error) {
-      console.error('Chat error:', error);
-      // Fallback للرد بدون template
-      await this.handleNormalChat(userId, lessonId, message);
-    }
-  }
-  
-  /**
-   * الحصول على اقتراحات سياقية
-   */
-  private getContextualSuggestions(context: PromptContext): string[] {
-    const suggestions = [];
-    
-    // اقتراحات حسب المستوى
-    if (context.comprehensionLevel && context.comprehensionLevel < 50) {
-      suggestions.push('اشرح ببساطة أكثر');
-      suggestions.push('أعطني مثال سهل');
-    } else if (context.comprehensionLevel && context.comprehensionLevel > 80) {
-      suggestions.push('تمرين متقدم');
-      suggestions.push('سؤال تحدي');
-    }
-    
-    // اقتراحات عامة
-    suggestions.push('التالي');
-    suggestions.push('ملخص');
-    
-    // اقتراحات للرياضيات
-    if (context.isMathLesson) {
-      suggestions.push('حل معادلة');
-      suggestions.push('رسم بياني');
-    }
-    
-    return suggestions.slice(0, 5);
-  }
-  
-  // =============== باقي الدوال من الكود الأصلي (بدون تغيير كبير) ===============
-  
   private async navigateSlide(
     userId: string,
     lessonId: string,
     direction: 'next' | 'previous'
   ): Promise<void> {
-    const flowKey = `${userId}-${lessonId}`;
-    const flow = this.activeLessonFlows.get(flowKey);
+    const flow = lessonFlowManager.getFlow(userId, lessonId);
     
     if (!flow) {
       websocketService.sendToUser(userId, 'ai_response', {
@@ -890,13 +727,12 @@ export class RealtimeChatService {
       return;
     }
     
-    const newSlide = direction === 'next' ? 
-      Math.min(flow.currentSlide + 1, flow.totalSlides - 1) :
-      Math.max(flow.currentSlide - 1, 0);
+    // Use orchestrator for navigation (it manages slides)
+    const slide = direction === 'next' 
+      ? await lessonOrchestrator.navigateNext(userId, lessonId)
+      : await lessonOrchestrator.navigatePrevious(userId, lessonId);
     
-    if (newSlide !== flow.currentSlide) {
-      await this.showSlide(userId, lessonId, newSlide);
-    } else {
+    if (!slide) {
       const message = direction === 'next' ? 
         'هذه آخر شريحة!' : 'هذه أول شريحة!';
       
@@ -907,44 +743,9 @@ export class RealtimeChatService {
     }
   }
   
-  private async repeatCurrentSlide(userId: string, lessonId: string): Promise<void> {
-    const flowKey = `${userId}-${lessonId}`;
-    const flow = this.activeLessonFlows.get(flowKey);
-    
-    if (!flow) {
-      websocketService.sendToUser(userId, 'ai_response', {
-        lessonId,
-        message: 'لا يوجد درس نشط حالياً.'
-      });
-      return;
-    }
-    
-    await this.showSlide(userId, lessonId, flow.currentSlide);
-    
-    websocketService.sendToUser(userId, 'slide_repeated', {
-      lessonId,
-      message: 'تم إعادة عرض الشريحة',
-      slideNumber: flow.currentSlide + 1
-    });
-  }
-  
-  private async pauseLessonFlow(userId: string, lessonId: string): Promise<void> {
-    const flowKey = `${userId}-${lessonId}`;
-    const flow = this.activeLessonFlows.get(flowKey);
-    
-    if (flow) {
-      flow.isActive = false;
-      flow.autoAdvance = false;
-      
-      websocketService.sendToUser(userId, 'lesson_paused', {
-        lessonId,
-        message: 'تم إيقاف الدرس مؤقتاً. قل "كمل" للاستمرار.',
-        currentSlide: flow.currentSlide + 1,
-        totalSlides: flow.totalSlides
-      });
-    }
-  }
-  
+  /**
+   * عرض المساعدة
+   */
   private async showHelp(userId: string, lessonId: string): Promise<void> {
     const helpMessage = `
 🎯 **الأوامر المتاحة:**
@@ -981,177 +782,37 @@ export class RealtimeChatService {
     });
   }
   
-  // Helper methods remain unchanged...
-  private async getLessonDetails(lessonId: string): Promise<any> {
-    try {
-      const lesson = await prisma.lesson.findUnique({
-        where: { id: lessonId },
-        include: {
-          unit: {
-            include: {
-              subject: true
-            }
-          },
-          concepts: true,
-          examples: true
-        }
-      });
-      
-      if (!lesson) return null;
-      
-      const processedLesson = {
-        ...lesson,
-        objectives: lesson.keyPoints ? 
-          (typeof lesson.keyPoints === 'string' ? 
-            JSON.parse(lesson.keyPoints) : lesson.keyPoints) : 
-          ['فهم المفاهيم الأساسية'],
-        keyPoints: lesson.keyPoints ? 
-          (typeof lesson.keyPoints === 'string' ? 
-            JSON.parse(lesson.keyPoints) : lesson.keyPoints) : [],
-        concepts: lesson.concepts || []
-      };
-      
-      return processedLesson;
-    } catch (error) {
-      console.error('Error getting lesson details:', error);
-      return null;
+  /**
+   * الحصول على اقتراحات سياقية
+   */
+  private getContextualSuggestions(context: PromptContext): string[] {
+    const suggestions = [];
+    
+    // اقتراحات حسب المستوى
+    if (context.comprehensionLevel && context.comprehensionLevel < 50) {
+      suggestions.push('اشرح ببساطة أكثر');
+      suggestions.push('أعطني مثال سهل');
+    } else if (context.comprehensionLevel && context.comprehensionLevel > 80) {
+      suggestions.push('تمرين متقدم');
+      suggestions.push('سؤال تحدي');
     }
+    
+    // اقتراحات عامة
+    suggestions.push('التالي');
+    suggestions.push('ملخص');
+    
+    // اقتراحات للرياضيات
+    if (context.isMathLesson) {
+      suggestions.push('حل معادلة');
+      suggestions.push('رسم بياني');
+    }
+    
+    return suggestions.slice(0, 5);
   }
   
-  private async generateLessonSlides(lesson: any): Promise<any[]> {
-    const slides = [];
-    const isMathLesson = lesson.unit?.subject?.name?.includes('رياضيات') || 
-                         lesson.unit?.subject?.name?.includes('Math');
-    
-    slides.push({
-      type: 'title',
-      content: {
-        title: lesson.title || 'عنوان الدرس',
-        subtitle: `${lesson.unit?.subject?.name || 'المادة'} - ${lesson.unit?.title || 'الوحدة'}`,
-        grade: `الصف ${lesson.unit?.subject?.grade || 6}`,
-        text: ''
-      }
-    });
-    
-    const objectives = lesson.objectives || 
-                      (lesson.keyPoints ? JSON.parse(lesson.keyPoints) : null) ||
-                      ['فهم المفاهيم الأساسية', 'التطبيق العملي'];
-                      
-    slides.push({
-      type: 'bullet',
-      content: {
-        title: 'أهداف الدرس',
-        bullets: Array.isArray(objectives) ? objectives : [objectives],
-        text: ''
-      }
-    });
-    
-    const concepts = lesson.concepts || [];
-    if (concepts.length === 0) {
-      slides.push({
-        type: 'content',
-        content: {
-          title: 'محتوى الدرس',
-          text: lesson.description || lesson.summary || 'شرح تفصيلي للدرس',
-          bullets: []
-        }
-      });
-    } else {
-      for (const concept of concepts) {
-        slides.push({
-          type: 'content',
-          content: {
-            title: concept.name || 'مفهوم',
-            text: concept.description || '',
-            bullets: []
-          }
-        });
-      }
-    }
-    
-    slides.push({
-      type: 'summary',
-      content: {
-        title: 'ملخص الدرس',
-        bullets: lesson.keyPoints ? 
-                 (typeof lesson.keyPoints === 'string' ? 
-                  JSON.parse(lesson.keyPoints) : lesson.keyPoints) : 
-                 ['مراجعة النقاط المهمة'],
-        text: ''
-      }
-    });
-    
-    return slides;
-  }
-  
-  private async showSlide(
-    userId: string,
-    lessonId: string,
-    slideNumber: number
-  ): Promise<void> {
-    const flowKey = `${userId}-${lessonId}`;
-    const flow = this.activeLessonFlows.get(flowKey);
-    
-    if (!flow || slideNumber >= flow.slides.length) {
-      return;
-    }
-    
-    const slide = flow.slides[slideNumber];
-    flow.currentSlide = slideNumber;
-    
-    let slideHtml = '';
-    
-    if (slide.type === 'math_example' && slide.content.mathExpression) {
-      try {
-        slideHtml = await mathSlideGenerator.generateMathSlide({
-          title: slide.content.title,
-          text: slide.content.problem,
-          mathExpressions: [{
-            id: 'example',
-            latex: slide.content.mathExpression,
-            description: slide.content.solution,
-            type: 'equation',
-            isInteractive: true
-          }],
-          interactive: true
-        });
-      } catch (error) {
-        console.error('Error generating math slide:', error);
-        slideHtml = this.generateFallbackSlide(slide);
-      }
-    } else {
-      const slides = await this.slideGenerator.generateSlides(
-        [slide.content],
-        'default'
-      );
-      slideHtml = slides[0] || this.generateFallbackSlide(slide);
-    }
-    
-    websocketService.sendToUser(userId, 'slide_ready', {
-      lessonId,
-      slideNumber,
-      totalSlides: flow.totalSlides,
-      slideType: slide.type,
-      html: slideHtml,
-      content: slide.content,
-      navigation: {
-        canGoBack: slideNumber > 0,
-        canGoForward: slideNumber < flow.totalSlides - 1,
-        currentSlide: slideNumber + 1,
-        totalSlides: flow.totalSlides
-      }
-    });
-    
-    if (flow.autoAdvance && slideNumber < flow.totalSlides - 1) {
-      const delay = this.calculateSlideDelay(slide) * (1 / flow.speed);
-      setTimeout(() => {
-        if (flow.isActive) {
-          this.showSlide(userId, lessonId, slideNumber + 1);
-        }
-      }, delay);
-    }
-  }
-  
+  /**
+   * حفظ تفاعل المحادثة
+   */
   private async saveChatInteraction(
     userId: string,
     lessonId: string,
@@ -1181,6 +842,9 @@ export class RealtimeChatService {
     }
   }
   
+  /**
+   * إرسال رد خطأ
+   */
   private sendErrorResponse(userId: string, lessonId: string): void {
     websocketService.sendToUser(userId, 'ai_response', {
       lessonId,
@@ -1190,25 +854,17 @@ export class RealtimeChatService {
     });
   }
   
-  private calculateSlideDelay(slide: any): number {
-    const baseDelay = {
-      title: 5000,
-      objectives: 8000,
-      content: 10000,
-      example: 12000,
-      exercise: 15000,
-      summary: 10000,
-      quiz_intro: 5000
-    };
-    
-    return baseDelay[slide.type as keyof typeof baseDelay] || 10000;
-  }
-  
+  /**
+   * استخراج النقاط الرئيسية
+   */
   private extractBulletPoints(text: string): string[] {
     const sentences = text.split('.').filter(s => s.trim().length > 0);
     return sentences.slice(0, 5).map(s => s.trim());
   }
   
+  /**
+   * توليد شريحة fallback
+   */
   private generateFallbackSlide(slide: any): string {
     const content = slide.content || {};
     return `
@@ -1249,91 +905,9 @@ export class RealtimeChatService {
     `;
   }
   
-  // Fallback للمحادثة بدون templates (الكود الأصلي)
-  private async handleNormalChat(
-    userId: string,
-    lessonId: string,
-    message: string
-  ): Promise<void> {
-    const context = await this.getLessonContext(lessonId);
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { grade: true, firstName: true }
-    });
-    
-    let aiResponse;
-    try {
-      aiResponse = await chatService.processMessage(
-        message,
-        context || { 
-          subject: 'تعليم عام',
-          unit: 'درس عام', 
-          lesson: 'محادثة عامة',
-          grade: user?.grade || 6 
-        },
-        userId
-      );
-    } catch (error) {
-      aiResponse = {
-        response: this.getFallbackResponse(message, user?.firstName || 'الطالب'),
-        suggestions: this.getDefaultSuggestions()
-      };
-    }
-    
-    websocketService.sendToUser(userId, 'ai_response', {
-      lessonId,
-      message: aiResponse.response,
-      suggestions: aiResponse.suggestions || this.getDefaultSuggestions(),
-      timestamp: new Date().toISOString()
-    });
-    
-    await this.saveChatInteraction(
-      userId,
-      lessonId,
-      message,
-      aiResponse.response,
-      aiResponse.suggestions || [],
-      Date.now()
-    );
-  }
-  
-  private async getLessonContext(lessonId: string): Promise<any> {
-    const lesson = await this.getLessonDetails(lessonId);
-    if (!lesson) return null;
-    
-    return {
-      subject: lesson.unit.subject.name,
-      unit: lesson.unit.title,
-      lesson: lesson.title,
-      learningObjectives: lesson.objectives
-    };
-  }
-  
-  private getFallbackResponse(message: string, userName: string): string {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('مرحبا') || lowerMessage.includes('السلام')) {
-      return `أهلاً وسهلاً ${userName}! أنا مدرسك الذكي. قل "اشرح الدرس" لنبدأ، أو اسأل أي سؤال.`;
-    }
-    
-    if (lowerMessage.includes('شرح') || lowerMessage.includes('اشرح')) {
-      return 'قل "اشرح الدرس" لأبدأ في شرح الدرس بالشرائح التفاعلية، أو اسأل عن نقطة محددة.';
-    }
-    
-    return `شكراً لسؤالك "${message}". يمكنك قول "اشرح الدرس" للبدء، أو "مساعدة" لمعرفة الأوامر المتاحة.`;
-  }
-  
-  private getDefaultSuggestions(): string[] {
-    return [
-      'اشرح الدرس',
-      'أعطني مثال',
-      'اختبرني بسؤال',
-      'ما هي النقاط المهمة؟',
-      'مساعدة'
-    ];
-  }
-  
-  // Streaming support
+  /**
+   * Streaming support
+   */
   async streamResponse(
     userId: string,
     lessonId: string,
@@ -1345,7 +919,6 @@ export class RealtimeChatService {
       const context = await this.buildPromptContext(lessonId, userId, message);
       const chatPrompt = getChatResponsePrompt(context);
       
-      // هنا يمكن استخدام streaming API من OpenAI
       const fullResponse = await openAIService.chat([
         { role: 'system', content: chatPrompt },
         { role: 'user', content: message }

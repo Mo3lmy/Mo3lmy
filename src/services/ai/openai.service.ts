@@ -71,6 +71,9 @@ const AI_CONFIG = {
 // ============= ENHANCED SERVICE CLASS =============
 
 export class OpenAIService {
+  createCompletion(arg0: { prompt: string; temperature: number; maxTokens: number; }) {
+      throw new Error('Method not implemented.');
+  }
   private client: OpenAI | null = null;
   private encoder: any;
   private totalCost: number = 0;
