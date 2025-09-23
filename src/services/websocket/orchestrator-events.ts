@@ -754,7 +754,11 @@ export function setupOrchestratorEvents(socket: Socket, user: any): void {
   }) => {
     const flow = lessonOrchestrator.getFlow(user.id, data.lessonId);
     if (flow) {
-      flow.comprehensionLevel = data.level;
+      // Convert string level to number: 'low' = 25, 'medium' = 50, 'high' = 90
+      let levelNum = 50;
+      if (data.level === 'low') levelNum = 25;
+      else if (data.level === 'high') levelNum = 90;
+      flow.comprehensionLevel = levelNum;
     }
     
     socket.emit('comprehension_updated', {

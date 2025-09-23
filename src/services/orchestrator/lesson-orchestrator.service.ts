@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/orchestrator/lesson-orchestrator.service.ts
-// الوظيفة: تنسيق كل الخدمات وإدارة تدفق الدرس بذكاء مع دعم المكونات الرياضية والعرض التدريجي
+// الوظيفة: تنسيق كل الخدمات وإدارة تدفق الدرس بذكاء مع دعم المكونات الرياضية والعرض التدريجي و Prompt Templates
 
 import { prisma } from '../../config/database.config';
 import { websocketService } from '../websocket/websocket.service';
@@ -14,7 +14,22 @@ import { EventEmitter } from 'events';
 import { latexRenderer, type MathExpression } from '../../core/interactive/math/latex-renderer';
 import { mathSlideGenerator } from '../../core/video/enhanced-slide.generator';
 
-// ============= ENHANCED TYPES =============
+// 🎯 استيراد PROMPT TEMPLATES
+import { 
+  getPrompt, 
+  PromptContext,
+  getExplanationPrompt,
+  getExamplePrompt,
+  getSimplificationPrompt,
+  getQuizPrompt,
+  getChatResponsePrompt,
+  getSlideGenerationPrompt,
+  getMathProblemPrompt,
+  getLessonWelcomePrompt,
+  getLessonCompletionPrompt
+} from '../../utils/prompt-templates';
+
+// ============= ENHANCED TYPES (كما هي) =============
 
 export interface ConversationState {
   isActive: boolean;
@@ -43,7 +58,7 @@ export interface ProgressiveRevealState {
 }
 
 export interface LessonFlow {
-  id: string; // معرف فريد للـ flow
+  id: string;
   lessonId: string;
   userId: string;
   sessionId: string;
@@ -54,42 +69,48 @@ export interface LessonFlow {
   currentSlide: number;
   totalSlides: number;
   
-  // Progressive Display State (جديد)
+  // Progressive Display State
   progressiveState: ProgressiveRevealState;
   
-  // Conversation State (جديد)
+  // Conversation State
   conversationState: ConversationState;
   
-  // Presentation Mode (محسّن)
+  // Presentation Mode
   mode: 'chat_only' | 'slides_only' | 'slides_with_voice' | 'interactive';
   isPaused: boolean;
   isPresenting: boolean;
   
   // Timing
-  estimatedDuration: number; // minutes
-  actualDuration: number; // seconds
+  estimatedDuration: number;
+  actualDuration: number;
   startTime: Date;
   lastInteractionTime: Date;
   
   // User State
-  comprehensionLevel: 'low' | 'medium' | 'high';
-  engagementScore: number; // 0-100
+  comprehensionLevel: number; // تغيير من string إلى number (0-100)
+  engagementScore: number;
   questionsAsked: number;
-  interruptionCount: number; // عدد المقاطعات
+  interruptionCount: number;
   
   // Settings
   autoAdvance: boolean;
   voiceEnabled: boolean;
   playbackSpeed: number;
   theme: string;
-  progressiveReveal: boolean; // تفعيل العرض التدريجي
-  revealDelay: number; // التأخير بين النقاط (ثانية)
+  progressiveReveal: boolean;
+  revealDelay: number;
   
   // Math Settings
   isMathLesson?: boolean;
   mathInteractive?: boolean;
   mathProblemsAttempted?: number;
   mathProblemsSolved?: number;
+  
+  // Lesson Details (للـ Templates)
+  lessonTitle?: string;
+  subjectName?: string;
+  unitTitle?: string;
+  grade?: number;
 }
 
 export interface LessonSection {
@@ -97,28 +118,21 @@ export interface LessonSection {
   type: 'intro' | 'concept' | 'example' | 'practice' | 'quiz' | 'summary' | 'math-concept' | 'math-practice';
   title: string;
   slides: GeneratedSlide[];
-  duration: number; // seconds
+  duration: number;
   completed: boolean;
   
-  // Progressive Content (جديد)
   hasProgressiveContent: boolean;
   progressivePoints?: Array<{
     content: string;
-    revealAt: number; // seconds from slide start
+    revealAt: number;
     audioSegment?: string;
     animation?: string;
   }>;
   
-  // Learning objectives for this section
   objectives: string[];
-  
-  // Keywords to track
   keywords: string[];
-  
-  // Questions that might arise
   anticipatedQuestions: string[];
   
-  // Math content
   mathExpressions?: MathExpression[];
   hasMathContent?: boolean;
 }
@@ -129,18 +143,16 @@ export interface GeneratedSlide {
   content: any;
   html?: string;
   audioUrl?: string;
-  audioSegments?: string[]; // صوت لكل نقطة
+  audioSegments?: string[];
   duration: number;
   userSpentTime?: number;
   interactions?: SlideInteraction[];
   
-  // Progressive Display Properties (جديد)
   points?: string[];
   pointTimings?: number[];
   currentRevealedPoint?: number;
   fullyRevealed?: boolean;
   
-  // Math properties
   isMathSlide?: boolean;
   mathExpressions?: MathExpression[];
 }
@@ -152,26 +164,23 @@ export interface SlideInteraction {
 }
 
 export interface ActionTrigger {
-  trigger: string; // الكلمة المفتاحية
+  trigger: string;
   action: 'generate_slide' | 'show_example' | 'start_quiz' | 'explain_more' | 'simplify' | 'show_video' | 'show_math' | 'solve_equation';
   confidence: number;
   mathRelated?: boolean;
 }
 
-// ============= MAIN SERVICE (Enhanced) =============
+// ============= MAIN SERVICE (Enhanced with Templates) =============
 
 export class LessonOrchestratorService extends EventEmitter {
-  private activeLessons: Map<string, LessonFlow> = new Map();
-  private revealTimers: Map<string, NodeJS.Timeout[]> = new Map();
+  public activeLessons: Map<string, LessonFlow> = new Map();
+  public revealTimers: Map<string, NodeJS.Timeout[]> = new Map();
   
   constructor() {
     super();
     this.setupEventHandlers();
   }
   
-  /**
-   * إعداد معالجات الأحداث الداخلية
-   */
   private setupEventHandlers(): void {
     this.on('slideChanged', (data) => {
       console.log(`📍 Slide changed: ${data.slideNumber}`);
@@ -183,7 +192,7 @@ export class LessonOrchestratorService extends EventEmitter {
   }
   
   /**
-   * بدء درس جديد مع دعم المحادثة والعرض التدريجي
+   * بدء درس جديد مع دعم المحادثة والعرض التدريجي و Templates
    */
   async startLesson(
     userId: string,
@@ -196,15 +205,13 @@ export class LessonOrchestratorService extends EventEmitter {
       progressiveReveal?: boolean;
     }
   ): Promise<LessonFlow> {
-    console.log('🎯 Starting Enhanced Lesson Orchestration');
+    console.log('🎯 Starting Enhanced Lesson Orchestration with Templates');
     
-    // Check for existing flow
     const flowKey = `${userId}-${lessonId}`;
     if (this.activeLessons.has(flowKey)) {
       console.log('📚 Resuming existing lesson flow');
       const existingFlow = this.activeLessons.get(flowKey)!;
       
-      // Update options if provided
       if (options) {
         Object.assign(existingFlow, options);
       }
@@ -212,24 +219,19 @@ export class LessonOrchestratorService extends EventEmitter {
       return existingFlow;
     }
     
-    // Load lesson content
     const lesson = await this.loadLessonWithContent(lessonId);
     if (!lesson) {
       throw new Error('Lesson not found');
     }
     
-    // Check if it's a math lesson
     const isMathLesson = this.checkIfMathLesson(lesson);
     
-    // Create lesson structure with progressive content
     const sections = await this.createLessonSectionsWithProgressive(lesson, isMathLesson);
     
-    // Calculate total slides
     const totalSlides = sections.reduce((sum, section) => 
       sum + section.slides.length, 0
     );
     
-    // Create flow with enhanced properties
     const flow: LessonFlow = {
       id: `flow-${Date.now()}`,
       lessonId,
@@ -240,7 +242,6 @@ export class LessonOrchestratorService extends EventEmitter {
       currentSlide: 0,
       totalSlides,
       
-      // Progressive State
       progressiveState: {
         isRevealing: false,
         currentPointIndex: 0,
@@ -249,7 +250,6 @@ export class LessonOrchestratorService extends EventEmitter {
         lastRevealTime: new Date()
       },
       
-      // Conversation State
       conversationState: {
         isActive: true,
         currentContext: lesson.title,
@@ -257,45 +257,46 @@ export class LessonOrchestratorService extends EventEmitter {
         messageHistory: []
       },
       
-      // Presentation Mode
       mode: options?.mode || 'interactive',
       isPaused: false,
       isPresenting: false,
       
-      // Timing
       estimatedDuration: Math.ceil(totalSlides * 0.5),
       actualDuration: 0,
       startTime: new Date(),
       lastInteractionTime: new Date(),
       
-      // User State
-      comprehensionLevel: 'medium',
+      comprehensionLevel: 75, // تغيير إلى رقم
       engagementScore: 100,
       questionsAsked: 0,
       interruptionCount: 0,
       
-      // Settings
       autoAdvance: options?.autoAdvance ?? true,
       voiceEnabled: options?.voiceEnabled ?? true,
       playbackSpeed: 1,
       theme: this.getThemeByGrade(lesson.unit.subject.grade),
       progressiveReveal: options?.progressiveReveal ?? true,
-      revealDelay: 3, // 3 seconds between points
+      revealDelay: 3,
       
-      // Math properties
       isMathLesson,
       mathInteractive: isMathLesson,
       mathProblemsAttempted: 0,
-      mathProblemsSolved: 0
+      mathProblemsSolved: 0,
+      
+      // معلومات الدرس للـ Templates
+      lessonTitle: lesson.titleAr || lesson.title,
+      subjectName: lesson.unit.subject.nameAr || lesson.unit.subject.name,
+      unitTitle: lesson.unit.title,
+      grade: lesson.unit.subject.grade
     };
     
-    // Store flow
     this.activeLessons.set(flowKey, flow);
     
-    // Generate first slides
     await this.generateInitialSlides(flow);
     
-    // Emit flow started event
+    // إرسال رسالة ترحيب باستخدام Template
+    await this.sendLessonWelcome(flow);
+    
     this.emit('flowStarted', {
       userId,
       lessonId,
@@ -309,70 +310,715 @@ export class LessonOrchestratorService extends EventEmitter {
   }
   
   /**
+   * إرسال رسالة ترحيب بالدرس باستخدام Template
+   */
+  private async sendLessonWelcome(flow: LessonFlow): Promise<void> {
+    const context: PromptContext = {
+      lessonTitle: flow.lessonTitle || '',
+      subject: flow.subjectName || '',
+      grade: flow.grade || 6,
+      isMathLesson: flow.isMathLesson
+    };
+    
+    const welcomePrompt = getLessonWelcomePrompt(context);
+    
+    try {
+      const welcomeMessage = await openAIService.chat([
+        { role: 'system', content: welcomePrompt }
+      ], {
+        temperature: 0.7,
+        maxTokens: 200
+      });
+      
+      websocketService.sendToUser(flow.userId, 'lesson_welcome', {
+        lessonId: flow.lessonId,
+        message: welcomeMessage,
+        lessonTitle: flow.lessonTitle,
+        mode: flow.mode
+      });
+      
+      flow.conversationState.messageHistory.push({
+        role: 'assistant',
+        content: welcomeMessage,
+        timestamp: new Date()
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate welcome message:', error);
+      
+      // Fallback welcome message
+      const fallbackMessage = `مرحباً بك في درس "${flow.lessonTitle}"! 🌟 هيا نبدأ رحلة تعلم ممتعة معاً`;
+      
+      websocketService.sendToUser(flow.userId, 'lesson_welcome', {
+        lessonId: flow.lessonId,
+        message: fallbackMessage,
+        lessonTitle: flow.lessonTitle,
+        mode: flow.mode
+      });
+    }
+  }
+  
+  /**
+   * بناء السياق للـ Templates
+   */
+  private buildPromptContext(flow: LessonFlow, userMessage?: string): PromptContext {
+    const currentSection = flow.sections[flow.currentSection];
+    const conversationHistory = flow.conversationState.messageHistory
+      .slice(-5)
+      .map(msg => `${msg.role === 'user' ? 'الطالب' : 'المساعد'}: ${msg.content}`);
+    
+    return {
+      lessonTitle: flow.lessonTitle || '',
+      subject: flow.subjectName || '',
+      grade: flow.grade || 6,
+      currentSection: currentSection.title,
+      currentSlide: flow.currentSlide,
+      comprehensionLevel: flow.comprehensionLevel,
+      userMessage,
+      conversationHistory,
+      isMathLesson: flow.isMathLesson
+    };
+  }
+  
+  /**
    * معالجة رسالة من المستخدم مع دعم المحادثة المتكاملة
    */
-  /**
- * معالجة رسالة من المستخدم مع دعم المحادثة المتكاملة
- */
-async processUserMessage(
-  userId: string,
-  lessonId: string,
-  message: string
-): Promise<ActionTrigger | null> {  // غيّر من boolean إلى ActionTrigger | null
-  const flow = this.getFlow(userId, lessonId);
-  if (!flow) return null;  // غيّر من false إلى null
-  
-  // Update conversation state
-  flow.conversationState.lastUserMessage = message;
-  flow.conversationState.messageHistory.push({
-    role: 'user',
-    content: message,
-    timestamp: new Date()
-  });
-  flow.questionsAsked++;
-  flow.lastInteractionTime = new Date();
-  
-  // Check if waiting for user choice
-  if (flow.conversationState.waitingForUserChoice) {
-    const handled = await this.handleUserChoice(flow, message);
-    return handled ? { trigger: message, action: 'generate_slide', confidence: 0.8 } : null;
+  async processUserMessage(
+    userId: string,
+    lessonId: string,
+    message: string
+  ): Promise<ActionTrigger | null> {
+    const flow = this.getFlow(userId, lessonId);
+    if (!flow) return null;
+    
+    flow.conversationState.lastUserMessage = message;
+    flow.conversationState.messageHistory.push({
+      role: 'user',
+      content: message,
+      timestamp: new Date()
+    });
+    flow.questionsAsked++;
+    flow.lastInteractionTime = new Date();
+    
+    if (flow.conversationState.waitingForUserChoice) {
+      const handled = await this.handleUserChoice(flow, message);
+      return handled ? { trigger: message, action: 'generate_slide', confidence: 0.8 } : null;
+    }
+    
+    if (flow.isPresenting && !flow.isPaused) {
+      const handled = await this.handleInterruption(flow, message);
+      return handled ? { trigger: message, action: 'explain_more', confidence: 0.8 } : null;
+    }
+    
+    const action = await this.analyzeMessageIntent(message, flow);
+    
+    if (action && action.confidence > 0.7) {
+      await this.executeAction(flow, action);
+      return action;
+    }
+    
+    if (this.isQuestionAboutCurrentContent(message, flow)) {
+      await this.answerContextualQuestion(flow, message);
+      return { trigger: message, action: 'explain_more', confidence: 0.6 };
+    }
+    
+    return null;
   }
-  
-  // Check if it's an interruption during presentation
-  if (flow.isPresenting && !flow.isPaused) {
-    const handled = await this.handleInterruption(flow, message);
-    return handled ? { trigger: message, action: 'explain_more', confidence: 0.8 } : null;
-  }
-  
-  // Analyze intent and determine action
-  const action = await this.analyzeMessageIntent(message, flow);
-  
-  // Execute action if high confidence
-  if (action && action.confidence > 0.7) {
-    await this.executeAction(flow, action);
-    return action;  // أرجع action بدلاً من true
-  }
-  
-  // If no specific action, check if it's a question about current content
-  if (this.isQuestionAboutCurrentContent(message, flow)) {
-    await this.answerContextualQuestion(flow, message);
-    return { trigger: message, action: 'explain_more', confidence: 0.6 };
-  }
-  
-  return null;  // غيّر من false إلى null
-}
   
   /**
-   * معالجة اختيار المستخدم (للأوضاع المختلفة)
+   * الإجابة على سؤال سياقي باستخدام Templates
    */
+  private async answerContextualQuestion(flow: LessonFlow, question: string): Promise<void> {
+    const context = this.buildPromptContext(flow, question);
+    const chatPrompt = getChatResponsePrompt(context);
+    
+    try {
+      const answer = await openAIService.chat([
+        { role: 'system', content: chatPrompt },
+        { role: 'user', content: question }
+      ], {
+        temperature: 0.7,
+        maxTokens: 300
+      });
+      
+      websocketService.sendToUser(flow.userId, 'contextual_answer', {
+        lessonId: flow.lessonId,
+        question,
+        answer,
+        slideContext: flow.currentSlide,
+        sectionContext: context.currentSection
+      });
+      
+      flow.conversationState.messageHistory.push({
+        role: 'assistant',
+        content: answer,
+        timestamp: new Date()
+      });
+      
+      // تحليل مستوى الفهم
+      await this.analyzeComprehension(flow);
+      
+    } catch (error) {
+      console.error('Failed to generate contextual answer:', error);
+      
+      // Fallback answer
+      const fallbackAnswer = `دعني أوضح لك هذه النقطة بشكل آخر...`;
+      
+      websocketService.sendToUser(flow.userId, 'contextual_answer', {
+        lessonId: flow.lessonId,
+        question,
+        answer: fallbackAnswer
+      });
+    }
+  }
+  
+  /**
+   * تحليل مستوى الفهم باستخدام Templates
+   */
+  private async analyzeComprehension(flow: LessonFlow): Promise<void> {
+    // تحليل كل 5 رسائل
+    if (flow.conversationState.messageHistory.length % 5 !== 0) return;
+    
+    const userMessages = flow.conversationState.messageHistory
+      .filter(msg => msg.role === 'user')
+      .slice(-5)
+      .map(msg => msg.content);
+    
+    const context = this.buildPromptContext(flow);
+    const analysisPrompt = getPrompt('analyze', context);
+    
+    try {
+      const analysisJson = await openAIService.chat([
+        { role: 'system', content: 'You are a JSON generator. Respond only with valid JSON.' },
+        { role: 'user', content: analysisPrompt + '\n\nالرسائل:\n' + userMessages.join('\n') }
+      ], {
+        temperature: 0.5,
+        maxTokens: 200
+      });
+      
+      const analysis = JSON.parse(analysisJson);
+      flow.comprehensionLevel = analysis.comprehensionLevel || flow.comprehensionLevel;
+      
+      websocketService.sendToUser(flow.userId, 'comprehension_update', {
+        lessonId: flow.lessonId,
+        level: flow.comprehensionLevel,
+        feedback: analysis.feedback,
+        needsClarification: analysis.needsClarification
+      });
+      
+    } catch (error) {
+      console.error('Comprehension analysis failed:', error);
+    }
+  }
+  
+  /**
+   * تنفيذ الإجراء المطلوب باستخدام Templates
+   */
+  public async executeAction(flow: LessonFlow, action: ActionTrigger): Promise<void> {
+    console.log(`🎬 Executing action with templates: ${action.action}${action.mathRelated ? ' (Math)' : ''}`);
+    
+    const context = this.buildPromptContext(flow, action.trigger);
+    
+    switch (action.action) {
+      case 'generate_slide':
+        await this.generateSlideWithTemplate(flow, context, action.trigger);
+        break;
+        
+      case 'show_example':
+        if (flow.isMathLesson) {
+          await this.generateMathExampleWithTemplate(flow, context);
+        } else {
+          await this.generateExampleWithTemplate(flow, context);
+        }
+        break;
+        
+      case 'start_quiz':
+        if (flow.isMathLesson) {
+          await this.generateMathQuizWithTemplate(flow, context);
+        } else {
+          await this.generateQuizWithTemplate(flow, context);
+        }
+        break;
+        
+      case 'explain_more':
+        await this.generateExplanationWithTemplate(flow, context);
+        break;
+        
+      case 'simplify':
+        await this.generateSimplifiedWithTemplate(flow, context);
+        break;
+        
+      case 'show_video':
+        await this.suggestVideo(flow);
+        break;
+        
+      case 'show_math':
+        await this.generateInteractiveMathSlide(flow, action.trigger);
+        break;
+        
+      case 'solve_equation':
+        await this.generateSolutionWithTemplate(flow, context, action.trigger);
+        break;
+    }
+    
+    websocketService.sendToUser(flow.userId, 'action_executed', {
+      action: action.action,
+      trigger: action.trigger,
+      mathRelated: action.mathRelated,
+      comprehensionLevel: flow.comprehensionLevel
+    });
+  }
+  
+  /**
+   * توليد شريحة باستخدام Template
+   */
+  private async generateSlideWithTemplate(
+    flow: LessonFlow, 
+    context: PromptContext, 
+    topic: string
+  ): Promise<void> {
+    const slidePrompt = getSlideGenerationPrompt(context, 'content');
+    
+    try {
+      const slideJson = await openAIService.chat([
+        { role: 'system', content: 'You are a JSON generator. Respond only with valid JSON.' },
+        { role: 'user', content: slidePrompt }
+      ], {
+        temperature: 0.7,
+        maxTokens: 400
+      });
+      
+      const slideData = JSON.parse(slideJson);
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: slideData.type || 'content',
+        content: slideData,
+        duration: 20,
+        isMathSlide: false,
+        points: this.splitContentToPoints(slideData.content || slideData.text),
+        pointTimings: [0, 3, 6, 9, 12]
+      };
+      
+      newSlide.html = await this.generateSlideHTML(flow, newSlide);
+      this.insertSlideAfterCurrent(flow, newSlide);
+      
+      websocketService.sendToUser(flow.userId, 'slide_generated', {
+        slide: newSlide,
+        reason: 'template_generated'
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate slide with template:', error);
+      // Fallback to original method
+      await this.generateExplanationSlide(flow, topic);
+    }
+  }
+  
+  /**
+   * توليد شرح باستخدام Template
+   */
+  private async generateExplanationWithTemplate(flow: LessonFlow, context: PromptContext): Promise<void> {
+    const explainPrompt = getExplanationPrompt(context);
+    
+    try {
+      const explanation = await openAIService.chat([
+        { role: 'system', content: explainPrompt }
+      ], {
+        temperature: 0.6,
+        maxTokens: 500
+      });
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: 'content',
+        content: {
+          title: `شرح تفصيلي: ${context.currentSection}`,
+          text: explanation
+        },
+        duration: 25,
+        isMathSlide: false,
+        points: this.splitContentToPoints(explanation),
+        pointTimings: [0, 4, 8, 12, 16]
+      };
+      
+      newSlide.html = await this.generateSlideHTML(flow, newSlide);
+      this.insertSlideAfterCurrent(flow, newSlide);
+      
+      websocketService.sendToUser(flow.userId, 'explanation_generated', {
+        slide: newSlide,
+        comprehensionLevel: flow.comprehensionLevel
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate explanation:', error);
+      await this.generateDetailedExplanation(flow);
+    }
+  }
+  
+  /**
+   * توليد مثال باستخدام Template
+   */
+  private async generateExampleWithTemplate(flow: LessonFlow, context: PromptContext): Promise<void> {
+    const examplePrompt = getExamplePrompt(context);
+    
+    try {
+      const example = await openAIService.chat([
+        { role: 'system', content: examplePrompt }
+      ], {
+        temperature: 0.7,
+        maxTokens: 400
+      });
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: 'content',
+        content: {
+          title: `مثال توضيحي`,
+          text: example
+        },
+        duration: 20,
+        isMathSlide: false,
+        points: this.splitContentToPoints(example)
+      };
+      
+      newSlide.html = await this.generateSlideHTML(flow, newSlide);
+      this.insertSlideAfterCurrent(flow, newSlide);
+      
+      websocketService.sendToUser(flow.userId, 'example_generated', {
+        slide: newSlide
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate example:', error);
+      await this.generateExampleSlide(flow);
+    }
+  }
+  
+  /**
+   * توليد تبسيط باستخدام Template
+   */
+  private async generateSimplifiedWithTemplate(flow: LessonFlow, context: PromptContext): Promise<void> {
+    const simplifyPrompt = getSimplificationPrompt(context);
+    
+    try {
+      const simplified = await openAIService.chat([
+        { role: 'system', content: simplifyPrompt }
+      ], {
+        temperature: 0.6,
+        maxTokens: 400
+      });
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: 'content',
+        content: {
+          title: 'شرح مبسط',
+          text: simplified
+        },
+        duration: 20,
+        isMathSlide: false,
+        points: this.splitContentToPoints(simplified)
+      };
+      
+      newSlide.html = await this.generateSlideHTML(flow, newSlide);
+      this.insertSlideAfterCurrent(flow, newSlide);
+      
+      // تحديث مستوى الفهم
+      flow.comprehensionLevel = Math.max(30, flow.comprehensionLevel - 10);
+      
+      websocketService.sendToUser(flow.userId, 'simplified_generated', {
+        slide: newSlide,
+        newComprehensionLevel: flow.comprehensionLevel
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate simplified:', error);
+      await this.generateSimplifiedSlide(flow);
+    }
+  }
+  
+  /**
+   * توليد اختبار باستخدام Template
+   */
+  private async generateQuizWithTemplate(flow: LessonFlow, context: PromptContext): Promise<void> {
+    const quizPrompt = getQuizPrompt(context);
+    
+    try {
+      const quizJson = await openAIService.chat([
+        { role: 'system', content: 'You are a JSON generator. Respond only with valid JSON.' },
+        { role: 'user', content: quizPrompt }
+      ], {
+        temperature: 0.6,
+        maxTokens: 400
+      });
+      
+      const quiz = JSON.parse(quizJson);
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: 'quiz',
+        content: { quiz },
+        duration: 30,
+        isMathSlide: false
+      };
+      
+      newSlide.html = slideGenerator.generateRealtimeSlideHTML(
+        {
+          id: `slide-${newSlide.number}`,
+          type: 'quiz',
+          content: newSlide.content,
+          duration: newSlide.duration,
+          transitions: { in: 'zoom', out: 'zoom' }
+        },
+        flow.theme as any
+      );
+      
+      this.insertSlideAfterCurrent(flow, newSlide);
+      
+      websocketService.sendToUser(flow.userId, 'quiz_generated', {
+        slide: newSlide,
+        quiz
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate quiz:', error);
+      await this.generateQuizSlide(flow);
+    }
+  }
+  
+  /**
+   * توليد مثال رياضي باستخدام Template
+   */
+  private async generateMathExampleWithTemplate(flow: LessonFlow, context: PromptContext): Promise<void> {
+    const mathPrompt = getMathProblemPrompt(context);
+    
+    try {
+      const problemJson = await openAIService.chat([
+        { role: 'system', content: 'You are a JSON generator. Respond only with valid JSON.' },
+        { role: 'user', content: mathPrompt }
+      ], {
+        temperature: 0.5,
+        maxTokens: 500
+      });
+      
+      const problem = JSON.parse(problemJson);
+      
+      const html = await mathSlideGenerator.generateMathProblemSlide(problem);
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: 'math-example',
+        content: problem,
+        duration: 25,
+        html,
+        isMathSlide: true
+      };
+      
+      this.insertSlideAfterCurrent(flow, newSlide);
+      
+      websocketService.sendToUser(flow.userId, 'math_example_generated', {
+        slide: newSlide,
+        problem
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate math example:', error);
+      await this.generateMathExampleSlide(flow);
+    }
+  }
+  
+  /**
+   * توليد اختبار رياضي باستخدام Template
+   */
+  private async generateMathQuizWithTemplate(flow: LessonFlow, context: PromptContext): Promise<void> {
+    const quizPrompt = getPrompt('start_quiz', { ...context, isMathLesson: true });
+    
+    try {
+      const quizJson = await openAIService.chat([
+        { role: 'system', content: 'You are a JSON generator. Respond only with valid JSON.' },
+        { role: 'user', content: quizPrompt + '\nاجعل السؤال رياضي مع معادلة' }
+      ], {
+        temperature: 0.6,
+        maxTokens: 400
+      });
+      
+      const quiz = JSON.parse(quizJson);
+      
+      // إضافة معادلة إذا لم تكن موجودة
+      if (!quiz.equation && quiz.question) {
+        quiz.equation = this.extractEquation(quiz.question) || 'x + 5 = 10';
+      }
+      
+      const html = await mathSlideGenerator.generateMathProblemSlide({
+        title: 'اختبار سريع',
+        question: quiz.question,
+        equation: quiz.equation,
+        hints: quiz.hints || ['فكر في الخطوات'],
+        solution: quiz.solution || quiz.options?.[quiz.correct]
+      });
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: 'math-quiz',
+        content: { quiz },
+        duration: 35,
+        html,
+        isMathSlide: true
+      };
+      
+      this.insertSlideAfterCurrent(flow, newSlide);
+      if (flow.mathProblemsAttempted !== undefined) flow.mathProblemsAttempted++;
+      
+      websocketService.sendToUser(flow.userId, 'math_quiz_generated', {
+        slide: newSlide,
+        quiz
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate math quiz:', error);
+      await this.generateMathQuizSlide(flow);
+    }
+  }
+  
+  /**
+   * توليد حل معادلة باستخدام Template
+   */
+  private async generateSolutionWithTemplate(
+    flow: LessonFlow, 
+    context: PromptContext, 
+    equation: string
+  ): Promise<void> {
+    const solutionPrompt = `
+حل المعادلة التالية خطوة بخطوة:
+${equation}
+
+أرجع الحل بصيغة JSON:
+{
+  "steps": [
+    {"stepNumber": 1, "latex": "...", "explanation": "..."},
+    {"stepNumber": 2, "latex": "...", "explanation": "..."}
+  ],
+  "solution": "الحل النهائي",
+  "result": "القيمة"
+}`;
+    
+    try {
+      const solutionJson = await openAIService.chat([
+        { role: 'system', content: 'You are a JSON generator. Respond only with valid JSON.' },
+        { role: 'user', content: solutionPrompt }
+      ], {
+        temperature: 0.3,
+        maxTokens: 500
+      });
+      
+      const solutionData = JSON.parse(solutionJson);
+      
+      const html = await mathSlideGenerator.generateMathProblemSlide({
+        title: 'حل المعادلة',
+        question: equation,
+        equation: this.extractEquation(equation) || equation,
+        solution: solutionData.solution,
+        steps: solutionData.steps
+      });
+      
+      const newSlide: GeneratedSlide = {
+        number: flow.totalSlides,
+        type: 'math-solution',
+        content: solutionData,
+        duration: 40,
+        html,
+        isMathSlide: true
+      };
+      
+      this.insertSlideAfterCurrent(flow, newSlide);
+      if (flow.mathProblemsSolved !== undefined) flow.mathProblemsSolved++;
+      
+      websocketService.sendToUser(flow.userId, 'solution_generated', {
+        slide: newSlide,
+        solution: solutionData
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate solution:', error);
+      await this.generateSolutionSlide(flow, equation);
+    }
+  }
+  
+  /**
+   * إكمال الدرس مع رسالة ختامية باستخدام Template
+   */
+  public async completeLessonFlow(flow: LessonFlow): Promise<void> {
+    // رسالة ختامية باستخدام Template
+    const context: PromptContext = {
+      lessonTitle: flow.lessonTitle || '',
+      subject: flow.subjectName || '',
+      grade: flow.grade || 6,
+      comprehensionLevel: flow.comprehensionLevel,
+      isMathLesson: flow.isMathLesson
+    };
+    
+    const completionPrompt = getLessonCompletionPrompt(context);
+    
+    try {
+      const completionMessage = await openAIService.chat([
+        { role: 'system', content: completionPrompt }
+      ], {
+        temperature: 0.7,
+        maxTokens: 300
+      });
+      
+      websocketService.sendToUser(flow.userId, 'lesson_completed', {
+        lessonId: flow.lessonId,
+        message: completionMessage,
+        duration: flow.actualDuration,
+        questionsAsked: flow.questionsAsked,
+        engagementScore: flow.engagementScore,
+        comprehensionLevel: flow.comprehensionLevel,
+        isMathLesson: flow.isMathLesson,
+        mathProblemsAttempted: flow.mathProblemsAttempted || 0,
+        mathProblemsSolved: flow.mathProblemsSolved || 0
+      });
+      
+    } catch (error) {
+      console.error('Failed to generate completion message:', error);
+      
+      // Fallback message
+      websocketService.sendToUser(flow.userId, 'lesson_completed', {
+        lessonId: flow.lessonId,
+        message: `أحسنت! لقد أكملت درس "${flow.lessonTitle}" بنجاح! 🎉`,
+        duration: flow.actualDuration,
+        questionsAsked: flow.questionsAsked,
+        engagementScore: flow.engagementScore,
+        comprehensionLevel: flow.comprehensionLevel
+      });
+    }
+    
+    flow.sections.forEach(s => s.completed = true);
+    flow.actualDuration = Math.floor((Date.now() - flow.startTime.getTime()) / 1000);
+    
+    this.emit('lessonCompleted', {
+      userId: flow.userId,
+      lessonId: flow.lessonId,
+      stats: {
+        duration: flow.actualDuration,
+        questionsAsked: flow.questionsAsked,
+        engagementScore: flow.engagementScore,
+        comprehensionLevel: flow.comprehensionLevel
+      }
+    });
+    
+    this.activeLessons.delete(`${flow.userId}-${flow.lessonId}`);
+  }
+  
+  // ============= باقي الـ METHODS كما هي بدون تغيير =============
+  
   private async handleUserChoice(flow: LessonFlow, message: string): Promise<boolean> {
     const lowerMessage = message.toLowerCase();
     
-    // Check for mode selection
     if (flow.conversationState.choiceOptions) {
       for (const option of flow.conversationState.choiceOptions) {
         if (lowerMessage.includes(option.id) || lowerMessage.includes(option.label.toLowerCase())) {
-          // Update mode
           if (option.id.includes('chat')) flow.mode = 'chat_only';
           else if (option.id.includes('voice')) flow.mode = 'slides_with_voice';
           else if (option.id.includes('slides')) flow.mode = 'slides_only';
@@ -381,7 +1027,6 @@ async processUserMessage(
           flow.conversationState.waitingForUserChoice = false;
           flow.conversationState.choiceOptions = undefined;
           
-          // Start presentation based on chosen mode
           await this.startPresentation(flow);
           return true;
         }
@@ -391,43 +1036,29 @@ async processUserMessage(
     return false;
   }
   
-  /**
-   * معالجة المقاطعات أثناء العرض
-   */
   private async handleInterruption(flow: LessonFlow, message: string): Promise<boolean> {
     flow.interruptionCount++;
     
-    // Pause presentation
     await this.pausePresentation(flow);
     
-    // Check if question is related to current content
     const isRelated = await this.checkQuestionRelevance(message, flow);
     
     if (isRelated) {
-      // Answer and offer to continue
       await this.answerAndContinue(flow, message);
     } else {
-      // Defer question or switch context
       await this.handleOffTopicQuestion(flow, message);
     }
     
     return true;
   }
   
-  /**
-   * بدء العرض التدريجي
-   */
   async startPresentation(flow: LessonFlow): Promise<void> {
     flow.isPresenting = true;
     flow.isPaused = false;
     
-    // Start from current slide
     await this.presentSlideProgressive(flow, flow.currentSlide);
   }
   
-  /**
-   * عرض شريحة بشكل تدريجي
-   */
   public async presentSlideProgressive(flow: LessonFlow, slideNumber: number): Promise<void> {
     const slide = this.getSlideByNumber(flow, slideNumber);
     if (!slide) return;
@@ -437,10 +1068,8 @@ async processUserMessage(
     flow.progressiveState.currentPointIndex = 0;
     flow.progressiveState.pointsRevealed = [];
     
-    // Clear any existing timers
     this.clearRevealTimers(flow.id);
     
-    // Send slide header first
     websocketService.sendToUser(flow.userId, 'slide_started', {
       lessonId: flow.lessonId,
       slideNumber,
@@ -449,35 +1078,30 @@ async processUserMessage(
       mode: flow.mode
     });
     
-    // If progressive reveal is enabled and slide has points
     if (flow.progressiveReveal && slide.points && slide.points.length > 0) {
       await this.revealPointsSequentially(flow, slide);
     } else {
-      // Reveal all at once
       await this.revealSlideCompletely(flow, slide);
     }
   }
   
-  /**
-   * كشف النقاط بالتتابع
-   */
+  // كل الـ methods الأصلية المتبقية تبقى كما هي...
+  // (لن أكررها لأنها لم تتغير)
+  
   private async revealPointsSequentially(flow: LessonFlow, slide: GeneratedSlide): Promise<void> {
     const points = slide.points || [];
     const timers: NodeJS.Timeout[] = [];
     
     for (let i = 0; i < points.length; i++) {
-      // Check if presentation is paused
       if (flow.isPaused) {
         break;
       }
       
       const timer = setTimeout(async () => {
         if (!flow.isPaused && flow.isPresenting) {
-          // Reveal point
           flow.progressiveState.currentPointIndex = i;
           flow.progressiveState.pointsRevealed.push(i);
           
-          // Send point reveal event
           websocketService.sendToUser(flow.userId, 'reveal_point', {
             lessonId: flow.lessonId,
             slideNumber: flow.currentSlide,
@@ -487,25 +1111,22 @@ async processUserMessage(
             duration: 500
           });
           
-          // Play audio for this point if available
           if (flow.voiceEnabled && slide.audioSegments && slide.audioSegments[i]) {
             await this.playAudioSegment(flow, slide.audioSegments[i]);
           }
           
-          // Emit event
           this.emit('pointRevealed', {
             slideNumber: flow.currentSlide,
             pointIndex: i,
             totalPoints: points.length
           });
           
-          // If last point and auto-advance is enabled
           if (i === points.length - 1 && flow.autoAdvance) {
             setTimeout(() => {
               if (!flow.isPaused && flow.currentSlide < flow.totalSlides - 1) {
                 this.navigateNext(flow.userId, flow.lessonId);
               }
-            }, 5000); // Wait 5 seconds after last point
+            }, 5000);
           }
         }
       }, i * flow.revealDelay * 1000);
@@ -513,50 +1134,20 @@ async processUserMessage(
       timers.push(timer);
     }
     
-    // Store timers for cleanup
     this.revealTimers.set(flow.id, timers);
   }
   
-  /**
-   * كشف الشريحة بالكامل
-   */
-  private async revealSlideCompletely(flow: LessonFlow, slide: GeneratedSlide): Promise<void> {
-    websocketService.sendToUser(flow.userId, 'slide_ready', {
-      lessonId: flow.lessonId,
-      slideNumber: flow.currentSlide,
-      html: slide.html,
-      content: slide.content,
-      fullyRevealed: true
-    });
-    
-    slide.fullyRevealed = true;
-    
-    // Play full audio if available
-    if (flow.voiceEnabled && slide.audioUrl) {
-      await this.playAudio(flow, slide.audioUrl);
-    }
-    
-    // Auto-advance if enabled
-    if (flow.autoAdvance && flow.currentSlide < flow.totalSlides - 1) {
-      setTimeout(() => {
-        if (!flow.isPaused) {
-          this.navigateNext(flow.userId, flow.lessonId);
-        }
-      }, slide.duration * 1000);
-    }
+  // Public methods for access control
+  public getFlow(userId: string, lessonId: string): LessonFlow | undefined {
+    return this.activeLessons.get(`${userId}-${lessonId}`);
   }
   
-  /**
-   * إيقاف العرض مؤقتاً
-   */
-  async pausePresentation(flow: LessonFlow): Promise<void> {
+  public async pausePresentation(flow: LessonFlow): Promise<void> {
     flow.isPaused = true;
     flow.progressiveState.isRevealing = false;
     
-    // Clear reveal timers
     this.clearRevealTimers(flow.id);
     
-    // Notify user
     websocketService.sendToUser(flow.userId, 'presentation_paused', {
       lessonId: flow.lessonId,
       currentSlide: flow.currentSlide,
@@ -570,16 +1161,11 @@ async processUserMessage(
     });
   }
   
-  /**
-   * استئناف العرض
-   */
-  async resumePresentation(flow: LessonFlow): Promise<void> {
+  public async resumePresentation(flow: LessonFlow): Promise<void> {
     flow.isPaused = false;
     
-    // Resume from current point
     const slide = this.getSlideByNumber(flow, flow.currentSlide);
     if (slide && slide.points && flow.progressiveState.currentPointIndex < slide.points.length - 1) {
-      // Continue revealing remaining points
       const remainingPoints = slide.points.slice(flow.progressiveState.currentPointIndex + 1);
       const timers: NodeJS.Timeout[] = [];
       
@@ -606,7 +1192,6 @@ async processUserMessage(
       this.revealTimers.set(flow.id, timers);
     }
     
-    // Notify user
     websocketService.sendToUser(flow.userId, 'presentation_resumed', {
       lessonId: flow.lessonId,
       currentSlide: flow.currentSlide,
@@ -619,33 +1204,29 @@ async processUserMessage(
     });
   }
   
-  /**
-   * الانتقال للشريحة التالية مع دعم العرض التدريجي
-   */
+  // كل الـ methods الأصلية الباقية تبقى كما هي بدون تغيير...
+  // (بما في ذلك navigateNext, navigatePrevious, jumpToSlide, إلخ)
+  
+  // أضف فقط الـ helper methods الموجودة
   async navigateNext(userId: string, lessonId: string): Promise<GeneratedSlide | null> {
     const flow = this.getFlow(userId, lessonId);
     if (!flow) return null;
     
-    // Clear any active reveal timers
     this.clearRevealTimers(flow.id);
     
-    // Check if we can advance
     if (flow.currentSlide >= flow.totalSlides - 1) {
       await this.completeLessonFlow(flow);
       return null;
     }
     
-    // Update position
     flow.currentSlide++;
     
-    // Check if moving to new section
     const currentSectionSlides = flow.sections[flow.currentSection].slides.length;
     const sectionStartSlide = this.getSectionStartSlide(flow, flow.currentSection);
     
     if (flow.currentSlide >= sectionStartSlide + currentSectionSlides) {
       flow.currentSection++;
       
-      // Notify about section change
       websocketService.sendToUser(userId, 'section_changed', {
         section: flow.sections[flow.currentSection].title,
         type: flow.sections[flow.currentSection].type,
@@ -659,11 +1240,9 @@ async processUserMessage(
       });
     }
     
-    // Get slide
     const slide = this.getSlideByNumber(flow, flow.currentSlide);
     if (!slide) return null;
     
-    // Generate HTML if not exists
     if (!slide.html) {
       if (slide.isMathSlide) {
         slide.html = await this.generateMathSlideHTML(slide, flow);
@@ -672,27 +1251,22 @@ async processUserMessage(
       }
     }
     
-    // Start progressive presentation if enabled
     if (flow.progressiveReveal && flow.isPresenting) {
       await this.presentSlideProgressive(flow, flow.currentSlide);
     } else {
       await this.revealSlideCompletely(flow, slide);
     }
     
-    // Pre-generate next slides
     this.preGenerateUpcomingSlides(flow, 2);
     
-    // Update session
     await sessionService.updateSlidePosition(
       flow.sessionId,
       flow.currentSlide,
       flow.totalSlides
     );
     
-    // Track engagement
     this.trackSlideEngagement(flow, slide);
     
-    // Emit event
     this.emit('slideChanged', {
       userId,
       lessonId,
@@ -703,62 +1277,46 @@ async processUserMessage(
     return slide;
   }
   
-  /**
-   * الانتقال للشريحة السابقة
-   */
   async navigatePrevious(userId: string, lessonId: string): Promise<GeneratedSlide | null> {
     const flow = this.getFlow(userId, lessonId);
     if (!flow) return null;
     
-    // Clear any active reveal timers
     this.clearRevealTimers(flow.id);
     
-    // Check if we can go back
     if (flow.currentSlide <= 0) {
       return null;
     }
     
-    // Update position
     flow.currentSlide--;
     
-    // Check if moving to previous section
     if (flow.currentSlide < this.getSectionStartSlide(flow, flow.currentSection)) {
       flow.currentSection--;
       
-      // Notify about section change
       websocketService.sendToUser(userId, 'section_changed', {
         section: flow.sections[flow.currentSection].title,
         type: flow.sections[flow.currentSection].type
       });
     }
     
-    // Get slide
     const slide = this.getSlideByNumber(flow, flow.currentSlide);
     if (!slide) return null;
     
-    // Reset slide reveal state
     slide.currentRevealedPoint = 0;
     slide.fullyRevealed = false;
     
-    // Show slide (fully revealed when going back)
     await this.revealSlideCompletely(flow, slide);
     
     return slide;
   }
   
-  /**
-   * القفز لشريحة محددة
-   */
   async jumpToSlide(userId: string, lessonId: string, slideNumber: number): Promise<GeneratedSlide | null> {
     const flow = this.getFlow(userId, lessonId);
     if (!flow || slideNumber < 0 || slideNumber >= flow.totalSlides) return null;
     
-    // Clear any active reveal timers
     this.clearRevealTimers(flow.id);
     
     flow.currentSlide = slideNumber;
     
-    // Find section for this slide
     let slideCount = 0;
     for (let i = 0; i < flow.sections.length; i++) {
       const sectionSlides = flow.sections[i].slides.length;
@@ -769,7 +1327,6 @@ async processUserMessage(
       slideCount += sectionSlides;
     }
     
-    // Get and show slide
     const slide = this.getSlideByNumber(flow, slideNumber);
     if (slide) {
       await this.revealSlideCompletely(flow, slide);
@@ -778,16 +1335,13 @@ async processUserMessage(
     return slide;
   }
   
-  /**
-   * تحقق من صلة السؤال بالمحتوى الحالي
-   */
+  // كل الـ helper methods الأصلية...
   private async checkQuestionRelevance(question: string, flow: LessonFlow): Promise<boolean> {
     const currentSection = flow.sections[flow.currentSection];
     const currentSlide = this.getSlideByNumber(flow, flow.currentSlide);
     
     if (!currentSlide) return false;
     
-    // Check keywords
     const questionLower = question.toLowerCase();
     for (const keyword of currentSection.keywords) {
       if (questionLower.includes(keyword.toLowerCase())) {
@@ -795,14 +1349,12 @@ async processUserMessage(
       }
     }
     
-    // Check anticipated questions
     for (const anticipated of currentSection.anticipatedQuestions) {
       if (this.similarQuestions(question, anticipated)) {
         return true;
       }
     }
     
-    // Use AI if available
     if (process.env.OPENAI_API_KEY) {
       try {
         const prompt = `
@@ -827,59 +1379,9 @@ async processUserMessage(
     return false;
   }
   
-  /**
-   * الإجابة على سؤال سياقي
-   */
-  private async answerContextualQuestion(flow: LessonFlow, question: string): Promise<void> {
-    const currentSection = flow.sections[flow.currentSection];
-    const currentSlide = this.getSlideByNumber(flow, flow.currentSlide);
-    
-    let answer = 'دعني أوضح لك...';
-    
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        const prompt = `
-أجب على السؤال التالي في سياق الدرس الحالي:
-السؤال: "${question}"
-السياق: درس عن ${currentSection.title}
-المحتوى الحالي: ${currentSlide?.content.title}
-الإجابة (فقرة واحدة):`;
-        
-        answer = await openAIService.chat([
-          { role: 'user', content: prompt }
-        ], {
-          temperature: 0.7,
-          maxTokens: 200
-        });
-      } catch (error) {
-        console.error('Failed to generate answer:', error);
-      }
-    }
-    
-    // Send answer
-    websocketService.sendToUser(flow.userId, 'contextual_answer', {
-      lessonId: flow.lessonId,
-      question,
-      answer,
-      slideContext: flow.currentSlide,
-      sectionContext: currentSection.title
-    });
-    
-    // Update conversation state
-    flow.conversationState.messageHistory.push({
-      role: 'assistant',
-      content: answer,
-      timestamp: new Date()
-    });
-  }
-  
-  /**
-   * الإجابة والاستمرار
-   */
   private async answerAndContinue(flow: LessonFlow, question: string): Promise<void> {
     await this.answerContextualQuestion(flow, question);
     
-    // Ask if user wants to continue
     websocketService.sendToUser(flow.userId, 'continue_prompt', {
       lessonId: flow.lessonId,
       message: 'هل تريد أن نكمل الشرح؟',
@@ -896,9 +1398,6 @@ async processUserMessage(
     ];
   }
   
-  /**
-   * معالجة سؤال خارج الموضوع
-   */
   private async handleOffTopicQuestion(flow: LessonFlow, question: string): Promise<void> {
     websocketService.sendToUser(flow.userId, 'off_topic_question', {
       lessonId: flow.lessonId,
@@ -913,15 +1412,12 @@ async processUserMessage(
     flow.conversationState.waitingForUserChoice = true;
   }
   
-  /**
-   * إنشاء أقسام الدرس مع دعم العرض التدريجي
-   */
+  // كل الـ methods الأصلية الأخرى كما هي...
   private async createLessonSectionsWithProgressive(lesson: any, isMathLesson: boolean): Promise<LessonSection[]> {
     const sections: LessonSection[] = [];
     const keyPoints = JSON.parse(lesson.keyPoints || '[]');
     const mainContent = JSON.parse(lesson.content || '{}');
     
-    // 1. Introduction Section with progressive reveal
     sections.push({
       id: 'intro',
       type: 'intro',
@@ -969,17 +1465,14 @@ async processUserMessage(
       hasMathContent: false
     });
     
-    // 2. Main Content Sections with progressive points
     for (let i = 0; i < keyPoints.length; i++) {
       const point = keyPoints[i];
       const sectionSlides: GeneratedSlide[] = [];
       const hasMathInPoint = isMathLesson && this.detectMathContent(point);
       
-      // Split content into progressive points
       const contentText = this.extractContentForPoint(mainContent, point);
       const contentPoints = this.splitContentToPoints(contentText);
       
-      // Concept slide with progressive reveal
       sectionSlides.push({
         number: sections.length * 3 + 1,
         type: hasMathInPoint ? 'math-content' : 'content',
@@ -995,7 +1488,6 @@ async processUserMessage(
         pointTimings: contentPoints.map((_, idx) => idx * 3)
       });
       
-      // Bullet points slide with progressive reveal
       const bulletPoints = this.generateBulletPoints(mainContent, point);
       sectionSlides.push({
         number: sections.length * 3 + 2,
@@ -1035,22 +1527,14 @@ async processUserMessage(
       });
     }
     
-    // Add remaining sections (examples, practice, summary)...
-    // (نفس الكود الأصلي مع إضافة progressive properties)
-    
     return sections;
   }
   
-  /**
-   * تقسيم المحتوى إلى نقاط للعرض التدريجي
-   */
   private splitContentToPoints(content: string): string[] {
     if (!content) return [];
     
-    // Split by sentences
     const sentences = content.split(/[.!؟]/g).filter(s => s.trim().length > 0);
     
-    // Group sentences into logical points (2-3 sentences per point)
     const points: string[] = [];
     for (let i = 0; i < sentences.length; i += 2) {
       const point = sentences[i] + '.' + 
@@ -1058,13 +1542,34 @@ async processUserMessage(
       points.push(point.trim());
     }
     
-    // Maximum 5 points per slide
     return points.slice(0, 5);
   }
   
-  /**
-   * تشغيل مقطع صوتي
-   */
+  private async revealSlideCompletely(flow: LessonFlow, slide: GeneratedSlide): Promise<void> {
+    websocketService.sendToUser(flow.userId, 'slide_ready', {
+      lessonId: flow.lessonId,
+      slideNumber: flow.currentSlide,
+      html: slide.html,
+      content: slide.content,
+      fullyRevealed: true
+    });
+    
+    slide.fullyRevealed = true;
+    
+    if (flow.voiceEnabled && slide.audioUrl) {
+      await this.playAudio(flow, slide.audioUrl);
+    }
+    
+    if (flow.autoAdvance && flow.currentSlide < flow.totalSlides - 1) {
+      setTimeout(() => {
+        if (!flow.isPaused) {
+          this.navigateNext(flow.userId, flow.lessonId);
+        }
+      }, slide.duration * 1000);
+    }
+  }
+  
+  // كل الـ helper methods الأصلية...
   private async playAudioSegment(flow: LessonFlow, audioUrl: string): Promise<void> {
     websocketService.sendToUser(flow.userId, 'play_audio', {
       lessonId: flow.lessonId,
@@ -1073,9 +1578,6 @@ async processUserMessage(
     });
   }
   
-  /**
-   * تشغيل صوت كامل
-   */
   private async playAudio(flow: LessonFlow, audioUrl: string): Promise<void> {
     websocketService.sendToUser(flow.userId, 'play_audio', {
       lessonId: flow.lessonId,
@@ -1085,9 +1587,6 @@ async processUserMessage(
     });
   }
   
-  /**
-   * مسح مؤقتات الكشف التدريجي
-   */
   private clearRevealTimers(flowId: string): void {
     const timers = this.revealTimers.get(flowId);
     if (timers) {
@@ -1096,22 +1595,15 @@ async processUserMessage(
     }
   }
   
-  /**
-   * التحقق من تشابه الأسئلة
-   */
   private similarQuestions(q1: string, q2: string): boolean {
     const normalize = (s: string) => s.toLowerCase().replace(/[؟?.,!]/g, '').trim();
     const n1 = normalize(q1);
     const n2 = normalize(q2);
     
-    // Simple similarity check
     return n1.includes(n2) || n2.includes(n1) || 
            this.calculateSimilarity(n1, n2) > 0.7;
   }
   
-  /**
-   * حساب التشابه بين نصين
-   */
   private calculateSimilarity(s1: string, s2: string): number {
     const words1 = s1.split(' ');
     const words2 = s2.split(' ');
@@ -1119,27 +1611,16 @@ async processUserMessage(
     return common.length / Math.max(words1.length, words2.length);
   }
   
-  /**
-   * التحقق إذا كان السؤال عن المحتوى الحالي
-   */
   private isQuestionAboutCurrentContent(question: string, flow: LessonFlow): boolean {
     const currentSection = flow.sections[flow.currentSection];
     const questionLower = question.toLowerCase();
     
-    // Check section keywords
     return currentSection.keywords.some(keyword => 
       questionLower.includes(keyword.toLowerCase())
     );
   }
   
-  // ============= KEEP ALL ORIGINAL HELPER METHODS =============
-  // (احتفظ بكل الـ methods الأصلية كما هي)
-  
-  public getFlow(userId: string, lessonId: string): LessonFlow | undefined {
-    return this.activeLessons.get(`${userId}-${lessonId}`);
-  }
-  
-  private async loadLessonWithContent(lessonId: string): Promise<any> {
+  public async loadLessonWithContent(lessonId: string): Promise<any> {
     return await prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
@@ -1163,8 +1644,7 @@ async processUserMessage(
            subjectNameEn.includes('geometry');
   }
   
-  // ... (باقي الـ helper methods كما هي في الملف الأصلي)
-  
+  // كل الـ methods الأصلية الأخرى...
   private detectMathContent(text: string): boolean {
     if (!text) return false;
     
@@ -1181,8 +1661,6 @@ async processUserMessage(
     return mathIndicators.some(indicator => lowerText.includes(indicator));
   }
   
-  // ... (كل الـ methods الأصلية الأخرى)
-  
   private async generateInitialSlides(flow: LessonFlow): Promise<void> {
     const slidesToGenerate = Math.min(5, flow.totalSlides);
     
@@ -1198,15 +1676,12 @@ async processUserMessage(
     }
   }
   
-  // ... (باقي implementation كما هو)
-  
   private async analyzeMessageIntent(
     message: string,
     flow: LessonFlow
   ): Promise<ActionTrigger | null> {
     const lowerMessage = message.toLowerCase();
     
-    // Math-specific patterns (أولوية عالية)
     if (flow.isMathLesson) {
       const mathPatterns: Array<{pattern: RegExp | string[], action: ActionTrigger['action']}> = [
         {
@@ -1239,7 +1714,6 @@ async processUserMessage(
       }
     }
     
-    // General patterns
     const patterns: Array<{pattern: RegExp | string[], action: ActionTrigger['action']}> = [
       {
         pattern: ['اشرح', 'وضح', 'فسر', 'ما معنى', 'لم أفهم'],
@@ -1285,8 +1759,6 @@ async processUserMessage(
     return null;
   }
   
-  // ... (كل باقي الـ methods كما هي)
-  
   private getSlideByNumber(flow: LessonFlow, slideNumber: number): GeneratedSlide | null {
     let count = 0;
     for (const section of flow.sections) {
@@ -1312,62 +1784,7 @@ async processUserMessage(
     return 'dark';
   }
   
-  // ... (كل الـ methods الأصلية المتبقية)
-  
-  private async executeAction(flow: LessonFlow, action: ActionTrigger): Promise<void> {
-    console.log(`🎬 Executing action: ${action.action}${action.mathRelated ? ' (Math)' : ''}`);
-    
-    switch (action.action) {
-      case 'generate_slide':
-        await this.generateExplanationSlide(flow, action.trigger);
-        break;
-        
-      case 'show_example':
-        if (flow.isMathLesson) {
-          await this.generateMathExampleSlide(flow);
-        } else {
-          await this.generateExampleSlide(flow);
-        }
-        break;
-        
-      case 'start_quiz':
-        if (flow.isMathLesson) {
-          await this.generateMathQuizSlide(flow);
-        } else {
-          await this.generateQuizSlide(flow);
-        }
-        break;
-        
-      case 'explain_more':
-        await this.generateDetailedExplanation(flow);
-        break;
-        
-      case 'simplify':
-        await this.generateSimplifiedSlide(flow);
-        break;
-        
-      case 'show_video':
-        await this.suggestVideo(flow);
-        break;
-        
-      case 'show_math':
-        await this.generateInteractiveMathSlide(flow, action.trigger);
-        break;
-        
-      case 'solve_equation':
-        await this.generateSolutionSlide(flow, action.trigger);
-        break;
-    }
-    
-    websocketService.sendToUser(flow.userId, 'action_executed', {
-      action: action.action,
-      trigger: action.trigger,
-      mathRelated: action.mathRelated
-    });
-  }
-  
-  // ... (كل الـ math methods والـ helper methods المتبقية كما هي)
-  
+  // كل الـ methods الأصلية الباقية...
   private async generateMathSlideHTML(slide: GeneratedSlide, flow: LessonFlow): Promise<string> {
     const content = slide.content;
     
@@ -1423,8 +1840,6 @@ async processUserMessage(
     }
   }
   
-  // ... (باقي الكود كما هو)
-  
   private extractContentForPoint(content: any, point: string): string {
     if (typeof content === 'string') return content.substring(0, 200);
     if (content[point]) return content[point];
@@ -1445,38 +1860,6 @@ async processUserMessage(
       .filter(word => word.length > 3)
       .slice(0, 5);
   }
-  
-  // ... (كل الـ methods المتبقية كما هي)
-  
-  private async completeLessonFlow(flow: LessonFlow): Promise<void> {
-    flow.sections.forEach(s => s.completed = true);
-    flow.actualDuration = Math.floor((Date.now() - flow.startTime.getTime()) / 1000);
-    
-    websocketService.sendToUser(flow.userId, 'lesson_completed', {
-      lessonId: flow.lessonId,
-      duration: flow.actualDuration,
-      questionsAsked: flow.questionsAsked,
-      engagementScore: flow.engagementScore,
-      comprehensionLevel: flow.comprehensionLevel,
-      isMathLesson: flow.isMathLesson,
-      mathProblemsAttempted: flow.mathProblemsAttempted || 0,
-      mathProblemsSolved: flow.mathProblemsSolved || 0
-    });
-    
-    this.emit('lessonCompleted', {
-      userId: flow.userId,
-      lessonId: flow.lessonId,
-      stats: {
-        duration: flow.actualDuration,
-        questionsAsked: flow.questionsAsked,
-        engagementScore: flow.engagementScore
-      }
-    });
-    
-    this.activeLessons.delete(`${flow.userId}-${flow.lessonId}`);
-  }
-  
-  // ... (باقي الـ methods)
   
   private async generateSlideHTML(flow: LessonFlow, slide: GeneratedSlide): Promise<string> {
     return slideGenerator.generateRealtimeSlideHTML(
@@ -1523,8 +1906,6 @@ async processUserMessage(
     });
   }
   
-  // ... (كل الـ methods الأصلية المتبقية)
-  
   private extractMathExpression(text: string): MathExpression | null {
     const equation = this.extractEquation(text);
     if (!equation) return null;
@@ -1569,8 +1950,6 @@ async processUserMessage(
     };
   }
   
-  // ... (كل الـ methods المتبقية)
-  
   private insertSlideAfterCurrent(flow: LessonFlow, newSlide: GeneratedSlide): void {
     const currentSection = flow.sections[flow.currentSection];
     const insertIndex = flow.currentSlide - this.getSectionStartSlide(flow, flow.currentSection) + 1;
@@ -1590,12 +1969,11 @@ async processUserMessage(
     }
   }
   
-  // ... (كل الـ methods الأصلية المتبقية كما هي في الملف الأصلي)
-  
   private getGradeFromFlow(flow: LessonFlow): number {
-    return 6;
+    return flow.grade || 6;
   }
   
+  // كل الـ methods الأصلية للتوليد بدون templates (احتفظ بها كـ fallback)
   private async generateDetailedExplanation(flow: LessonFlow): Promise<void> {
     await this.generateExplanationSlide(flow, flow.sections[flow.currentSection].title);
   }
@@ -1631,8 +2009,6 @@ async processUserMessage(
       duration: '5:30'
     });
   }
-  
-  // ... (باقي الـ methods كما هي)
   
   private async generateExplanationSlide(flow: LessonFlow, topic: string): Promise<void> {
     const currentSection = flow.sections[flow.currentSection];
@@ -1691,8 +2067,6 @@ async processUserMessage(
       reason: 'explanation_requested'
     });
   }
-  
-  // ... (كل الـ methods المتبقية كما هي)
   
   private async generateExampleSlide(flow: LessonFlow): Promise<void> {
     const currentSection = flow.sections[flow.currentSection];
@@ -1754,8 +2128,6 @@ async processUserMessage(
       reason: 'example_requested'
     });
   }
-  
-  // ... (كل الـ methods الأصلية المتبقية)
   
   private async generateQuizSlide(flow: LessonFlow): Promise<void> {
     const currentSection = flow.sections[flow.currentSection];
@@ -1834,8 +2206,6 @@ async processUserMessage(
     });
   }
   
-  // ... (كل الـ math-specific methods كما هي)
-  
   private async generateInteractiveMathSlide(flow: LessonFlow, topic: string): Promise<void> {
     console.log(`🧮 Generating interactive math slide for: ${topic}`);
     
@@ -1891,8 +2261,6 @@ async processUserMessage(
     });
   }
   
-  // ... (كل الـ methods المتبقية)
-  
   private async generateSolutionSlide(flow: LessonFlow, equation: string): Promise<void> {
     console.log(`🔢 Generating solution slide for: ${equation}`);
     
@@ -1938,8 +2306,6 @@ async processUserMessage(
     });
   }
   
-  // ... (كل الـ methods المتبقية)
-  
   private async generateSolutionSteps(equation: string): Promise<any[]> {
     const steps = [
       {
@@ -1964,8 +2330,6 @@ async processUserMessage(
     
     return steps;
   }
-  
-  // ... (كل الـ math helper methods المتبقية)
   
   private async generateMathExampleSlide(flow: LessonFlow): Promise<void> {
     const currentSection = flow.sections[flow.currentSection];
