@@ -82,7 +82,7 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: config.NODE_ENV,
-    version: '2.1.0', // Updated version
+    version: '2.2.0', // Updated version with math components
     services: {
       websocket: {
         connected: websocketService.getConnectedUsersCount(),
@@ -93,7 +93,8 @@ app.get('/health', (req: Request, res: Response) => {
       ai: 'ready',
       rag: 'ready',
       slideGenerator: 'ready',
-      realtimeChat: 'active'
+      realtimeChat: 'active',
+      mathComponents: 'ready' // New service
     }
   });
 });
@@ -110,10 +111,17 @@ app.get('/api/status', (req: Request, res: Response) => {
       websocket: 'active',
       orchestrator: 'active',
       slideGenerator: 'ready',
-      realtimeChat: 'active'
+      realtimeChat: 'active',
+      mathComponents: 'ready' // New service
     },
     timestamp: new Date().toISOString(),
   });
+});
+
+// ============= 🧮 MATH COMPONENTS TEST PAGE (NEW) =============
+app.get('/test-math.html', (req: Request, res: Response) => {
+  // Serve the test-math.html file from public directory
+  res.sendFile(path.join(__dirname, '../public/test-math.html'));
 });
 
 // ============= ENHANCED WEBSOCKET TEST PAGE WITH SLIDES =============
@@ -747,7 +755,7 @@ app.use('/api/v1/orchestrator', orchestratorRoutes);
 app.get('/api', (req: Request, res: Response) => {
   res.json({
     message: 'Smart Education Platform API',
-    version: '2.1.0',
+    version: '2.2.0', // Updated with math components
     endpoints: {
       auth: {
         base: '/api/v1/auth',
@@ -891,6 +899,18 @@ app.get('/api', (req: Request, res: Response) => {
             'navigate_slide - التنقل بين الشرائح',
             'update_slide - تحديث الشريحة'
           ],
+          math: [ // NEW section
+            'request_math_slide - طلب شريحة رياضية',
+            'math_slide_ready - الشريحة الرياضية جاهزة',
+            'solve_equation - حل معادلة',
+            'equation_solved - المعادلة محلولة',
+            'update_math_variables - تحديث المتغيرات',
+            'variables_updated - المتغيرات محدثة',
+            'request_graph - طلب رسم بياني',
+            'graph_ready - الرسم البياني جاهز',
+            'open_calculator - فتح الآلة الحاسبة',
+            'calculator_ready - الآلة الحاسبة جاهزة'
+          ],
           orchestrator: [
             'start_orchestrated_lesson - بدء درس تفاعلي',
             'lesson_flow_started - بدء التدفق',
@@ -919,6 +939,7 @@ app.get('/api', (req: Request, res: Response) => {
     testPages: [
       '/test - قائمة صفحات الاختبار',
       '/test-websocket - اختبار WebSocket والشرائح',
+      '/test-math.html - اختبار المكونات الرياضية التفاعلية', // NEW
       '/test-orchestrator.html - النظام التفاعلي الذكي',
       '/test-chat.html - المحادثة الذكية',
       '/test-full.html - اختبار شامل'
@@ -926,7 +947,7 @@ app.get('/api', (req: Request, res: Response) => {
   });
 });
 
-// Test pages directory listing
+// Test pages directory listing (UPDATED)
 app.get('/test', (req: Request, res: Response) => {
   res.send(`
 <!DOCTYPE html>
@@ -949,7 +970,7 @@ app.get('/test', (req: Request, res: Response) => {
             padding: 40px;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
+            max-width: 700px;
             width: 90%;
         }
         h1 {
@@ -970,6 +991,7 @@ app.get('/test', (req: Request, res: Response) => {
             color: #333;
             transition: all 0.3s;
             border: 2px solid transparent;
+            position: relative;
         }
         .test-link:hover {
             background: #667eea;
@@ -985,6 +1007,17 @@ app.get('/test', (req: Request, res: Response) => {
             font-size: 14px;
             opacity: 0.8;
         }
+        .new-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: #48bb78;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -994,6 +1027,11 @@ app.get('/test', (req: Request, res: Response) => {
             <a href="/test-websocket" class="test-link">
                 <h3>🔌 WebSocket & Slides</h3>
                 <p>اختبار الاتصال وتوليد الشرائح</p>
+            </a>
+            <a href="/test-math.html" class="test-link">
+                <span class="new-badge">جديد</span>
+                <h3>🧮 المكونات الرياضية التفاعلية</h3>
+                <p>اختبار عرض المعادلات والتفاعل معها</p>
             </a>
             <a href="/test-orchestrator.html" class="test-link">
                 <h3>🎯 Orchestrator System</h3>

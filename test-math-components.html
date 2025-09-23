@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧮 اختبار المكونات الرياضية التفاعلية</title>
+    
+    <!-- KaTeX for Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .test-section {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        
+        .section-title {
+            font-size: 1.8em;
+            color: #2d3748;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .math-display {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .math-display:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .interactive-math {
+            background: linear-gradient(135deg, #667eea22 0%, #764ba222 100%);
+            border: 2px solid #667eea;
+            padding: 25px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        
+        .variable-control {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .variable-control label {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .variable-name {
+            font-weight: bold;
+            color: #667eea;
+            min-width: 50px;
+            font-size: 1.2em;
+        }
+        
+        .variable-slider {
+            flex: 1;
+            margin: 0 15px;
+            cursor: pointer;
+        }
+        
+        .variable-value {
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            min-width: 50px;
+            text-align: center;
+        }
+        
+        .solution-steps {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e8f4f8;
+            border-radius: 10px;
+        }
+        
+        .step {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-right: 4px solid #48bb78;
+            animation: slideIn 0.5s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .step-number {
+            color: #48bb78;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .step-math {
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .step-explanation {
+            color: #718096;
+            font-size: 0.95em;
+            margin-top: 10px;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-warning {
+            background: #fbbf24;
+            color: #78350f;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .highlight {
+            background: rgba(255, 235, 59, 0.3);
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        
+        .graph-container {
+            width: 100%;
+            height: 400px;
+            background: white;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #cbd5e0;
+        }
+        
+        .status-message {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 30px;
+            display: none;
+            animation: fadeInOut 3s ease;
+        }
+        
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; }
+            20%, 80% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧮 اختبار المكونات الرياضية التفاعلية</h1>
+            <p>تجربة عملية لعرض المعادلات الرياضية والتفاعل معها</p>
+        </div>
+        
+        <!-- القسم 1: عرض المعادلات البسيطة -->
+        <div class="test-section">
+            <h2 class="section-title">📐 عرض المعادلات البسيطة</h2>
+            
+            <div class="math-display" onclick="showMessage('المعادلة التربيعية')">
+                <div id="quadratic"></div>
+            </div>
+            
+            <div class="math-display" onclick="showMessage('نظرية فيثاغورس')">
+                <div id="pythagorean"></div>
+            </div>
+            
+            <div class="math-display" onclick="showMessage('المتطابقة المثلثية')">
+                <div id="trigIdentity"></div>
+            </div>
+        </div>
+        
+        <!-- القسم 2: المعادلات التفاعلية -->
+        <div class="test-section">
+            <h2 class="section-title">🎮 المعادلات التفاعلية</h2>
+            
+            <div class="interactive-math">
+                <h3>المعادلة التربيعية مع متغيرات قابلة للتعديل:</h3>
+                <div id="interactiveQuadratic" style="text-align: center; margin: 20px 0;"></div>
+                
+                <div class="variable-control">
+                    <label>
+                        <span class="variable-name">a =</span>
+                        <input type="range" id="var-a" class="variable-slider" 
+                               min="-10" max="10" step="1" value="1"
+                               oninput="updateQuadratic()">
+                        <span class="variable-value" id="val-a">1</span>
+                    </label>
+                </div>
+                
+                <div class="variable-control">
+                    <label>
+                        <span class="variable-name">b =</span>
+                        <input type="range" id="var-b" class="variable-slider" 
+                               min="-10" max="10" step="1" value="2"
+                               oninput="updateQuadratic()">
+                        <span class="variable-value" id="val-b">2</span>
+                    </label>
+                </div>
+                
+                <div class="variable-control">
+                    <label>
+                        <span class="variable-name">c =</span>
+                        <input type="range" id="var-c" class="variable-slider" 
+                               min="-10" max="10" step="1" value="-3"
+                               oninput="updateQuadratic()">
+                        <span class="variable-value" id="val-c">-3</span>
+                    </label>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="solveQuadratic()">حل المعادلة</button>
+                    <button class="btn btn-success" onclick="showSteps()">عرض الخطوات</button>
+                    <button class="btn btn-warning" onclick="resetValues()">إعادة تعيين</button>
+                </div>
+                
+                <div id="quadraticSolution" style="display: none;"></div>
+            </div>
+        </div>
+        
+        <!-- القسم 3: حل المعادلات خطوة بخطوة -->
+        <div class="test-section">
+            <h2 class="section-title">📝 حل المعادلات خطوة بخطوة</h2>
+            
+            <div class="interactive-math">
+                <h3>مثال: حل معادلة من الدرجة الأولى</h3>
+                <div id="linearEquation" style="text-align: center; margin: 20px 0;"></div>
+                
+                <div class="solution-steps" id="linearSteps" style="display: none;">
+                    <div class="step">
+                        <div class="step-number">خطوة 1:</div>
+                        <div class="step-math" id="step1"></div>
+                        <div class="step-explanation">نبدأ بالمعادلة الأصلية</div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">خطوة 2:</div>
+                        <div class="step-math" id="step2"></div>
+                        <div class="step-explanation">نطرح 5 من الطرفين</div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">خطوة 3:</div>
+                        <div class="step-math" id="step3"></div>
+                        <div class="step-explanation">نقسم الطرفين على 3</div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">الحل النهائي:</div>
+                        <div class="step-math" id="step4"></div>
+                        <div class="step-explanation">قيمة x التي تحقق المعادلة</div>
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="toggleLinearSteps()">
+                        عرض/إخفاء الخطوات
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- القسم 4: رسم الدوال -->
+        <div class="test-section">
+            <h2 class="section-title">📊 رسم الدوال البيانية</h2>
+            
+            <div class="interactive-math">
+                <h3>رسم دالة تربيعية:</h3>
+                <div id="functionDisplay" style="text-align: center; margin: 20px 0;"></div>
+                
+                <div class="graph-container">
+                    <p style="color: #cbd5e0;">📈 مكان الرسم البياني (يحتاج لمكتبة رسم)</p>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="plotGraph()">رسم الدالة</button>
+                    <button class="btn btn-success" onclick="findRoots()">إيجاد الجذور</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- القسم 5: أمثلة من المنهج -->
+        <div class="test-section">
+            <h2 class="section-title">📚 أمثلة من المنهج المصري</h2>
+            
+            <div class="interactive-math">
+                <h3>مسألة من كتاب الرياضيات:</h3>
+                <p style="margin: 15px 0; font-size: 1.2em;">
+                    إذا كان محيط مستطيل = 24 سم، وطوله يزيد عن عرضه بمقدار 4 سم، فما هي أبعاده؟
+                </p>
+                
+                <div id="rectangleProblem" style="text-align: center; margin: 20px 0;"></div>
+                
+                <div class="action-buttons">
+                    <button class="btn btn-warning" onclick="showHint()">تلميح</button>
+                    <button class="btn btn-primary" onclick="solveProblem()">الحل</button>
+                </div>
+                
+                <div id="problemSolution" style="display: none;" class="solution-steps"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status-message" id="statusMessage"></div>
+    
+    <script>
+        // عرض المعادلات البسيطة
+        katex.render("ax^2 + bx + c = 0", document.getElementById("quadratic"), {
+            displayMode: true,
+            throwOnError: false
+        });
+        
+        katex.render("a^2 + b^2 = c^2", document.getElementById("pythagorean"), {
+            displayMode: true,
+            throwOnError: false
+        });
+        
+        katex.render("\\sin^2(\\theta) + \\cos^2(\\theta) = 1", document.getElementById("trigIdentity"), {
+            displayMode: true,
+            throwOnError: false
+        });
+        
+        // المعادلة التفاعلية الأولية
+        updateQuadratic();
+        
+        // معادلة خطية للحل خطوة بخطوة
+        katex.render("3x + 5 = 14", document.getElementById("linearEquation"), {
+            displayMode: true,
+            throwOnError: false
+        });
+        
+        // خطوات الحل
+        katex.render("3x + 5 = 14", document.getElementById("step1"), {
+            displayMode: true
+        });
+        
+        katex.render("3x = 14 - 5", document.getElementById("step2"), {
+            displayMode: true
+        });
+        
+        katex.render("3x = 9", document.getElementById("step3"), {
+            displayMode: true
+        });
+        
+        katex.render("x = \\frac{9}{3} = 3", document.getElementById("step4"), {
+            displayMode: true
+        });
+        
+        // دالة تربيعية للرسم
+        katex.render("f(x) = x^2 - 4x + 3", document.getElementById("functionDisplay"), {
+            displayMode: true
+        });
+        
+        // مسألة المستطيل
+        katex.render("2(l + w) = 24, \\quad l = w + 4", document.getElementById("rectangleProblem"), {
+            displayMode: true
+        });
+        
+        // وظائف التفاعل
+        function updateQuadratic() {
+            const a = document.getElementById('var-a').value;
+            const b = document.getElementById('var-b').value;
+            const c = document.getElementById('var-c').value;
+            
+            document.getElementById('val-a').textContent = a;
+            document.getElementById('val-b').textContent = b;
+            document.getElementById('val-c').textContent = c;
+            
+            const equation = `${a}x^2 ${b >= 0 ? '+' : ''} ${b}x ${c >= 0 ? '+' : ''} ${c} = 0`;
+            
+            katex.render(equation, document.getElementById("interactiveQuadratic"), {
+                displayMode: true,
+                throwOnError: false
+            });
+        }
+        
+        function solveQuadratic() {
+            const a = parseFloat(document.getElementById('var-a').value);
+            const b = parseFloat(document.getElementById('var-b').value);
+            const c = parseFloat(document.getElementById('var-c').value);
+            
+            if (a === 0) {
+                showMessage('ليست معادلة تربيعية! (a = 0)');
+                return;
+            }
+            
+            const discriminant = b * b - 4 * a * c;
+            const solutionDiv = document.getElementById('quadraticSolution');
+            
+            let solutionHtml = '<div class="solution-steps"><h4>الحل:</h4>';
+            
+            // عرض المميز
+            solutionHtml += `
+                <div class="step">
+                    <div class="step-number">حساب المميز (Δ):</div>
+                    <div class="step-math" id="discriminantCalc"></div>
+                </div>
+            `;
+            
+            if (discriminant > 0) {
+                const x1 = (-b + Math.sqrt(discriminant)) / (2 * a);
+                const x2 = (-b - Math.sqrt(discriminant)) / (2 * a);
+                solutionHtml += `
+                    <div class="step">
+                        <div class="step-number">المعادلة لها حلان حقيقيان:</div>
+                        <div class="step-math">
+                            x₁ = ${x1.toFixed(2)}<br>
+                            x₂ = ${x2.toFixed(2)}
+                        </div>
+                    </div>
+                `;
+            } else if (discriminant === 0) {
+                const x = -b / (2 * a);
+                solutionHtml += `
+                    <div class="step">
+                        <div class="step-number">المعادلة لها حل واحد:</div>
+                        <div class="step-math">x = ${x.toFixed(2)}</div>
+                    </div>
+                `;
+            } else {
+                solutionHtml += `
+                    <div class="step">
+                        <div class="step-number">المعادلة ليس لها حلول حقيقية</div>
+                        <div class="step-explanation">المميز سالب: Δ < 0</div>
+                    </div>
+                `;
+            }
+            
+            solutionHtml += '</div>';
+            solutionDiv.innerHTML = solutionHtml;
+            solutionDiv.style.display = 'block';
+            
+            // عرض حساب المميز
+            setTimeout(() => {
+                katex.render(`\\Delta = ${b}^2 - 4(${a})(${c}) = ${discriminant}`, 
+                    document.getElementById("discriminantCalc"), {
+                    displayMode: true
+                });
+            }, 100);
+        }
+        
+        function showSteps() {
+            showMessage('عرض خطوات الحل التفصيلية');
+            const solution = document.getElementById('quadraticSolution');
+            if (solution.style.display === 'none') {
+                solveQuadratic();
+            }
+        }
+        
+        function resetValues() {
+            document.getElementById('var-a').value = 1;
+            document.getElementById('var-b').value = 2;
+            document.getElementById('var-c').value = -3;
+            updateQuadratic();
+            document.getElementById('quadraticSolution').style.display = 'none';
+            showMessage('تم إعادة تعيين القيم');
+        }
+        
+        function toggleLinearSteps() {
+            const steps = document.getElementById('linearSteps');
+            steps.style.display = steps.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        function plotGraph() {
+            showMessage('رسم الدالة... (يحتاج لمكتبة رسم مثل D3.js)');
+        }
+        
+        function findRoots() {
+            showMessage('الجذور: x = 1, x = 3');
+        }
+        
+        function showHint() {
+            showMessage('تلميح: استخدم معادلتين - واحدة للمحيط وأخرى للعلاقة بين الطول والعرض');
+        }
+        
+        function solveProblem() {
+            const solutionDiv = document.getElementById('problemSolution');
+            solutionDiv.innerHTML = `
+                <h4>الحل:</h4>
+                <div class="step">
+                    <div class="step-number">نفرض أن:</div>
+                    <p>العرض = w سم<br>الطول = l سم = w + 4</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">من معادلة المحيط:</div>
+                    <p>2(l + w) = 24<br>2(w + 4 + w) = 24<br>2(2w + 4) = 24</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">بالحل:</div>
+                    <p>4w + 8 = 24<br>4w = 16<br>w = 4 سم</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">إذن:</div>
+                    <p>العرض = 4 سم<br>الطول = 4 + 4 = 8 سم</p>
+                </div>
+            `;
+            solutionDiv.style.display = 'block';
+        }
+        
+        function showMessage(msg) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = msg;
+            statusDiv.style.display = 'block';
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

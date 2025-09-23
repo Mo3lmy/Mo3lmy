@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/orchestrator/lesson-orchestrator.service.ts
-// الوظيفة: تنسيق كل الخدمات وإدارة تدفق الدرس بذكاء
+// الوظيفة: تنسيق كل الخدمات وإدارة تدفق الدرس بذكاء مع دعم المكونات الرياضية
 
 import { prisma } from '../../config/database.config';
 import { websocketService } from '../websocket/websocket.service';
@@ -9,6 +9,10 @@ import { slideGenerator } from '../../core/video/slide.generator';
 import { ragService } from '../../core/rag/rag.service';
 import { openAIService } from '../ai/openai.service';
 import type { Lesson, Unit, Subject } from '@prisma/client';
+
+// استيراد المكونات الرياضية الجديدة
+import { latexRenderer, type MathExpression } from '../../core/interactive/math/latex-renderer';
+import { mathSlideGenerator } from '../../core/video/enhanced-slide.generator';
 
 // ============= TYPES =============
 
@@ -38,11 +42,17 @@ export interface LessonFlow {
   voiceEnabled: boolean;
   playbackSpeed: number;
   theme: string;
+  
+  // Math Settings (جديد)
+  isMathLesson?: boolean;
+  mathInteractive?: boolean;
+  mathProblemsAttempted?: number;
+  mathProblemsSolved?: number;
 }
 
 export interface LessonSection {
   id: string;
-  type: 'intro' | 'concept' | 'example' | 'practice' | 'quiz' | 'summary';
+  type: 'intro' | 'concept' | 'example' | 'practice' | 'quiz' | 'summary' | 'math-concept' | 'math-practice';
   title: string;
   slides: GeneratedSlide[];
   duration: number; // seconds
@@ -56,6 +66,10 @@ export interface LessonSection {
   
   // Questions that might arise
   anticipatedQuestions: string[];
+  
+  // Math content (جديد)
+  mathExpressions?: MathExpression[];
+  hasMathContent?: boolean;
 }
 
 export interface GeneratedSlide {
@@ -67,18 +81,23 @@ export interface GeneratedSlide {
   duration: number;
   userSpentTime?: number;
   interactions?: SlideInteraction[];
+  
+  // Math properties (جديد)
+  isMathSlide?: boolean;
+  mathExpressions?: MathExpression[];
 }
 
 export interface SlideInteraction {
-  type: 'click' | 'question' | 'replay' | 'skip';
+  type: 'click' | 'question' | 'replay' | 'skip' | 'math-variable-change' | 'equation-solve';
   timestamp: Date;
   data?: any;
 }
 
 export interface ActionTrigger {
   trigger: string; // الكلمة المفتاحية
-  action: 'generate_slide' | 'show_example' | 'start_quiz' | 'explain_more' | 'simplify' | 'show_video';
+  action: 'generate_slide' | 'show_example' | 'start_quiz' | 'explain_more' | 'simplify' | 'show_video' | 'show_math' | 'solve_equation';
   confidence: number;
+  mathRelated?: boolean; // جديد
 }
 
 // ============= MAIN SERVICE =============
@@ -109,8 +128,11 @@ export class LessonOrchestratorService {
       throw new Error('Lesson not found');
     }
     
+    // Check if it's a math lesson
+    const isMathLesson = this.checkIfMathLesson(lesson);
+    
     // Create lesson structure
-    const sections = await this.createLessonSections(lesson);
+    const sections = await this.createLessonSections(lesson, isMathLesson);
     
     // Calculate total slides
     const totalSlides = sections.reduce((sum, section) => 
@@ -135,7 +157,12 @@ export class LessonOrchestratorService {
       autoAdvance: true,
       voiceEnabled: true,
       playbackSpeed: 1,
-      theme: this.getThemeByGrade(lesson.unit.subject.grade)
+      theme: this.getThemeByGrade(lesson.unit.subject.grade),
+      // Math properties
+      isMathLesson,
+      mathInteractive: isMathLesson,
+      mathProblemsAttempted: 0,
+      mathProblemsSolved: 0
     };
     
     // Store flow
@@ -144,15 +171,29 @@ export class LessonOrchestratorService {
     // Generate first slides
     await this.generateInitialSlides(flow);
     
-    console.log(`✅ Lesson flow created: ${totalSlides} slides in ${sections.length} sections`);
+    console.log(`✅ Lesson flow created: ${totalSlides} slides in ${sections.length} sections${isMathLesson ? ' (Math Lesson)' : ''}`);
     
     return flow;
   }
   
   /**
-   * إنشاء هيكل الدرس بذكاء
+   * التحقق من كون الدرس رياضيات
    */
-  private async createLessonSections(lesson: any): Promise<LessonSection[]> {
+  private checkIfMathLesson(lesson: any): boolean {
+    const subjectName = lesson.unit.subject.name.toLowerCase();
+    const subjectNameEn = (lesson.unit.subject.nameEn || '').toLowerCase();
+    
+    return subjectName.includes('رياضيات') || 
+           subjectName.includes('رياضة') ||
+           subjectNameEn.includes('math') ||
+           subjectNameEn.includes('algebra') ||
+           subjectNameEn.includes('geometry');
+  }
+  
+  /**
+   * إنشاء هيكل الدرس بذكاء مع دعم المحتوى الرياضي
+   */
+  private async createLessonSections(lesson: any, isMathLesson: boolean): Promise<LessonSection[]> {
     const sections: LessonSection[] = [];
     
     // 1. Introduction Section
@@ -168,7 +209,8 @@ export class LessonOrchestratorService {
             title: lesson.title,
             subtitle: lesson.unit.title
           },
-          duration: 5
+          duration: 5,
+          isMathSlide: false
         },
         {
           number: 2,
@@ -177,14 +219,16 @@ export class LessonOrchestratorService {
             title: 'ماذا سنتعلم اليوم؟',
             bullets: JSON.parse(lesson.objectives || '[]')
           },
-          duration: 10
+          duration: 10,
+          isMathSlide: false
         }
       ],
       duration: 15,
       completed: false,
       objectives: ['فهم موضوع الدرس', 'معرفة الأهداف'],
       keywords: ['مقدمة', 'أهداف'],
-      anticipatedQuestions: ['ما هو موضوع الدرس؟', 'ماذا سنتعلم؟']
+      anticipatedQuestions: ['ما هو موضوع الدرس؟', 'ماذا سنتعلم؟'],
+      hasMathContent: false
     });
     
     // 2. Main Content Sections (from lesson content)
@@ -196,16 +240,38 @@ export class LessonOrchestratorService {
       const point = keyPoints[i];
       const sectionSlides: GeneratedSlide[] = [];
       
+      // Check if this point contains math content
+      const hasMathInPoint = isMathLesson && this.detectMathContent(point);
+      
       // Concept slide
-      sectionSlides.push({
-        number: sections.length * 3 + 1,
-        type: 'content',
-        content: {
-          title: point,
-          text: this.extractContentForPoint(mainContent, point)
-        },
-        duration: 15
-      });
+      if (hasMathInPoint) {
+        // Math concept slide
+        const mathExpression = this.extractMathExpression(point);
+        sectionSlides.push({
+          number: sections.length * 3 + 1,
+          type: 'math-content',
+          content: {
+            title: point,
+            text: this.extractContentForPoint(mainContent, point),
+            mathExpression: mathExpression
+          },
+          duration: 20,
+          isMathSlide: true,
+          mathExpressions: mathExpression ? [mathExpression] : []
+        });
+      } else {
+        // Regular concept slide
+        sectionSlides.push({
+          number: sections.length * 3 + 1,
+          type: 'content',
+          content: {
+            title: point,
+            text: this.extractContentForPoint(mainContent, point)
+          },
+          duration: 15,
+          isMathSlide: false
+        });
+      }
       
       // Bullet points slide
       sectionSlides.push({
@@ -215,78 +281,155 @@ export class LessonOrchestratorService {
           title: `نقاط مهمة: ${point}`,
           bullets: this.generateBulletPoints(mainContent, point)
         },
-        duration: 10
+        duration: 10,
+        isMathSlide: false
       });
       
       sections.push({
         id: `concept-${i}`,
-        type: 'concept',
+        type: hasMathInPoint ? 'math-concept' : 'concept',
         title: point,
         slides: sectionSlides,
-        duration: 25,
+        duration: hasMathInPoint ? 30 : 25,
         completed: false,
         objectives: [`فهم ${point}`, `تطبيق ${point}`],
         keywords: this.extractKeywords(point),
         anticipatedQuestions: [
           `ما معنى ${point}؟`,
           `كيف أطبق ${point}؟`,
-          `أعطني مثال على ${point}`
-        ]
+          `أعطني مثال على ${point}`,
+          ...(hasMathInPoint ? [`احسب ${point}`, `حل معادلة ${point}`] : [])
+        ],
+        hasMathContent: hasMathInPoint
       });
     }
     
-    // 3. Examples Section
+    // 3. Examples Section (with math examples if applicable)
     const examples = JSON.parse(lesson.examples || '[]');
     if (examples.length > 0) {
-      const exampleSlides: GeneratedSlide[] = examples.map((ex: any, i: number) => ({
-        number: sections.length * 2 + i + 1,
-        type: 'content',
-        content: {
-          title: `مثال ${i + 1}`,
-          text: ex.content || ex
-        },
-        duration: 12
-      }));
+      const exampleSlides: GeneratedSlide[] = [];
+      
+      for (let i = 0; i < examples.length; i++) {
+        const ex = examples[i];
+        const hasMathExample = isMathLesson && this.detectMathContent(ex.content || ex);
+        
+        if (hasMathExample) {
+          // Math example slide
+          exampleSlides.push({
+            number: sections.length * 2 + i + 1,
+            type: 'math-example',
+            content: {
+              title: `مثال ${i + 1}`,
+              problem: ex.problem || ex.content || ex,
+              solution: ex.solution,
+              equation: this.extractEquation(ex.content || ex)
+            },
+            duration: 20,
+            isMathSlide: true
+          });
+        } else {
+          // Regular example slide
+          exampleSlides.push({
+            number: sections.length * 2 + i + 1,
+            type: 'content',
+            content: {
+              title: `مثال ${i + 1}`,
+              text: ex.content || ex
+            },
+            duration: 12,
+            isMathSlide: false
+          });
+        }
+      }
       
       sections.push({
         id: 'examples',
         type: 'example',
         title: 'أمثلة تطبيقية',
         slides: exampleSlides,
-        duration: exampleSlides.length * 12,
+        duration: exampleSlides.length * (isMathLesson ? 20 : 12),
         completed: false,
         objectives: ['فهم التطبيق العملي', 'ربط النظرية بالواقع'],
         keywords: ['مثال', 'تطبيق'],
-        anticipatedQuestions: ['مثال آخر؟', 'كيف أحل هذا؟']
+        anticipatedQuestions: ['مثال آخر؟', 'كيف أحل هذا؟'],
+        hasMathContent: isMathLesson
       });
     }
     
-    // 4. Practice/Quiz Section
+    // 4. Practice/Quiz Section (enhanced for math)
     const currentSlideCount = sections.reduce((sum, s) => sum + s.slides.length, 0);
-    sections.push({
-      id: 'practice',
-      type: 'practice',
-      title: 'تدريبات',
-      slides: [
-        {
-          number: currentSlideCount + 1,
-          type: 'quiz',
-          content: {
-            quiz: {
-              question: 'اختبر فهمك: اختر الإجابة الصحيحة',
-              options: ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-              correctIndex: 0
-            }
+    
+    if (isMathLesson) {
+      // Math practice section
+      sections.push({
+        id: 'math-practice',
+        type: 'math-practice',
+        title: 'تدريبات رياضية',
+        slides: [
+          {
+            number: currentSlideCount + 1,
+            type: 'math-problem',
+            content: {
+              title: 'حل المسألة التالية',
+              problem: 'إذا كانت x + 5 = 12، فما قيمة x؟',
+              hints: ['انقل 5 للطرف الآخر', 'غير الإشارة'],
+              solution: 'x = 7'
+            },
+            duration: 30,
+            isMathSlide: true
           },
-          duration: 20
-        }
-      ],
-      duration: 20,
-      completed: false,
-      objectives: ['اختبار الفهم', 'التطبيق العملي'],
-      keywords: ['تدريب', 'اختبار'],
-      anticipatedQuestions: ['هل الإجابة صحيحة؟', 'اشرح لي الحل']
-    });
+          {
+            number: currentSlideCount + 2,
+            type: 'math-interactive',
+            content: {
+              title: 'معادلة تفاعلية',
+              equation: 'ax^2 + bx + c = 0',
+              variables: [
+                { name: 'a', value: 1, min: -10, max: 10 },
+                { name: 'b', value: 2, min: -10, max: 10 },
+                { name: 'c', value: -3, min: -10, max: 10 }
+              ]
+            },
+            duration: 40,
+            isMathSlide: true
+          }
+        ],
+        duration: 70,
+        completed: false,
+        objectives: ['حل المسائل', 'التطبيق العملي'],
+        keywords: ['تدريب', 'حل', 'معادلة'],
+        anticipatedQuestions: ['كيف أحل هذا؟', 'ما هي الخطوات؟'],
+        hasMathContent: true
+      });
+    } else {
+      // Regular practice section
+      sections.push({
+        id: 'practice',
+        type: 'practice',
+        title: 'تدريبات',
+        slides: [
+          {
+            number: currentSlideCount + 1,
+            type: 'quiz',
+            content: {
+              quiz: {
+                question: 'اختبر فهمك: اختر الإجابة الصحيحة',
+                options: ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
+                correctIndex: 0
+              }
+            },
+            duration: 20,
+            isMathSlide: false
+          }
+        ],
+        duration: 20,
+        completed: false,
+        objectives: ['اختبار الفهم', 'التطبيق العملي'],
+        keywords: ['تدريب', 'اختبار'],
+        anticipatedQuestions: ['هل الإجابة صحيحة؟', 'اشرح لي الحل'],
+        hasMathContent: false
+      });
+    }
     
     // 5. Summary Section
     const finalSlideCount = sections.reduce((sum, s) => sum + s.slides.length, 0);
@@ -302,21 +445,23 @@ export class LessonOrchestratorService {
             title: 'ما تعلمناه اليوم',
             bullets: keyPoints
           },
-          duration: 15
+          duration: 15,
+          isMathSlide: false
         }
       ],
       duration: 15,
       completed: false,
       objectives: ['مراجعة النقاط المهمة'],
       keywords: ['ملخص', 'مراجعة'],
-      anticipatedQuestions: ['ما أهم نقطة؟', 'ماذا بعد؟']
+      anticipatedQuestions: ['ما أهم نقطة؟', 'ماذا بعد؟'],
+      hasMathContent: false
     });
     
     return sections;
   }
   
   /**
-   * توليد الشرائح الأولية
+   * توليد الشرائح الأولية مع دعم المحتوى الرياضي
    */
   private async generateInitialSlides(flow: LessonFlow): Promise<void> {
     // Generate first 5 slides HTML
@@ -326,17 +471,86 @@ export class LessonOrchestratorService {
       const slide = this.getSlideByNumber(flow, i);
       if (!slide) continue;
       
-      // Generate HTML
-      slide.html = slideGenerator.generateRealtimeSlideHTML(
-        {
-          id: `slide-${i}`,
-          type: slide.type as any,
-          content: slide.content,
-          duration: slide.duration,
-          transitions: { in: 'fade', out: 'fade' }
-        },
-        flow.theme as any
-      );
+      // Generate HTML based on slide type
+      if (slide.isMathSlide) {
+        // Generate math slide
+        slide.html = await this.generateMathSlideHTML(slide, flow);
+      } else {
+        // Generate regular slide
+        slide.html = slideGenerator.generateRealtimeSlideHTML(
+          {
+            id: `slide-${i}`,
+            type: slide.type as any,
+            content: slide.content,
+            duration: slide.duration,
+            transitions: { in: 'fade', out: 'fade' }
+          },
+          flow.theme as any
+        );
+      }
+    }
+  }
+  
+  /**
+   * توليد HTML لشريحة رياضية
+   */
+  private async generateMathSlideHTML(slide: GeneratedSlide, flow: LessonFlow): Promise<string> {
+    const content = slide.content;
+    
+    switch (slide.type) {
+      case 'math-content':
+        // Math concept slide
+        const expression = content.mathExpression || this.createDefaultExpression(content.title);
+        return await mathSlideGenerator.generateMathSlide({
+          title: content.title,
+          mathExpressions: [expression],
+          text: content.text,
+          interactive: flow.mathInteractive || false
+        });
+        
+      case 'math-example':
+        // Math example slide
+        return await mathSlideGenerator.generateMathProblemSlide({
+          title: content.title,
+          question: content.problem,
+          equation: content.equation,
+          solution: content.solution,
+          hints: ['فكر في الخطوات', 'راجع القانون']
+        });
+        
+      case 'math-problem':
+        // Math practice problem
+        return await mathSlideGenerator.generateMathProblemSlide({
+          title: content.title,
+          question: content.problem,
+          hints: content.hints,
+          solution: content.solution
+        });
+        
+      case 'math-interactive':
+        // Interactive math slide
+        const quadratic = latexRenderer.getCommonExpressions().quadratic;
+        quadratic.variables = content.variables || quadratic.variables;
+        
+        return await mathSlideGenerator.generateMathSlide({
+          title: content.title,
+          mathExpressions: [quadratic],
+          interactive: true,
+          showSteps: true
+        });
+        
+      default:
+        // Fallback to regular slide
+        return slideGenerator.generateRealtimeSlideHTML(
+          {
+            id: `slide-${slide.number}`,
+            type: slide.type as any,
+            content: slide.content,
+            duration: slide.duration,
+            transitions: { in: 'fade', out: 'fade' }
+          },
+          flow.theme as any
+        );
     }
   }
   
@@ -367,7 +581,8 @@ export class LessonOrchestratorService {
       // Notify about section change
       websocketService.sendToUser(userId, 'section_changed', {
         section: flow.sections[flow.currentSection].title,
-        type: flow.sections[flow.currentSection].type
+        type: flow.sections[flow.currentSection].type,
+        hasMathContent: flow.sections[flow.currentSection].hasMathContent
       });
     }
     
@@ -377,7 +592,11 @@ export class LessonOrchestratorService {
     
     // Generate HTML if not exists
     if (!slide.html) {
-      slide.html = await this.generateSlideHTML(flow, slide);
+      if (slide.isMathSlide) {
+        slide.html = await this.generateMathSlideHTML(slide, flow);
+      } else {
+        slide.html = await this.generateSlideHTML(flow, slide);
+      }
     }
     
     // Pre-generate next 2 slides
@@ -397,7 +616,7 @@ export class LessonOrchestratorService {
   }
   
   /**
-   * معالجة رسالة من المستخدم وتحليل النية
+   * معالجة رسالة من المستخدم وتحليل النية مع دعم المحتوى الرياضي
    */
   async processUserMessage(
     userId: string,
@@ -421,7 +640,7 @@ export class LessonOrchestratorService {
   }
   
   /**
-   * تحليل رسالة المستخدم وتحديد الإجراء المناسب
+   * تحليل رسالة المستخدم وتحديد الإجراء المناسب مع دعم الرياضيات
    */
   private async analyzeMessageIntent(
     message: string,
@@ -429,7 +648,40 @@ export class LessonOrchestratorService {
   ): Promise<ActionTrigger | null> {
     const lowerMessage = message.toLowerCase();
     
-    // Pattern matching for actions
+    // Math-specific patterns (أولوية عالية)
+    if (flow.isMathLesson) {
+      const mathPatterns: Array<{pattern: RegExp | string[], action: ActionTrigger['action']}> = [
+        {
+          pattern: ['احسب', 'حل المعادلة', 'حل المسألة', 'solve', 'calculate'],
+          action: 'solve_equation'
+        },
+        {
+          pattern: ['معادلة', 'equation', 'دالة', 'function', 'رسم بياني', 'graph'],
+          action: 'show_math'
+        },
+        {
+          pattern: ['خطوات الحل', 'كيف أحل', 'طريقة الحل', 'steps'],
+          action: 'show_math'
+        }
+      ];
+      
+      for (const { pattern, action } of mathPatterns) {
+        const matches = Array.isArray(pattern)
+          ? pattern.some(p => lowerMessage.includes(p))
+          : pattern.test(lowerMessage);
+          
+        if (matches) {
+          return {
+            trigger: message,
+            action,
+            confidence: 0.9,
+            mathRelated: true
+          };
+        }
+      }
+    }
+    
+    // General patterns
     const patterns: Array<{pattern: RegExp | string[], action: ActionTrigger['action']}> = [
       {
         pattern: ['اشرح', 'وضح', 'فسر', 'ما معنى', 'لم أفهم'],
@@ -466,7 +718,8 @@ export class LessonOrchestratorService {
         return {
           trigger: message,
           action,
-          confidence: 0.85
+          confidence: 0.85,
+          mathRelated: false
         };
       }
     }
@@ -475,7 +728,7 @@ export class LessonOrchestratorService {
     if (process.env.OPENAI_API_KEY) {
       try {
         const prompt = `
-تحليل نية المستخدم في سياق درس تعليمي.
+تحليل نية المستخدم في سياق درس تعليمي${flow.isMathLesson ? ' رياضي' : ''}.
 الرسالة: "${message}"
 السياق: درس عن ${flow.sections[flow.currentSection].title}
 
@@ -485,6 +738,7 @@ export class LessonOrchestratorService {
 - start_quiz: يريد تمرين
 - simplify: يريد تبسيط
 - generate_slide: يريد شريحة جديدة
+${flow.isMathLesson ? '- show_math: يريد معادلة أو رسم\n- solve_equation: يريد حل معادلة' : ''}
 - none: لا يحتاج إجراء خاص
 
 الرد (إجراء واحد فقط):`;
@@ -501,7 +755,8 @@ export class LessonOrchestratorService {
           return {
             trigger: message,
             action: actionStr as any,
-            confidence: 0.75
+            confidence: 0.75,
+            mathRelated: ['show_math', 'solve_equation'].includes(actionStr)
           };
         }
       } catch (error) {
@@ -513,10 +768,10 @@ export class LessonOrchestratorService {
   }
   
   /**
-   * تنفيذ الإجراء المطلوب
+   * تنفيذ الإجراء المطلوب مع دعم الإجراءات الرياضية
    */
   private async executeAction(flow: LessonFlow, action: ActionTrigger): Promise<void> {
-    console.log(`🎬 Executing action: ${action.action}`);
+    console.log(`🎬 Executing action: ${action.action}${action.mathRelated ? ' (Math)' : ''}`);
     
     switch (action.action) {
       case 'generate_slide':
@@ -524,11 +779,19 @@ export class LessonOrchestratorService {
         break;
         
       case 'show_example':
-        await this.generateExampleSlide(flow);
+        if (flow.isMathLesson) {
+          await this.generateMathExampleSlide(flow);
+        } else {
+          await this.generateExampleSlide(flow);
+        }
         break;
         
       case 'start_quiz':
-        await this.generateQuizSlide(flow);
+        if (flow.isMathLesson) {
+          await this.generateMathQuizSlide(flow);
+        } else {
+          await this.generateQuizSlide(flow);
+        }
         break;
         
       case 'explain_more':
@@ -542,230 +805,333 @@ export class LessonOrchestratorService {
       case 'show_video':
         await this.suggestVideo(flow);
         break;
+        
+      // Math-specific actions
+      case 'show_math':
+        await this.generateInteractiveMathSlide(flow, action.trigger);
+        break;
+        
+      case 'solve_equation':
+        await this.generateSolutionSlide(flow, action.trigger);
+        break;
     }
     
     // Notify user
     websocketService.sendToUser(flow.userId, 'action_executed', {
       action: action.action,
-      trigger: action.trigger
+      trigger: action.trigger,
+      mathRelated: action.mathRelated
     });
   }
   
   /**
-   * توليد شريحة شرح إضافية
+   * توليد شريحة رياضية تفاعلية
    */
-  private async generateExplanationSlide(flow: LessonFlow, topic: string): Promise<void> {
-    const currentSection = flow.sections[flow.currentSection];
+  private async generateInteractiveMathSlide(flow: LessonFlow, topic: string): Promise<void> {
+    console.log(`🧮 Generating interactive math slide for: ${topic}`);
     
-    // Generate explanation content using AI
-    let content = `شرح تفصيلي عن: ${topic}`;
+    // Determine which type of math content to generate
+    let mathExpression: MathExpression;
     
-    if (process.env.OPENAI_API_KEY) {
-      const prompt = `
-اشرح للطالب في الصف ${this.getGradeFromFlow(flow)} الموضوع التالي:
-"${topic}"
-
-في سياق درس: ${currentSection.title}
-
-الشرح (فقرة واحدة واضحة):`;
-      
-      try {
-        content = await openAIService.chat([
-          { role: 'user', content: prompt }
-        ], {
-          temperature: 0.7,
-          maxTokens: 200
-        });
-      } catch (error) {
-        console.error('Failed to generate explanation:', error);
-      }
+    if (topic.includes('تربيعية') || topic.includes('quadratic')) {
+      mathExpression = latexRenderer.getCommonExpressions().quadratic;
+    } else if (topic.includes('فيثاغورس') || topic.includes('pythagorean')) {
+      mathExpression = latexRenderer.getCommonExpressions().pythagorean;
+    } else if (topic.includes('كسر') || topic.includes('fraction')) {
+      mathExpression = latexRenderer.getCommonExpressions().fraction;
+    } else {
+      // Generate custom expression based on topic
+      mathExpression = {
+        id: 'custom',
+        latex: 'f(x) = mx + b',
+        type: 'equation',
+        description: topic,
+        isInteractive: true,
+        variables: [
+          { name: 'm', value: 2, min: -10, max: 10, step: 1 },
+          { name: 'b', value: 3, min: -10, max: 10, step: 1 }
+        ]
+      };
     }
+    
+    // Generate HTML
+    const html = await mathSlideGenerator.generateMathSlide({
+      title: `معادلة تفاعلية: ${topic}`,
+      mathExpressions: [mathExpression],
+      text: `استخدم الأشرطة المتحركة لتغيير قيم المتغيرات ولاحظ التأثير على المعادلة`,
+      interactive: true,
+      showSteps: true
+    });
     
     // Create new slide
     const newSlide: GeneratedSlide = {
       number: flow.totalSlides,
-      type: 'content',
+      type: 'math-interactive',
       content: {
-        title: `شرح إضافي: ${topic}`,
-        text: content
+        title: `معادلة تفاعلية`,
+        expression: mathExpression
       },
-      duration: 20
+      duration: 30,
+      html,
+      isMathSlide: true,
+      mathExpressions: [mathExpression]
     };
     
-    // Generate HTML
-    newSlide.html = slideGenerator.generateRealtimeSlideHTML(
-      {
-        id: `slide-${newSlide.number}`,
-        type: 'content',
-        content: newSlide.content,
-        duration: newSlide.duration,
-        transitions: { in: 'fade', out: 'fade' }
-      },
-      flow.theme as any
-    );
-    
-    // Insert slide after current
+    // Insert and notify
     this.insertSlideAfterCurrent(flow, newSlide);
+    if (flow.mathProblemsAttempted !== undefined) flow.mathProblemsAttempted++;
     
-    // Send to user
-    websocketService.sendToUser(flow.userId, 'slide_generated', {
+    websocketService.sendToUser(flow.userId, 'math_slide_generated', {
       slide: newSlide,
-      reason: 'explanation_requested'
+      reason: 'interactive_math_requested'
     });
   }
   
   /**
-   * توليد شريحة مثال
+   * توليد شريحة حل معادلة
    */
-  private async generateExampleSlide(flow: LessonFlow): Promise<void> {
-    const currentSection = flow.sections[flow.currentSection];
-    const topic = currentSection.title;
+  private async generateSolutionSlide(flow: LessonFlow, equation: string): Promise<void> {
+    console.log(`🔢 Generating solution slide for: ${equation}`);
     
-    // Generate example using AI or use predefined
-    let example = {
-      title: `مثال على ${topic}`,
-      content: 'مثال توضيحي...'
+    // Extract equation from message
+    const extractedEquation = this.extractEquation(equation) || 'x + 5 = 10';
+    
+    // Generate solution steps
+    const steps = await this.generateSolutionSteps(extractedEquation);
+    
+    // Create math expression with steps
+    const mathExpression: MathExpression = {
+      id: 'solution',
+      latex: extractedEquation,
+      type: 'equation',
+      description: 'حل المعادلة خطوة بخطوة',
+      steps: steps
     };
     
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        const prompt = `
-أعط مثال واضح ومناسب للصف ${this.getGradeFromFlow(flow)} على:
-"${topic}"
-
-المثال (مع الشرح):`;
-        
-        const response = await openAIService.chat([
-          { role: 'user', content: prompt }
-        ], {
-          temperature: 0.7,
-          maxTokens: 150
-        });
-        
-        example.content = response;
-      } catch (error) {
-        console.error('Failed to generate example:', error);
-      }
-    }
+    // Generate HTML
+    const html = await mathSlideGenerator.generateMathProblemSlide({
+      title: 'حل المعادلة',
+      question: equation,
+      equation: extractedEquation,
+      solution: steps[steps.length - 1]?.latex || 'x = ?',
+      steps: steps
+    });
+    
+    // Create new slide
+    const newSlide: GeneratedSlide = {
+      number: flow.totalSlides,
+      type: 'math-solution',
+      content: {
+        title: 'حل المعادلة',
+        equation: extractedEquation,
+        steps: steps
+      },
+      duration: 40,
+      html,
+      isMathSlide: true,
+      mathExpressions: [mathExpression]
+    };
+    
+    // Insert and notify
+    this.insertSlideAfterCurrent(flow, newSlide);
+    if (flow.mathProblemsSolved !== undefined) flow.mathProblemsSolved++;
+    
+    websocketService.sendToUser(flow.userId, 'solution_slide_generated', {
+      slide: newSlide,
+      reason: 'solution_requested'
+    });
+  }
+  
+  /**
+   * توليد شريحة مثال رياضي
+   */
+  private async generateMathExampleSlide(flow: LessonFlow): Promise<void> {
+    const currentSection = flow.sections[flow.currentSection];
+    
+    // Generate math example
+    const example = {
+      title: `مثال رياضي: ${currentSection.title}`,
+      question: 'إذا كانت س + 3 = 10، فما قيمة س؟',
+      solution: 'س = 7',
+      equation: 'x + 3 = 10'
+    };
+    
+    // Generate HTML
+    const html = await mathSlideGenerator.generateMathProblemSlide(example);
     
     // Create slide
     const newSlide: GeneratedSlide = {
       number: flow.totalSlides,
-      type: 'content',
-      content: {
-        title: example.title,
-        text: example.content
-      },
-      duration: 15
+      type: 'math-example',
+      content: example,
+      duration: 25,
+      html,
+      isMathSlide: true
     };
-    
-    // Generate HTML
-    newSlide.html = slideGenerator.generateRealtimeSlideHTML(
-      {
-        id: `slide-${newSlide.number}`,
-        type: 'content',
-        content: newSlide.content,
-        duration: newSlide.duration,
-        transitions: { in: 'slide', out: 'slide' }
-      },
-      'colorful' // Use colorful theme for examples
-    );
     
     // Insert and notify
     this.insertSlideAfterCurrent(flow, newSlide);
     
     websocketService.sendToUser(flow.userId, 'slide_generated', {
       slide: newSlide,
-      reason: 'example_requested'
+      reason: 'math_example_requested'
     });
   }
   
   /**
-   * توليد شريحة تمرين/اختبار
+   * توليد شريحة اختبار رياضي
    */
-  private async generateQuizSlide(flow: LessonFlow): Promise<void> {
+  private async generateMathQuizSlide(flow: LessonFlow): Promise<void> {
     const currentSection = flow.sections[flow.currentSection];
     
-    // Generate quiz question
+    // Generate math quiz
     const quiz = {
-      question: `اختبر فهمك: ${currentSection.title}`,
-      options: [
-        'الإجابة الأولى',
-        'الإجابة الثانية',
-        'الإجابة الثالثة',
-        'الإجابة الرابعة'
-      ],
-      correctIndex: Math.floor(Math.random() * 4)
+      title: 'اختبار سريع',
+      problem: 'حل المعادلة: 2x - 4 = 10',
+      options: ['x = 7', 'x = 3', 'x = 5', 'x = 14'],
+      correctIndex: 0,
+      solution: 'x = 7',
+      explanation: 'نضيف 4 للطرفين: 2x = 14، ثم نقسم على 2: x = 7'
     };
     
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        const prompt = `
-اكتب سؤال اختيار من متعدد للصف ${this.getGradeFromFlow(flow)} عن:
-"${currentSection.title}"
-
-بصيغة JSON:
-{
-  "question": "السؤال",
-  "options": ["خيار1", "خيار2", "خيار3", "خيار4"],
-  "correctIndex": رقم_الإجابة_الصحيحة
-}`;
-        
-        const response = await openAIService.chat([
-          { role: 'system', content: 'You are a JSON generator. Always respond with valid JSON only, no text outside the JSON structure.' },
-          { role: 'user', content: prompt }
-        ], {
-          temperature: 0.5,
-          maxTokens: 200
-        });
-        
-        // Clean response and parse JSON
-        const cleanedResponse = response
-          .replace(/```json/gi, '')
-          .replace(/```/g, '')
-          .trim();
-        
-        // Try to extract JSON if the response contains text before/after
-        let jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          Object.assign(quiz, parsed);
-        }
-      } catch (error) {
-        console.error('Failed to generate quiz:', error);
-      }
-    }
+    // Generate HTML
+    const html = await mathSlideGenerator.generateMathProblemSlide({
+      title: quiz.title,
+      question: quiz.problem,
+      solution: quiz.solution,
+      hints: ['أضف 4 للطرفين أولاً', 'ثم اقسم على 2']
+    });
     
     // Create quiz slide
     const newSlide: GeneratedSlide = {
       number: flow.totalSlides,
-      type: 'quiz',
+      type: 'math-quiz',
       content: { quiz },
-      duration: 30
+      duration: 35,
+      html,
+      isMathSlide: true
     };
-    
-    // Generate HTML
-    newSlide.html = slideGenerator.generateRealtimeSlideHTML(
-      {
-        id: `slide-${newSlide.number}`,
-        type: 'quiz',
-        content: newSlide.content,
-        duration: newSlide.duration,
-        transitions: { in: 'zoom', out: 'zoom' }
-      },
-      'blue' // Blue theme for quizzes
-    );
     
     // Insert and notify
     this.insertSlideAfterCurrent(flow, newSlide);
+    if (flow.mathProblemsAttempted !== undefined) flow.mathProblemsAttempted++;
     
     websocketService.sendToUser(flow.userId, 'slide_generated', {
       slide: newSlide,
-      reason: 'quiz_requested'
+      reason: 'math_quiz_requested'
     });
   }
   
-  // ============= HELPER METHODS =============
+  // ============= MATH HELPER METHODS (جديد) =============
+  
+  /**
+   * اكتشاف المحتوى الرياضي في النص
+   */
+  private detectMathContent(text: string): boolean {
+    if (!text) return false;
+    
+    const mathIndicators = [
+      // Arabic
+      'معادلة', 'حل', 'احسب', 'رقم', 'عدد', 'جمع', 'طرح', 'ضرب', 'قسمة',
+      'مربع', 'جذر', 'أس', 'كسر', 'نسبة', 'متغير', 'دالة', 'رسم بياني',
+      // English
+      'equation', 'solve', 'calculate', 'number', 'add', 'subtract',
+      'multiply', 'divide', 'square', 'root', 'power', 'fraction',
+      'ratio', 'variable', 'function', 'graph',
+      // Math symbols
+      '+', '-', '×', '÷', '=', 'x', 'y', '^', '²', '³'
+    ];
+    
+    const lowerText = text.toLowerCase();
+    return mathIndicators.some(indicator => lowerText.includes(indicator));
+  }
+  
+  /**
+   * استخراج المعادلة من النص
+   */
+  private extractEquation(text: string): string | null {
+    // Simple pattern matching for equations
+    const patterns = [
+      /([a-z0-9\s\+\-\*\/\^\(\)]+)\s*=\s*([a-z0-9\s\+\-\*\/\^\(\)]+)/i,
+      /([س-ي]\s*[\+\-\*\/]\s*\d+)\s*=\s*(\d+)/,
+      /(\d+[a-z])\s*[\+\-]\s*(\d+)\s*=\s*(\d+)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        return match[0];
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * استخراج تعبير رياضي من النص
+   */
+  private extractMathExpression(text: string): MathExpression | null {
+    const equation = this.extractEquation(text);
+    if (!equation) return null;
+    
+    return {
+      id: 'extracted',
+      latex: equation.replace(/س/g, 'x').replace(/ص/g, 'y'),
+      type: 'equation',
+      description: text
+    };
+  }
+  
+  /**
+   * إنشاء تعبير رياضي افتراضي
+   */
+  private createDefaultExpression(title: string): MathExpression {
+    return {
+      id: 'default',
+      latex: 'ax + b = c',
+      type: 'equation',
+      description: title,
+      isInteractive: true,
+      variables: [
+        { name: 'a', value: 2, min: -10, max: 10, step: 1 },
+        { name: 'b', value: 3, min: -10, max: 10, step: 1 },
+        { name: 'c', value: 7, min: -10, max: 10, step: 1 }
+      ]
+    };
+  }
+  
+  /**
+   * توليد خطوات الحل
+   */
+  private async generateSolutionSteps(equation: string): Promise<any[]> {
+    // Simple solution steps generator
+    // In production, use OpenAI or a math solver library
+    
+    const steps = [
+      {
+        stepNumber: 1,
+        latex: equation,
+        explanation: 'المعادلة الأصلية',
+        highlight: []
+      },
+      {
+        stepNumber: 2,
+        latex: equation.replace('=', '\\Rightarrow'),
+        explanation: 'نبدأ بتبسيط المعادلة',
+        highlight: []
+      },
+      {
+        stepNumber: 3,
+        latex: 'x = ?',
+        explanation: 'الحل النهائي',
+        highlight: ['x']
+      }
+    ];
+    
+    return steps;
+  }
+  
+  // ============= ORIGINAL HELPER METHODS =============
   
   private getFlow(userId: string, lessonId: string): LessonFlow | undefined {
     return this.activeLessons.get(`${userId}-${lessonId}`);
@@ -851,7 +1217,11 @@ export class LessonOrchestratorService {
         
         const slide = this.getSlideByNumber(flow, slideNum);
         if (slide && !slide.html) {
-          slide.html = await this.generateSlideHTML(flow, slide);
+          if (slide.isMathSlide) {
+            slide.html = await this.generateMathSlideHTML(slide, flow);
+          } else {
+            slide.html = await this.generateSlideHTML(flow, slide);
+          }
         }
       }
     }, 100);
@@ -869,7 +1239,7 @@ export class LessonOrchestratorService {
     // Track interaction
     if (!slide.interactions) slide.interactions = [];
     slide.interactions.push({
-      type: 'click',
+      type: slide.isMathSlide ? 'math-variable-change' : 'click',
       timestamp: new Date()
     });
   }
@@ -881,13 +1251,17 @@ export class LessonOrchestratorService {
     // Calculate final stats
     flow.actualDuration = Math.floor((Date.now() - flow.startTime.getTime()) / 1000);
     
-    // Send completion event
+    // Send completion event with math stats
     websocketService.sendToUser(flow.userId, 'lesson_completed', {
       lessonId: flow.lessonId,
       duration: flow.actualDuration,
       questionsAsked: flow.questionsAsked,
       engagementScore: flow.engagementScore,
-      comprehensionLevel: flow.comprehensionLevel
+      comprehensionLevel: flow.comprehensionLevel,
+      // Math stats
+      isMathLesson: flow.isMathLesson,
+      mathProblemsAttempted: flow.mathProblemsAttempted || 0,
+      mathProblemsSolved: flow.mathProblemsSolved || 0
     });
     
     // Clean up
@@ -940,7 +1314,8 @@ export class LessonOrchestratorService {
         title: 'شرح مبسط',
         text: `نسخة مبسطة من: ${current.content.title || 'المحتوى'}`
       },
-      duration: 15
+      duration: 15,
+      isMathSlide: false
     };
     
     // Generate and insert
@@ -959,6 +1334,216 @@ export class LessonOrchestratorService {
       url: 'https://youtube.com/example',
       title: `فيديو عن ${flow.sections[flow.currentSection].title}`,
       duration: '5:30'
+    });
+  }
+  
+  // Existing helper methods remain unchanged...
+  
+  private async generateExplanationSlide(flow: LessonFlow, topic: string): Promise<void> {
+    const currentSection = flow.sections[flow.currentSection];
+    
+    // Generate explanation content using AI
+    let content = `شرح تفصيلي عن: ${topic}`;
+    
+    if (process.env.OPENAI_API_KEY) {
+      const prompt = `
+اشرح للطالب في الصف ${this.getGradeFromFlow(flow)} الموضوع التالي:
+"${topic}"
+
+في سياق درس: ${currentSection.title}
+
+الشرح (فقرة واحدة واضحة):`;
+      
+      try {
+        content = await openAIService.chat([
+          { role: 'user', content: prompt }
+        ], {
+          temperature: 0.7,
+          maxTokens: 200
+        });
+      } catch (error) {
+        console.error('Failed to generate explanation:', error);
+      }
+    }
+    
+    // Create new slide
+    const newSlide: GeneratedSlide = {
+      number: flow.totalSlides,
+      type: 'content',
+      content: {
+        title: `شرح إضافي: ${topic}`,
+        text: content
+      },
+      duration: 20,
+      isMathSlide: false
+    };
+    
+    // Generate HTML
+    newSlide.html = slideGenerator.generateRealtimeSlideHTML(
+      {
+        id: `slide-${newSlide.number}`,
+        type: 'content',
+        content: newSlide.content,
+        duration: newSlide.duration,
+        transitions: { in: 'fade', out: 'fade' }
+      },
+      flow.theme as any
+    );
+    
+    // Insert slide after current
+    this.insertSlideAfterCurrent(flow, newSlide);
+    
+    // Send to user
+    websocketService.sendToUser(flow.userId, 'slide_generated', {
+      slide: newSlide,
+      reason: 'explanation_requested'
+    });
+  }
+  
+  private async generateExampleSlide(flow: LessonFlow): Promise<void> {
+    const currentSection = flow.sections[flow.currentSection];
+    const topic = currentSection.title;
+    
+    // Generate example using AI or use predefined
+    let example = {
+      title: `مثال على ${topic}`,
+      content: 'مثال توضيحي...'
+    };
+    
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const prompt = `
+أعط مثال واضح ومناسب للصف ${this.getGradeFromFlow(flow)} على:
+"${topic}"
+
+المثال (مع الشرح):`;
+        
+        const response = await openAIService.chat([
+          { role: 'user', content: prompt }
+        ], {
+          temperature: 0.7,
+          maxTokens: 150
+        });
+        
+        example.content = response;
+      } catch (error) {
+        console.error('Failed to generate example:', error);
+      }
+    }
+    
+    // Create slide
+    const newSlide: GeneratedSlide = {
+      number: flow.totalSlides,
+      type: 'content',
+      content: {
+        title: example.title,
+        text: example.content
+      },
+      duration: 15,
+      isMathSlide: false
+    };
+    
+    // Generate HTML
+    newSlide.html = slideGenerator.generateRealtimeSlideHTML(
+      {
+        id: `slide-${newSlide.number}`,
+        type: 'content',
+        content: newSlide.content,
+        duration: newSlide.duration,
+        transitions: { in: 'slide', out: 'slide' }
+      },
+      'colorful' // Use colorful theme for examples
+    );
+    
+    // Insert and notify
+    this.insertSlideAfterCurrent(flow, newSlide);
+    
+    websocketService.sendToUser(flow.userId, 'slide_generated', {
+      slide: newSlide,
+      reason: 'example_requested'
+    });
+  }
+  
+  private async generateQuizSlide(flow: LessonFlow): Promise<void> {
+    const currentSection = flow.sections[flow.currentSection];
+    
+    // Generate quiz question
+    const quiz = {
+      question: `اختبر فهمك: ${currentSection.title}`,
+      options: [
+        'الإجابة الأولى',
+        'الإجابة الثانية',
+        'الإجابة الثالثة',
+        'الإجابة الرابعة'
+      ],
+      correctIndex: Math.floor(Math.random() * 4)
+    };
+    
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const prompt = `
+اكتب سؤال اختيار من متعدد للصف ${this.getGradeFromFlow(flow)} عن:
+"${currentSection.title}"
+
+بصيغة JSON:
+{
+  "question": "السؤال",
+  "options": ["خيار1", "خيار2", "خيار3", "خيار4"],
+  "correctIndex": رقم_الإجابة_الصحيحة
+}`;
+        
+        const response = await openAIService.chat([
+          { role: 'system', content: 'You are a JSON generator. Always respond with valid JSON only, no text outside the JSON structure.' },
+          { role: 'user', content: prompt }
+        ], {
+          temperature: 0.5,
+          maxTokens: 200
+        });
+        
+        // Clean response and parse JSON
+        const cleanedResponse = response
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim();
+        
+        // Try to extract JSON if the response contains text before/after
+        let jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          Object.assign(quiz, parsed);
+        }
+      } catch (error) {
+        console.error('Failed to generate quiz:', error);
+      }
+    }
+    
+    // Create quiz slide
+    const newSlide: GeneratedSlide = {
+      number: flow.totalSlides,
+      type: 'quiz',
+      content: { quiz },
+      duration: 30,
+      isMathSlide: false
+    };
+    
+    // Generate HTML
+    newSlide.html = slideGenerator.generateRealtimeSlideHTML(
+      {
+        id: `slide-${newSlide.number}`,
+        type: 'quiz',
+        content: newSlide.content,
+        duration: newSlide.duration,
+        transitions: { in: 'zoom', out: 'zoom' }
+      },
+      'blue' // Blue theme for quizzes
+    );
+    
+    // Insert and notify
+    this.insertSlideAfterCurrent(flow, newSlide);
+    
+    websocketService.sendToUser(flow.userId, 'slide_generated', {
+      slide: newSlide,
+      reason: 'quiz_requested'
     });
   }
 }

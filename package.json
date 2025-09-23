@@ -37,6 +37,7 @@
     "test:unit": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:math": "tsx src/test-math-components.ts",
     "// Development Scripts": "",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint src/**/*.ts",
@@ -47,7 +48,8 @@
     "setup": "npm run db:generate && npm run db:migrate && npm run db:seed",
     "setup:fresh": "npm run db:reset && npm run setup",
     "enrich:all": "ts-node src/scripts/enrich-all.ts",
-    "enrich:test": "ts-node src/test-enrichment.ts"
+    "enrich:test": "ts-node src/test-enrichment.ts",
+    "create:test-user": "tsx src/scripts/create-test-user.ts"
   },
   "keywords": [
     "education",
@@ -58,7 +60,10 @@
     "express",
     "openai",
     "embeddings",
-    "curriculum"
+    "curriculum",
+    "math",
+    "interactive",
+    "latex"
   ],
   "author": "Smart Education Team",
   "license": "ISC",

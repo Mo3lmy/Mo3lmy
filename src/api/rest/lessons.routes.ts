@@ -7,7 +7,41 @@ import { authenticate } from '../middleware/auth.middleware';
 import { successResponse, errorResponse } from '../../utils/response.utils';
 import asyncHandler from 'express-async-handler';
 
+
+
+
+
 const router = Router();
+
+
+
+// Endpoint خاص للتطوير فقط - بدون authentication
+if (process.env.NODE_ENV === 'development') {
+  router.get('/test', async (req, res) => {
+    try {
+      const lessons = await prisma.lesson.findMany({
+        include: {
+          unit: {
+            include: {
+              subject: true
+            }
+          }
+        },
+        take: 20
+      });
+      
+      res.json({
+        success: true,
+        data: lessons
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch lessons'
+      });
+    }
+  });
+}
 
 /**
  * @route   GET /api/v1/lessons

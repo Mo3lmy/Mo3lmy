@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>اختبار بسيط</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>اختبار الاتصال</h1>
+    <button onclick="connect()">اتصل</button>
+    <button onclick="getLessons()">جلب الدروس</button>
+    <div id="result"></div>
+    
+    <script>
+        let socket;
+        
+        function connect() {
+            // بدون أي authentication
+            socket = io('http://localhost:3000', {
+                transports: ['polling', 'websocket']
+            });
+            
+            socket.on('connect', () => {
+                document.getElementById('result').innerHTML = '✅ متصل';
+            });
+            
+            socket.on('connect_error', (error) => {
+                document.getElementById('result').innerHTML = '❌ ' + error.message;
+            });
+        }
+        
+        async function getLessons() {
+            // جلب مباشر من API
+            const response = await fetch('/api/v1/lessons');
+            const data = await response.json();
+            document.getElementById('result').innerHTML = 
+                `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+    </script>
+</body>
+</html>
