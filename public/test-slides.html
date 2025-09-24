@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار الشرائح - منصة التعليم الذكية</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+        }
+        
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff5252;
+        }
+        
+        .status-indicator.connected {
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .main-container {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .controls {
+            width: 300px;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-height: calc(100vh - 140px);
+            overflow-y: auto;
+        }
+        
+        .slide-viewer {
+            flex: 1;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .slide-container {
+            width: 100%;
+            height: calc(100% - 70px);
+            overflow: auto;
+        }
+        
+        .slide-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .slide-type-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .slide-type-buttons button {
+            padding: 8px;
+            font-size: 14px;
+        }
+        
+        .theme-selector {
+            margin: 20px 0;
+        }
+        
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border-top: 1px solid rgba(102, 126, 234, 0.2);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+        
+        .nav-button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        
+        .slide-info {
+            font-size: 18px;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .logs {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-right: 3px solid #667eea;
+            background: white;
+        }
+        
+        hr { margin: 20px 0; border: none; border-top: 1px solid #e0e0e0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 اختبار نظام الشرائح</h1>
+        <div class="connection-status">
+            <span id="statusText">غير متصل</span>
+            <div class="status-indicator" id="statusIndicator"></div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="controls">
+            <h3>📡 التحكم في الاتصال</h3>
+            <button id="connectBtn" onclick="connectSocket()">🔌 اتصال</button>
+            <button id="disconnectBtn" onclick="disconnectSocket()" disabled>❌ قطع الاتصال</button>
+            
+            <hr>
+            
+            <h3>🎨 اختر القالب</h3>
+            <div class="theme-selector">
+                <select id="themeSelect">
+                    <option value="default">القالب الافتراضي</option>
+                    <option value="dark">القالب الداكن</option>
+                    <option value="kids">قالب الأطفال</option>
+                </select>
+            </div>
+            
+            <h3>📊 أنواع الشرائح</h3>
+            <div class="slide-type-buttons">
+                <button onclick="requestSlide('title')">عنوان</button>
+                <button onclick="requestSlide('content')">محتوى</button>
+                <button onclick="requestSlide('bullet')">نقاط</button>
+                <button onclick="requestSlide('image')">صورة</button>
+                <button onclick="requestSlide('equation')">معادلة</button>
+                <button onclick="requestSlide('quiz')">سؤال</button>
+                <button onclick="requestSlide('summary')">خلاصة</button>
+            </div>
+            
+            <hr>
+            
+            <button onclick="generateFullLesson()" style="background: #48bb78;">
+                📚 توليد درس كامل
+            </button>
+            
+            <div class="logs" id="logs"></div>
+        </div>
+        
+        <div class="slide-viewer">
+            <div class="slide-container" id="slideContainer">
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #999;">
+                    <h2>سيظهر محتوى الشريحة هنا</h2>
+                </div>
+            </div>
+            
+            <div class="navigation">
+                <button class="nav-button" onclick="navigateSlide('prev')">⬅ السابق</button>
+                <span class="slide-info">
+                    الشريحة <span id="currentSlide">0</span> من <span id="totalSlides">0</span>
+                </span>
+                <button class="nav-button" onclick="navigateSlide('next')">التالي ➡</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket = null;
+        let isConnected = false;
+        let currentSlideIndex = 0;
+        let slides = [];
+        
+        function log(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString('ar-EG');
+            entry.textContent = `[${time}] ${message}`;
+            entry.style.borderColor = type === 'error' ? '#ff5252' : 
+                                     type === 'success' ? '#4caf50' : '#667eea';
+            logs.insertBefore(entry, logs.firstChild);
+            
+            while (logs.children.length > 10) {
+                logs.removeChild(logs.lastChild);
+            }
+        }
+        
+        function updateConnectionStatus(connected) {
+            isConnected = connected;
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            if (connected) {
+                indicator.classList.add('connected');
+                statusText.textContent = 'متصل';
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+            } else {
+                indicator.classList.remove('connected');
+                statusText.textContent = 'غير متصل';
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+            }
+        }
+        
+        function connectSocket() {
+            if (socket && socket.connected) {
+                log('متصل بالفعل!', 'info');
+                return;
+            }
+            
+            log('جاري الاتصال...', 'info');
+            
+            // ⚡ الإعدادات المُصلحة
+            socket = io('/', {
+                transports: ['websocket'], // فقط WebSocket
+                reconnection: false,
+                timeout: 5000,
+                upgrade: false,
+                forceNew: true
+            });
+            
+            socket.on('connect', () => {
+                log('✅ تم الاتصال بنجاح!', 'success');
+                updateConnectionStatus(true);
+                
+                socket.emit('authenticate', { 
+                    token: 'test-token-' + Date.now() 
+                });
+            });
+            
+            socket.on('authenticated', (data) => {
+                log('✅ تم التحقق من الهوية', 'success');
+                if (data.userName) {
+                    log(`المستخدم: ${data.userName}`, 'info');
+                }
+            });
+            
+            socket.on('slide_ready', (data) => {
+                if (data.success) {
+                    displaySlide(data.html);
+                    log('✅ تم توليد الشريحة', 'success');
+                }
+            });
+            
+            socket.on('lesson_slides_ready', (data) => {
+                if (data.success) {
+                    slides = data.slides;
+                    currentSlideIndex = 0;
+                    displaySlide(slides[0]);
+                    updateSlideInfo();
+                    log(`✅ تم توليد ${data.totalSlides} شريحة`, 'success');
+                }
+            });
+            
+            socket.on('error', (error) => {
+                log(`❌ خطأ: ${error.message || error}`, 'error');
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log(`❌ انقطع الاتصال: ${reason}`, 'error');
+                updateConnectionStatus(false);
+                socket = null;
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`❌ فشل الاتصال: ${error.message}`, 'error');
+                updateConnectionStatus(false);
+                socket = null;
+            });
+        }
+        
+        function disconnectSocket() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                log('تم قطع الاتصال', 'info');
+                updateConnectionStatus(false);
+            }
+        }
+        
+        function requestSlide(type) {
+            if (!socket || !socket.connected) {
+                log('❌ غير متصل بالسيرفر', 'error');
+                return;
+            }
+            
+            const theme = document.getElementById('themeSelect').value;
+            
+            const slideData = {
+                type: type,
+                theme: theme
+            };
+            
+            // إضافة بيانات تجريبية حسب النوع
+            switch(type) {
+                case 'title':
+                    slideData.title = 'درس الرياضيات';
+                    slideData.subtitle = 'المعادلات التربيعية';
+                    break;
+                case 'content':
+                    slideData.title = 'مقدمة الدرس';
+                    slideData.content = 'المعادلة التربيعية هي معادلة من الدرجة الثانية، وتكتب بالصيغة العامة: ax² + bx + c = 0';
+                    break;
+                case 'bullet':
+                    slideData.title = 'النقاط الرئيسية';
+                    slideData.bullets = [
+                        'المعادلة التربيعية لها الصيغة: ax² + bx + c = 0',
+                        'يمكن حلها باستخدام القانون العام',
+                        'لها حلان على الأكثر'
+                    ];
+                    break;
+                case 'image':
+                    slideData.title = 'رسم بياني';
+                    slideData.imageUrl = 'https://via.placeholder.com/600x400/667eea/ffffff?text=Graph';
+                    slideData.content = 'الرسم البياني للمعادلة التربيعية هو قطع مكافئ';
+                    break;
+                case 'equation':
+                    slideData.title = 'القانون العام';
+                    slideData.equation = 'x = (-b ± √(b² - 4ac)) / 2a';
+                    slideData.content = 'هذا هو القانون العام لحل المعادلة التربيعية';
+                    break;
+                case 'quiz':
+                    slideData.quiz = {
+                        question: 'ما هي درجة المعادلة التربيعية؟',
+                        options: ['الأولى', 'الثانية', 'الثالثة', 'الرابعة']
+                    };
+                    break;
+                case 'summary':
+                    slideData.title = 'خلاصة الدرس';
+                    slideData.bullets = [
+                        'تعلمنا صيغة المعادلة التربيعية',
+                        'تعرفنا على القانون العام',
+                        'حللنا أمثلة متنوعة'
+                    ];
+                    break;
+            }
+            
+            socket.emit('request_slide', slideData);
+            log(`📤 طلب شريحة ${type}`, 'info');
+        }
+        
+        // ⚡ الدالة المُصلحة لتوليد درس كامل
+        async function generateFullLesson() {
+            if (!socket || !socket.connected) {
+                log('❌ غير متصل بالسيرفر', 'error');
+                return;
+            }
+            
+            // جلب أول درس من قاعدة البيانات
+            try {
+                const response = await fetch('/api/v1/lessons/test');
+                const data = await response.json();
+                
+                if (data.success && data.data && data.data.length > 0) {
+                    const firstLesson = data.data[0];
+                    
+                    socket.emit('generate_lesson_slides', {
+                        lessonId: firstLesson.id,
+                        theme: document.getElementById('themeSelect').value
+                    });
+                    
+                    log(`📤 طلب توليد درس: ${firstLesson.titleAr || firstLesson.title}`, 'info');
+                } else {
+                    log('❌ لا توجد دروس في قاعدة البيانات', 'error');
+                    log('تأكد من وجود دروس في الجدول lessons', 'error');
+                }
+            } catch (error) {
+                log('❌ فشل جلب الدروس: ' + error.message, 'error');
+            }
+        }
+        
+        function displaySlide(html) {
+            const container = document.getElementById('slideContainer');
+            
+            const iframe = document.createElement('iframe');
+            iframe.srcdoc = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { margin: 0; padding: 0; overflow: auto; }
+                        * { box-sizing: border-box; }
+                    </style>
+                </head>
+                <body>${html}</body>
+                </html>
+            `;
+            
+            container.innerHTML = '';
+            container.appendChild(iframe);
+        }
+        
+        function updateSlideInfo() {
+            document.getElementById('currentSlide').textContent = currentSlideIndex + 1;
+            document.getElementById('totalSlides').textContent = slides.length;
+        }
+        
+        function navigateSlide(direction) {
+            if (slides.length === 0) return;
+            
+            if (direction === 'next' && currentSlideIndex < slides.length - 1) {
+                currentSlideIndex++;
+            } else if (direction === 'prev' && currentSlideIndex > 0) {
+                currentSlideIndex--;
+            }
+            
+            displaySlide(slides[currentSlideIndex]);
+            updateSlideInfo();
+        }
+        
+        // Initialize
+        log('🚀 جاهز للاختبار', 'info');
+        log('اضغط "اتصال" للبدء', 'info');
+    </script>
+</body>
+</html>
