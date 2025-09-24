@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎓 اختبار شامل - منصة التعليم الذكية</title>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .main-container {
+            max-width: 1400px;
+            margin: auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .status-bar {
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 30px;
+            display: inline-block;
+            margin-top: 10px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.connected { background: #48bb78; }
+        .status-indicator.disconnected { background: #e53e3e; }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .panel {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .panel h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .control-section {
+            margin-bottom: 25px;
+        }
+        
+        .control-section h3 {
+            color: #4a5568;
+            font-size: 1em;
+            margin-bottom: 10px;
+        }
+        
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 120px;
+            font-weight: 500;
+        }
+        
+        button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        button:active { transform: translateY(0); }
+        
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #48bb78; color: white; }
+        .btn-warning { background: #ed8936; color: white; }
+        .btn-info { background: #4299e1; color: white; }
+        .btn-danger { background: #e53e3e; color: white; }
+        .btn-secondary { background: #718096; color: white; }
+        
+        .slide-viewer {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .slide-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .slide-content {
+            padding: 30px;
+            min-height: 400px;
+            background: white;
+        }
+        
+        .slide-html {
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 350px;
+        }
+        
+        .teaching-script {
+            background: linear-gradient(135deg, #f6f9fc 0%, #e9f1ff 100%);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            border-right: 4px solid #667eea;
+        }
+        
+        .audio-control {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .log-viewer {
+            height: 400px;
+            overflow-y: auto;
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .log-entry {
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 6px;
+            font-size: 0.85em;
+            border-right: 3px solid;
+            animation: slideIn 0.3s;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .log-success { background: #c6f6d5; border-color: #48bb78; }
+        .log-error { background: #fed7d7; border-color: #e53e3e; }
+        .log-info { background: #bee3f8; border-color: #4299e1; }
+        .log-warning { background: #feebc8; border-color: #ed8936; }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #4a5568;
+            font-size: 0.9em;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+        
+        .progress-bar {
+            background: #e2e8f0;
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8em;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            border-right: 3px solid #667eea;
+        }
+        
+        .stat-value {
+            font-size: 1.5em;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .stat-label {
+            color: #718096;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .tab {
+            padding: 8px 16px;
+            background: #e2e8f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .problem-box {
+            background: #fef5e7;
+            border: 2px solid #f39c12;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .problem-hints {
+            background: #e8f4fd;
+            border-right: 3px solid #3498db;
+            padding: 10px 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .quick-lessons {
+            background: #e6fffa;
+            border: 1px solid #38b2ac;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        
+        .lesson-btn {
+            display: block;
+            width: 100%;
+            text-align: right;
+            padding: 8px;
+            margin: 5px 0;
+            background: white;
+            border: 1px solid #cbd5e0;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+        
+        .lesson-btn:hover {
+            background: #f7fafc;
+            border-color: #667eea;
+        }
+        
+        @media (max-width: 1200px) {
+            .dashboard { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Header -->
+        <header>
+            <h1>🎓 منصة التعليم الذكية - اختبار شامل</h1>
+            <div class="status-bar">
+                <span id="connectionStatus">غير متصل</span>
+                <span class="status-indicator disconnected" id="statusIndicator"></span>
+            </div>
+        </header>
+        
+        <!-- Dashboard -->
+        <div class="dashboard">
+            <!-- Left Panel - Controls -->
+            <div class="panel">
+                <h2>🎮 لوحة التحكم</h2>
+                
+                <!-- Connection -->
+                <div class="control-section">
+                    <h3>📡 الاتصال</h3>
+                    <div class="btn-group">
+                        <button class="btn-primary" onclick="App.connect()">اتصل</button>
+                        <button class="btn-success" onclick="App.authenticate()">دخول</button>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 0.85em; color: #718096;">
+                        <div>📧 الإيميل: student1@test.com</div>
+                        <div>🔑 كلمة السر: (تلقائي)</div>
+                    </div>
+                </div>
+                
+                <!-- Quick Lesson Selection -->
+                <div class="control-section">
+                    <h3>📚 اختر درس سريع</h3>
+                    <div class="quick-lessons">
+                        <button class="lesson-btn" onclick="App.selectLesson('LESSON_1758571115773_38cd41usk')">
+                            قابلية القسمة
+                        </button>
+                        <button class="lesson-btn" onclick="App.selectLesson('LESSON_1758571118399_ettv01fx1')">
+                            تحليل العدد إلى عوامله الأولية
+                        </button>
+                        <button class="lesson-btn" onclick="App.selectLesson('LESSON_1758571121316_3p3ep40wa')">
+                            العامل المشترك الأكبر
+                        </button>
+                        <button class="lesson-btn" onclick="App.selectLesson('LESSON_1758571123380_mue8hjmtx')">
+                            استخدام خط الأعداد
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Lesson -->
+                <div class="control-section">
+                    <h3>📚 معرف الدرس</h3>
+                    <div class="input-group">
+                        <input type="text" id="lessonId" placeholder="معرف الدرس" value="LESSON_1758571115773_38cd41usk">
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn-info" onclick="App.joinLesson()">انضم للدرس</button>
+                    </div>
+                </div>
+                
+                <!-- Teaching Assistant -->
+                <div class="control-section">
+                    <h3>🤖 المدرس الذكي</h3>
+                    <div class="btn-group">
+                        <button class="btn-primary" onclick="App.generateTeaching()">اشرح</button>
+                        <button class="btn-info" onclick="App.requestExample()">مثال</button>
+                        <button class="btn-warning" onclick="App.requestProblem()">مسألة</button>
+                        <button class="btn-secondary" onclick="App.moreDetail()">تفصيل</button>
+                    </div>
+                    <div class="btn-group" style="margin-top: 8px;">
+                        <button class="btn-danger" onclick="App.pause()">إيقاف</button>
+                        <button class="btn-success" onclick="App.continue()">استمرار</button>
+                        <button class="btn-info" onclick="App.repeat()">كرر</button>
+                    </div>
+                </div>
+                
+                <!-- Smart Lesson -->
+                <div class="control-section">
+                    <h3>🎯 الدرس الكامل</h3>
+                    <select id="voiceStyle">
+                        <option value="friendly">ودود</option>
+                        <option value="formal">رسمي</option>
+                        <option value="energetic">حماسي</option>
+                    </select>
+                    <div class="btn-group" style="margin-top: 10px;">
+                        <button class="btn-success" onclick="App.generateSmartLesson()">
+                            🚀 درس ذكي كامل
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Navigation -->
+                <div class="control-section">
+                    <h3>🔄 التنقل</h3>
+                    <div class="btn-group">
+                        <button class="btn-secondary" onclick="App.prevSlide()">⬅️ السابق</button>
+                        <button class="btn-secondary" onclick="App.nextSlide()">➡️ التالي</button>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress" style="width: 0%">0%</div>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="slideCount">0</div>
+                        <div class="stat-label">الشرائح</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="interactionCount">0</div>
+                        <div class="stat-label">التفاعلات</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Center Panel - Main Content -->
+            <div class="slide-viewer">
+                <div class="slide-header">
+                    <span id="slideTitle">جاهز للبدء</span>
+                    <span id="slideNumber">0 / 0</span>
+                </div>
+                
+                <div class="slide-content">
+                    <!-- Tabs -->
+                    <div class="tabs">
+                        <div class="tab active" onclick="App.switchTab('slide', event)">الشريحة</div>
+                        <div class="tab" onclick="App.switchTab('script', event)">السكريبت</div>
+                        <div class="tab" onclick="App.switchTab('problem', event)">المسألة</div>
+                    </div>
+                    
+                    <!-- Slide Tab -->
+                    <div class="tab-content active" id="slideTab">
+                        <div class="slide-html" id="slideContainer">
+                            <div style="text-align: center; padding: 50px; color: #718096;">
+                                <h2>مرحباً بك في منصة التعليم الذكية</h2>
+                                <p>اتصل بالخادم واختر درس من القائمة</p>
+                                <br>
+                                <p style="font-size: 0.9em;">الدروس المتاحة:</p>
+                                <ul style="list-style: none; padding: 20px;">
+                                    <li>📘 قابلية القسمة</li>
+                                    <li>📘 تحليل العدد إلى عوامله الأولية</li>
+                                    <li>📘 العامل المشترك الأكبر</li>
+                                    <li>📘 استخدام خط الأعداد</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Script Tab -->
+                    <div class="tab-content" id="scriptTab">
+                        <div class="teaching-script" id="teachingScript">
+                            <h3>السكريبت التعليمي</h3>
+                            <p id="scriptContent">لم يتم توليد سكريبت بعد...</p>
+                            <div id="scriptMeta" style="margin-top: 15px; color: #718096; font-size: 0.9em;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Problem Tab -->
+                    <div class="tab-content" id="problemTab">
+                        <div class="problem-box" id="problemContainer" style="display: none;">
+                            <h3>📝 المسألة</h3>
+                            <p id="problemQuestion"></p>
+                            <div class="problem-hints" id="problemHints"></div>
+                            <button class="btn-success" onclick="App.showSolution()">اعرض الحل</button>
+                            <div id="problemSolution" style="display: none; margin-top: 15px;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Audio Player -->
+                    <div class="audio-control">
+                        <h4>🔊 التحكم بالصوت</h4>
+                        <audio id="audioPlayer" controls style="width: 100%;"></audio>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Panel - Logs & Chat -->
+            <div class="panel">
+                <h2>📊 السجل والمحادثة</h2>
+                
+                <!-- Quick Actions -->
+                <div class="control-section">
+                    <h3>⚡ إجراءات سريعة</h3>
+                    <div class="btn-group">
+                        <button class="btn-info" onclick="App.getStatus()">الحالة</button>
+                        <button class="btn-warning" onclick="App.clearLogs()">مسح</button>
+                        <button class="btn-secondary" onclick="App.exportLogs()">تصدير</button>
+                    </div>
+                </div>
+                
+                <!-- Chat Input -->
+                <div class="control-section">
+                    <h3>💬 المحادثة</h3>
+                    <textarea id="chatInput" placeholder="اكتب سؤالك هنا... مثال: ما هي قابلية القسمة؟"></textarea>
+                    <button class="btn-primary" onclick="App.sendChat()" style="width: 100%; margin-top: 8px;">
+                        إرسال
+                    </button>
+                </div>
+                
+                <!-- Logs -->
+                <div class="control-section">
+                    <h3>📝 السجل</h3>
+                    <div class="log-viewer" id="logViewer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const App = {
+            socket: null,
+            currentLessonId: 'LESSON_1758571115773_38cd41usk', // Default lesson ID
+            currentSlideIndex: 0,
+            slides: [],
+            teachingScripts: [],
+            audioUrls: [],
+            interactionCount: 0,
+            currentProblem: null,
+            isAuthenticated: false,
+            
+            // Initialize
+            init() {
+                this.log('🚀 تم تحميل التطبيق', 'info');
+                this.log('📚 استخدم أحد الدروس من القائمة السريعة', 'info');
+                // Auto-connect on init
+                setTimeout(() => this.connect(), 500);
+            },
+            
+            // Connection
+            connect() {
+                if (this.socket && this.socket.connected) {
+                    this.log('⚠️ متصل بالفعل', 'warning');
+                    return;
+                }
+                
+                this.socket = io('http://localhost:3000', {
+                    transports: ['polling', 'websocket'],
+                    reconnection: true,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000
+                });
+                
+                this.setupSocketEvents();
+                this.log('🔄 جاري الاتصال بالخادم...', 'info');
+            },
+            
+            setupSocketEvents() {
+                // Connection events
+                this.socket.on('connect', () => {
+                    this.log('✅ تم الاتصال بالخادم', 'success');
+                    this.updateConnectionStatus(true);
+                    // Auto authenticate after connection
+                    if (!this.isAuthenticated) {
+                        setTimeout(() => this.authenticate(), 1000);
+                    }
+                });
+                
+                this.socket.on('disconnect', () => {
+                    this.log('❌ انقطع الاتصال', 'error');
+                    this.updateConnectionStatus(false);
+                    this.isAuthenticated = false;
+                });
+                
+                this.socket.on('connect_error', (error) => {
+                    this.log(`⚠️ خطأ في الاتصال: ${error.message}`, 'warning');
+                });
+                
+                this.socket.on('welcome', (data) => {
+                    this.log(`👋 ${data.message}`, 'success');
+                    this.log(`✨ الخصائص المتاحة: ${Object.keys(data.features).join(', ')}`, 'info');
+                });
+                
+                this.socket.on('authenticated', (data) => {
+                    this.isAuthenticated = true;
+                    this.log(`✅ تم تسجيل الدخول كـ: ${data.userName}`, 'success');
+                    if (data.greeting) {
+                        this.log(`🎉 ${data.greeting}`, 'success');
+                    }
+                });
+                
+                this.socket.on('auth_error', (data) => {
+                    this.log(`❌ فشل تسجيل الدخول: ${data.message}`, 'error');
+                    this.isAuthenticated = false;
+                });
+                
+                // Lesson events
+                this.socket.on('joined_lesson', (data) => {
+                    this.log(`✅ انضممت للدرس: ${data.lessonTitle}`, 'success');
+                    this.log(`📝 Session ID: ${data.sessionId}`, 'info');
+                });
+                
+                // Teaching events
+                this.socket.on('teaching_script_ready', (data) => {
+                    this.handleTeachingScript(data);
+                });
+                
+                this.socket.on('interaction_response', (data) => {
+                    this.handleInteraction(data);
+                });
+                
+                this.socket.on('problem_ready', (data) => {
+                    this.handleProblem(data);
+                });
+                
+                this.socket.on('smart_lesson_started', (data) => {
+                    this.log(`⏳ بدء توليد درس ذكي: ${data.totalSlides} شريحة`, 'info');
+                    document.getElementById('slideContainer').innerHTML = '<div class="spinner"></div><p style="text-align: center; margin-top: 20px;">جاري توليد الدرس الذكي...</p>';
+                });
+                
+                this.socket.on('smart_lesson_progress', (data) => {
+                    this.log(`📊 التقدم: ${data.currentSlide}/${data.totalSlides}`, 'info');
+                });
+                
+                this.socket.on('smart_lesson_ready', (data) => {
+                    this.handleSmartLesson(data);
+                });
+                
+                // Chat events
+                this.socket.on('ai_response', (data) => {
+                    this.log(`🤖 الذكاء الاصطناعي: ${data.message}`, 'info');
+                    if (data.isTeaching) {
+                        this.log('💡 (إجابة تعليمية)', 'success');
+                    }
+                });
+                
+                // Error handling
+                this.socket.on('error', (data) => {
+                    this.log(`❌ خطأ: ${data.message || data}`, 'error');
+                });
+                
+                this.socket.on('teaching_error', (data) => {
+                    this.log(`❌ خطأ في التدريس: ${data.message}`, 'error');
+                });
+                
+                this.socket.on('lesson_paused', (data) => {
+                    this.log(`⏸️ ${data.message}`, 'warning');
+                    if (data.script) {
+                        this.log(`💬 ${data.script}`, 'info');
+                    }
+                });
+                
+                this.socket.on('lesson_continued', (data) => {
+                    this.log(`▶️ ${data.message}`, 'success');
+                    if (data.script) {
+                        document.getElementById('scriptContent').innerText = data.script;
+                    }
+                    if (data.audioUrl) {
+                        const audio = document.getElementById('audioPlayer');
+                        audio.src = data.audioUrl;
+                    }
+                });
+            },
+            
+            // Select lesson from quick list
+            selectLesson(lessonId) {
+                document.getElementById('lessonId').value = lessonId;
+                this.currentLessonId = lessonId;
+                this.log(`📘 تم اختيار الدرس: ${lessonId}`, 'success');
+                
+                // Auto join if authenticated
+                if (this.isAuthenticated) {
+                    this.joinLesson();
+                }
+            },
+            
+            // Authentication
+            authenticate() {
+                if (!this.socket || !this.socket.connected) {
+                    this.log('⚠️ يجب الاتصال بالخادم أولاً', 'warning');
+                    return;
+                }
+                
+                // Use test token for development
+                this.socket.emit('authenticate', { token: 'test-token' });
+                this.log('🔐 جاري تسجيل الدخول...', 'info');
+            },
+            
+            // Lesson Management
+            joinLesson() {
+                if (!this.isAuthenticated) {
+                    this.log('⚠️ يجب تسجيل الدخول أولاً', 'warning');
+                    this.authenticate();
+                    return;
+                }
+                
+                this.currentLessonId = document.getElementById('lessonId').value;
+                if (!this.currentLessonId) {
+                    this.log('⚠️ اختر درس من القائمة أولاً', 'warning');
+                    return;
+                }
+                
+                this.socket.emit('join_lesson', { lessonId: this.currentLessonId });
+                this.log(`📚 الانضمام للدرس: ${this.currentLessonId}`, 'info');
+            },
+            
+            // Teaching Assistant Functions
+            generateTeaching() {
+                if (!this.ensureReady()) return;
+                
+                const slideContent = this.getCurrentSlideContent();
+                
+                this.socket.emit('generate_teaching_script', {
+                    slideContent,
+                    lessonId: this.currentLessonId,
+                    options: {
+                        generateVoice: true,
+                        voiceStyle: document.getElementById('voiceStyle').value,
+                        useAnalogies: true,
+                        paceSpeed: 'normal'
+                    }
+                });
+                
+                this.log('🎓 جاري توليد السكريبت التعليمي...', 'info');
+            },
+            
+            requestExample() {
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('student_interaction', {
+                    type: 'example',
+                    lessonId: this.currentLessonId,
+                    currentSlide: this.getCurrentSlideContent()
+                });
+                this.interactionCount++;
+                this.updateStats();
+                this.log('💡 طلب مثال توضيحي', 'info');
+            },
+            
+            requestProblem() {
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('request_problem', {
+                    lessonId: this.currentLessonId,
+                    difficulty: 'medium',
+                    topic: this.getCurrentTopic()
+                });
+                this.interactionCount++;
+                this.updateStats();
+                this.log('📝 طلب مسألة للحل', 'info');
+            },
+            
+            moreDetail() {
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('student_interaction', {
+                    type: 'more_detail',
+                    lessonId: this.currentLessonId,
+                    currentSlide: this.getCurrentSlideContent()
+                });
+                this.interactionCount++;
+                this.updateStats();
+                this.log('🔍 طلب تفصيل أكثر', 'info');
+            },
+            
+            pause() {
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('pause_lesson', {
+                    lessonId: this.currentLessonId
+                });
+                this.log('⏸️ إيقاف الدرس مؤقتاً', 'warning');
+            },
+            
+            continue() {
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('continue_lesson', {
+                    lessonId: this.currentLessonId
+                });
+                this.log('▶️ استئناف الدرس', 'success');
+            },
+            
+            repeat() {
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('student_interaction', {
+                    type: 'repeat',
+                    lessonId: this.currentLessonId,
+                    currentSlide: this.getCurrentSlideContent()
+                });
+                this.interactionCount++;
+                this.updateStats();
+                this.log('🔄 طلب إعادة الشرح', 'info');
+            },
+            
+            // Smart Lesson
+            generateSmartLesson() {
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('generate_smart_lesson', {
+                    lessonId: this.currentLessonId,
+                    theme: 'default',
+                    generateVoice: true,
+                    teachingOptions: {
+                        voiceStyle: document.getElementById('voiceStyle').value,
+                        paceSpeed: 'normal',
+                        useStories: true,
+                        useAnalogies: true
+                    }
+                });
+                
+                this.log('🚀 جاري توليد درس ذكي كامل...', 'info');
+                document.getElementById('slideContainer').innerHTML = '<div class="spinner"></div>';
+            },
+            
+            // Helper functions
+            ensureReady() {
+                if (!this.socket || !this.socket.connected) {
+                    this.log('⚠️ غير متصل بالخادم', 'warning');
+                    this.connect();
+                    return false;
+                }
+                
+                if (!this.isAuthenticated) {
+                    this.log('⚠️ يجب تسجيل الدخول أولاً', 'warning');
+                    this.authenticate();
+                    return false;
+                }
+                
+                if (!this.currentLessonId) {
+                    this.log('⚠️ يجب اختيار درس أولاً', 'warning');
+                    return false;
+                }
+                
+                return true;
+            },
+            
+            getCurrentSlideContent() {
+                // Return current slide content or default
+                if (this.slides.length > 0 && this.currentSlideIndex >= 0) {
+                    // Try to extract content from HTML
+                    return {
+                        type: 'content',
+                        title: document.getElementById('slideTitle').textContent || 'الدرس',
+                        content: 'محتوى الشريحة الحالية'
+                    };
+                }
+                
+                // Default content based on selected lesson
+                const lessonTitles = {
+                    'LESSON_1758571115773_38cd41usk': 'قابلية القسمة',
+                    'LESSON_1758571118399_ettv01fx1': 'تحليل العدد إلى عوامله الأولية',
+                    'LESSON_1758571121316_3p3ep40wa': 'العامل المشترك الأكبر',
+                    'LESSON_1758571123380_mue8hjmtx': 'استخدام خط الأعداد'
+                };
+                
+                return {
+                    type: 'content',
+                    title: lessonTitles[this.currentLessonId] || 'الدرس',
+                    content: 'محتوى تعليمي'
+                };
+            },
+            
+            getCurrentTopic() {
+                const lessonTitles = {
+                    'LESSON_1758571115773_38cd41usk': 'قابلية القسمة',
+                    'LESSON_1758571118399_ettv01fx1': 'تحليل الأعداد',
+                    'LESSON_1758571121316_3p3ep40wa': 'العامل المشترك',
+                    'LESSON_1758571123380_mue8hjmtx': 'خط الأعداد'
+                };
+                return lessonTitles[this.currentLessonId] || 'الرياضيات';
+            },
+            
+            // Event Handlers
+            handleTeachingScript(data) {
+                this.log('✅ تم توليد السكريبت التعليمي', 'success');
+                
+                // Update script tab
+                document.getElementById('scriptContent').innerText = data.script;
+                document.getElementById('scriptMeta').innerHTML = `
+                    <p>⏱️ المدة: ${data.duration} ثانية</p>
+                    ${data.emotionalTone ? `<p>🎭 النبرة: ${data.emotionalTone}</p>` : ''}
+                    ${data.keyPoints && data.keyPoints.length ? `<p>📌 النقاط المهمة: ${data.keyPoints.length}</p>` : ''}
+                    ${data.nextSuggestions ? `<p>💡 اقتراحات: ${data.nextSuggestions.join(', ')}</p>` : ''}
+                `;
+                
+                // Switch to script tab
+                this.switchTab('script');
+                
+                // Play audio if available
+                if (data.audioUrl) {
+                    const audio = document.getElementById('audioPlayer');
+                    audio.src = data.audioUrl;
+                    audio.play().catch(e => {
+                        this.log('⚠️ تشغيل الصوت يحتاج تفاعل المستخدم', 'warning');
+                    });
+                    this.log('🔊 تشغيل الصوت', 'info');
+                }
+                
+                // Show problem if available
+                if (data.problem) {
+                    this.currentProblem = data.problem;
+                    this.showProblem(data.problem);
+                }
+                
+                // Update stats
+                this.interactionCount++;
+                this.updateStats();
+            },
+            
+            handleInteraction(data) {
+                this.log(`✅ تفاعل: ${data.type}`, 'success');
+                document.getElementById('scriptContent').innerText = data.script;
+                
+                if (data.audioUrl) {
+                    const audio = document.getElementById('audioPlayer');
+                    audio.src = data.audioUrl;
+                    audio.play().catch(e => console.log('Audio play requires user interaction'));
+                }
+                
+                if (data.problem) {
+                    this.currentProblem = data.problem;
+                    this.showProblem(data.problem);
+                }
+            },
+            
+            handleProblem(data) {
+                if (data.problem) {
+                    this.currentProblem = data.problem;
+                    this.showProblem(data.problem);
+                    this.switchTab('problem');
+                    this.log('✅ تم توليد مسألة جديدة', 'success');
+                    
+                    if (data.audioUrl) {
+                        const audio = document.getElementById('audioPlayer');
+                        audio.src = data.audioUrl;
+                        audio.play().catch(e => console.log('Audio play requires user interaction'));
+                    }
+                }
+            },
+            
+            handleSmartLesson(data) {
+                this.log(`🎉 تم توليد درس كامل: ${data.totalSlides} شريحة`, 'success');
+                
+                // Store data
+                this.slides = data.slides || [];
+                this.teachingScripts = data.teachingScripts || [];
+                this.audioUrls = data.audioUrls || [];
+                
+                // Show first slide
+                if (this.slides.length > 0) {
+                    this.currentSlideIndex = 0;
+                    this.showSlide(0);
+                    this.log(`📊 عرض الشريحة الأولى من ${this.slides.length}`, 'info');
+                }
+                
+                this.updateStats();
+            },
+            
+            // UI Updates
+            showSlide(index) {
+                if (index < 0 || index >= this.slides.length) return;
+                
+                this.currentSlideIndex = index;
+                document.getElementById('slideContainer').innerHTML = this.slides[index];
+                document.getElementById('slideNumber').textContent = `${index + 1} / ${this.slides.length}`;
+                document.getElementById('slideTitle').textContent = `الشريحة ${index + 1}`;
+                
+                // Update progress
+                const progress = ((index + 1) / this.slides.length) * 100;
+                document.getElementById('progress').style.width = progress + '%';
+                document.getElementById('progress').textContent = Math.round(progress) + '%';
+                
+                // Show teaching script if available
+                if (this.teachingScripts[index]) {
+                    const script = this.teachingScripts[index];
+                    document.getElementById('scriptContent').innerText = script.script || script;
+                }
+                
+                // Play audio if available
+                if (this.audioUrls[index]) {
+                    const audio = document.getElementById('audioPlayer');
+                    audio.src = this.audioUrls[index];
+                    // Don't auto-play to avoid browser restrictions
+                }
+                
+                this.log(`📍 الانتقال للشريحة ${index + 1}`, 'info');
+            },
+            
+            showProblem(problem) {
+                document.getElementById('problemContainer').style.display = 'block';
+                document.getElementById('problemQuestion').innerText = problem.question;
+                
+                if (problem.hints && problem.hints.length > 0) {
+                    document.getElementById('problemHints').innerHTML = 
+                        '<h4>💡 تلميحات:</h4>' + 
+                        problem.hints.map((h, i) => `<p>${i+1}. ${h}</p>`).join('');
+                }
+                
+                if (problem.solution) {
+                    document.getElementById('problemSolution').innerHTML = 
+                        `<h4>✅ الحل:</h4><p>${problem.solution}</p>` +
+                        (problem.steps ? '<h4>📝 الخطوات:</h4>' + problem.steps.map(s => `<p>• ${s}</p>`).join('') : '');
+                }
+            },
+            
+            showSolution() {
+                document.getElementById('problemSolution').style.display = 'block';
+                this.log('💡 عرض حل المسألة', 'info');
+            },
+            
+            // Navigation
+            nextSlide() {
+                if (this.currentSlideIndex < this.slides.length - 1) {
+                    this.showSlide(this.currentSlideIndex + 1);
+                } else {
+                    this.log('⚠️ هذه آخر شريحة', 'warning');
+                }
+            },
+            
+            prevSlide() {
+                if (this.currentSlideIndex > 0) {
+                    this.showSlide(this.currentSlideIndex - 1);
+                } else {
+                    this.log('⚠️ هذه أول شريحة', 'warning');
+                }
+            },
+            
+            // Tabs
+            switchTab(tabName, event) {
+                // Hide all tabs
+                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                
+                // Show selected tab
+                document.getElementById(tabName + 'Tab').classList.add('active');
+                if (event && event.target) {
+                    event.target.classList.add('active');
+                } else {
+                    // Find and activate the tab button
+                    document.querySelectorAll('.tab').forEach(tab => {
+                        if (tab.textContent.includes(
+                            tabName === 'slide' ? 'الشريحة' :
+                            tabName === 'script' ? 'السكريبت' : 'المسألة'
+                        )) {
+                            tab.classList.add('active');
+                        }
+                    });
+                }
+            },
+            
+            // Chat
+            sendChat() {
+                const message = document.getElementById('chatInput').value.trim();
+                if (!message) {
+                    this.log('⚠️ اكتب رسالة أولاً', 'warning');
+                    return;
+                }
+                
+                if (!this.ensureReady()) return;
+                
+                this.socket.emit('chat_message', {
+                    message,
+                    lessonId: this.currentLessonId
+                });
+                
+                this.log(`💬 أنت: ${message}`, 'info');
+                document.getElementById('chatInput').value = '';
+            },
+            
+            // Status
+            getStatus() {
+                if (!this.socket || !this.socket.connected) {
+                    this.log('⚠️ غير متصل بالخادم', 'warning');
+                    return;
+                }
+                
+                this.socket.emit('get_status');
+                this.socket.once('status', (data) => {
+                    this.log(`📊 الحالة: متصل=${data.connected}, مستخدمون=${data.totalUsers}`, 'info');
+                    this.log(`✨ الخصائص: ${JSON.stringify(data.features)}`, 'info');
+                    if (data.teachingAssistant) {
+                        this.log(`🤖 Teaching Assistant: ${data.teachingAssistant.status}`, 'info');
+                    }
+                });
+            },
+            
+            updateConnectionStatus(connected) {
+                const status = document.getElementById('connectionStatus');
+                const indicator = document.getElementById('statusIndicator');
+                
+                if (connected) {
+                    status.textContent = `متصل (${this.socket.id})`;
+                    indicator.className = 'status-indicator connected';
+                } else {
+                    status.textContent = 'غير متصل';
+                    indicator.className = 'status-indicator disconnected';
+                }
+            },
+            
+            updateStats() {
+                document.getElementById('slideCount').textContent = this.slides.length;
+                document.getElementById('interactionCount').textContent = this.interactionCount;
+            },
+            
+            // Logging
+            log(message, type = 'info') {
+                const logViewer = document.getElementById('logViewer');
+                const entry = document.createElement('div');
+                entry.className = `log-entry log-${type}`;
+                const time = new Date().toLocaleTimeString('ar-EG');
+                entry.innerHTML = `<strong>[${time}]</strong> ${message}`;
+                logViewer.appendChild(entry);
+                logViewer.scrollTop = logViewer.scrollHeight;
+                
+                // Also log to console for debugging
+                console.log(`[${type.toUpperCase()}] ${message}`);
+            },
+            
+            clearLogs() {
+                document.getElementById('logViewer').innerHTML = '';
+                this.log('📝 تم مسح السجل', 'info');
+            },
+            
+            exportLogs() {
+                const logs = document.getElementById('logViewer').innerText;
+                const blob = new Blob([logs], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `smart-education-logs_${new Date().toISOString()}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+                this.log('💾 تم تصدير السجل', 'success');
+            }
+        };
+        
+        // Initialize on load
+        window.onload = () => App.init();
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' && !e.ctrlKey) App.nextSlide();
+            if (e.key === 'ArrowLeft' && !e.ctrlKey) App.prevSlide();
+            if (e.key === 'Enter' && e.ctrlKey) App.sendChat();
+            if (e.key === ' ' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                const audio = document.getElementById('audioPlayer');
+                if (audio.paused) audio.play();
+                else audio.pause();
+            }
+        });
+        
+        // Enter key for chat
+        document.getElementById('chatInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                App.sendChat();
+            }
+        });
+    </script>
+</body>
+</html>
