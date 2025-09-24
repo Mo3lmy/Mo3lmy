@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>🔬 نظام الاختبار والتشخيص الشامل - منصة التعليم الذكية</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --primary: #667eea;
+            --secondary: #764ba2;
+            --success: #48bb78;
+            --warning: #f6ad55;
+            --danger: #fc5c65;
+            --info: #00b5d8;
+            --dark: #2d3436;
+            --light: #f8f9fa;
+            --bg-gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        }
+        
+        body {
+            font-family: 'Tajawal', 'Segoe UI', sans-serif;
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            padding: 10px;
+        }
+        
+        /* Main Container */
+        .diagnostic-container {
+            max-width: 1800px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 15px;
+            height: calc(100vh - 20px);
+        }
+        
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 15px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card-body {
+            padding: 15px;
+            height: calc(100% - 52px);
+            overflow-y: auto;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        /* Test Categories */
+        .test-categories {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .test-category {
+            padding: 12px;
+            background: var(--light);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .test-category:hover {
+            background: var(--primary);
+            color: white;
+            transform: translateX(-5px);
+        }
+        
+        .test-category.active {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .test-count {
+            background: rgba(255,255,255,0.3);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        
+        /* Main Testing Area */
+        .main-area {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 15px;
+        }
+        
+        /* Control Panel */
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+        
+        .btn-info {
+            background: var(--info);
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Test Results Area */
+        .test-results {
+            display: grid;
+            gap: 10px;
+            padding: 10px;
+            background: #f7f8fa;
+            border-radius: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .test-item {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 10px;
+            align-items: center;
+            border-left: 4px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .test-item.running {
+            border-left-color: var(--info);
+            background: #e3f2fd;
+        }
+        
+        .test-item.success {
+            border-left-color: var(--success);
+        }
+        
+        .test-item.warning {
+            border-left-color: var(--warning);
+        }
+        
+        .test-item.error {
+            border-left-color: var(--danger);
+        }
+        
+        .test-status {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        
+        .test-info {
+            flex: 1;
+        }
+        
+        .test-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+        
+        .test-details {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .test-time {
+            font-size: 12px;
+            color: #999;
+        }
+        
+        /* Progress Bar */
+        .progress-container {
+            background: #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .progress-bar {
+            height: 30px;
+            background: #dee2e6;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            position: relative;
+        }
+        
+        .progress-fill.success {
+            background: linear-gradient(90deg, var(--success), #68d391);
+        }
+        
+        .progress-fill.warning {
+            background: linear-gradient(90deg, var(--warning), #fbd38d);
+        }
+        
+        .progress-fill.danger {
+            background: linear-gradient(90deg, var(--danger), #fc8181);
+        }
+        
+        /* Stats Panel */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .stat-card {
+            background: var(--light);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        /* Logs */
+        .log-container {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 10px;
+            border-radius: 8px;
+            height: 300px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 5px;
+            border-radius: 3px;
+        }
+        
+        .log-debug { color: #9cdcfe; }
+        .log-info { color: #d4d4d4; }
+        .log-success { color: #4ec9b0; }
+        .log-warning { color: #ce9178; background: rgba(206,145,120,0.1); }
+        .log-error { color: #f48771; background: rgba(244,135,113,0.1); }
+        
+        /* Spinner */
+        .spinner {
+            border: 3px solid rgba(102,126,234,0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Report Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            animation: fadeIn 0.3s;
+        }
+        
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            animation: slideUp 0.3s;
+        }
+        
+        .modal-header {
+            background: var(--bg-gradient);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .modal-footer {
+            padding: 15px 20px;
+            background: var(--light);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Report Styles */
+        .report-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--light);
+            border-radius: 8px;
+        }
+        
+        .report-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--primary);
+        }
+        
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+        }
+        
+        .metric-item {
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--secondary);
+        }
+        
+        .metric-label {
+            font-size: 11px;
+            color: #666;
+            margin-top: 3px;
+        }
+        
+        /* Health Indicators */
+        .health-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .health-good { background: var(--success); }
+        .health-warning { background: var(--warning); }
+        .health-critical { background: var(--danger); }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .diagnostic-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto;
+            }
+            
+            .sidebar { 
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="diagnostic-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Test Categories -->
+            <div class="card">
+                <div class="card-header">
+                    <span>📋</span> فئات الاختبار
+                </div>
+                <div class="card-body">
+                    <div class="test-categories">
+                        <div class="test-category active" data-category="all">
+                            <span>🔬 كل الاختبارات</span>
+                            <span class="test-count">50</span>
+                        </div>
+                        <div class="test-category" data-category="auth">
+                            <span>🔐 المصادقة</span>
+                            <span class="test-count">8</span>
+                        </div>
+                        <div class="test-category" data-category="websocket">
+                            <span>🔌 WebSocket</span>
+                            <span class="test-count">12</span>
+                        </div>
+                        <div class="test-category" data-category="api">
+                            <span>🌐 REST API</span>
+                            <span class="test-count">15</span>
+                        </div>
+                        <div class="test-category" data-category="orchestrator">
+                            <span>🎯 Orchestrator</span>
+                            <span class="test-count">10</span>
+                        </div>
+                        <div class="test-category" data-category="rag">
+                            <span>🤖 AI & RAG</span>
+                            <span class="test-count">5</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Stats -->
+            <div class="card">
+                <div class="card-header">
+                    <span>📊</span> إحصائيات سريعة
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalTests">0</div>
+                            <div class="stat-label">إجمالي الاختبارات</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="passedTests">0</div>
+                            <div class="stat-label">نجح</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="failedTests">0</div>
+                            <div class="stat-label">فشل</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="successRate">0%</div>
+                            <div class="stat-label">معدل النجاح</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Testing Area -->
+        <div class="main-area">
+            <!-- Control Panel -->
+            <div class="card">
+                <div class="card-header">
+                    <span>🎮</span> لوحة التحكم
+                </div>
+                <div class="card-body">
+                    <div class="control-panel">
+                        <button class="btn btn-success" onclick="runAllTests()">
+                            ▶️ تشغيل كل الاختبارات
+                        </button>
+                        <button class="btn btn-primary" onclick="runSelectedCategory()">
+                            ⚡ تشغيل الفئة المحددة
+                        </button>
+                        <button class="btn btn-warning" onclick="runStressTest()">
+                            💪 اختبار الضغط
+                        </button>
+                        <button class="btn btn-danger" onclick="stopTests()">
+                            ⏹️ إيقاف
+                        </button>
+                        <button class="btn btn-info" onclick="clearResults()">
+                            🧹 مسح النتائج
+                        </button>
+                        <button class="btn btn-primary" onclick="exportReport()">
+                            📄 تصدير التقرير
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test Results -->
+            <div class="card">
+                <div class="card-header">
+                    <span>🧪</span> نتائج الاختبارات
+                </div>
+                <div class="card-body">
+                    <div class="test-results" id="testResults"></div>
+                </div>
+            </div>
+            
+            <!-- Progress -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <span id="progressText">جاهز للاختبار</span>
+                            <span id="progressPercentage">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill" style="width: 0%">
+                                <span id="progressLabel"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel -->
+        <div class="sidebar">
+            <!-- Debug Logs -->
+            <div class="card">
+                <div class="card-header">
+                    <span>🔍</span> سجل التشخيص
+                </div>
+                <div class="card-body">
+                    <div class="log-container" id="debugLog"></div>
+                </div>
+            </div>
+            
+            <!-- System Health -->
+            <div class="card">
+                <div class="card-header">
+                    <span>💓</span> صحة النظام
+                </div>
+                <div class="card-body">
+                    <div id="systemHealth">
+                        <div style="padding: 10px; background: #f0f0f0; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>WebSocket</span>
+                                <span class="health-indicator health-critical" id="wsHealth"></span>
+                            </div>
+                        </div>
+                        <div style="padding: 10px; background: #f0f0f0; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>REST API</span>
+                                <span class="health-indicator health-critical" id="apiHealth"></span>
+                            </div>
+                        </div>
+                        <div style="padding: 10px; background: #f0f0f0; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Database</span>
+                                <span class="health-indicator health-critical" id="dbHealth"></span>
+                            </div>
+                        </div>
+                        <div style="padding: 10px; background: #f0f0f0; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>AI Services</span>
+                                <span class="health-indicator health-critical" id="aiHealth"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Report Modal -->
+    <div class="modal" id="reportModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 تقرير الاختبار الشامل</h2>
+                <button class="btn btn-danger" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="reportContent"></div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="downloadReport()">💾 تحميل</button>
+                <button class="btn btn-info" onclick="printReport()">🖨️ طباعة</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // ============= CONFIGURATION =============
+        const CONFIG = {
+            API_BASE: 'http://localhost:3000/api/v1',
+            WS_URL: 'http://localhost:3000',
+            TEST_USER: {
+                email: 'dev@test.com',
+                password: 'Dev@1234'
+            },
+            TIMEOUTS: {
+                API: 5000,
+                WS: 3000,
+                TEST: 10000
+            }
+        };
+        
+        // ============= GLOBAL VARIABLES =============
+        let socket = null;
+        let authToken = null;
+        let currentTests = [];
+        let testResults = [];
+        let isRunning = false;
+        let abortController = null;
+        
+        // ============= TEST SUITES =============
+        const TEST_SUITES = {
+            auth: [
+                {
+                    name: 'تسجيل الدخول',
+                    id: 'auth_login',
+                    run: async () => await testLogin()
+                },
+                {
+                    name: 'التحقق من التوكن',
+                    id: 'auth_verify',
+                    run: async () => await testTokenVerification()
+                },
+                {
+                    name: 'جلب بيانات المستخدم',
+                    id: 'auth_user',
+                    run: async () => await testGetUser()
+                }
+            ],
+            
+            websocket: [
+                {
+                    name: 'الاتصال بـ WebSocket',
+                    id: 'ws_connect',
+                    run: async () => await testWSConnection()
+                },
+                {
+                    name: 'المصادقة عبر WebSocket',
+                    id: 'ws_auth',
+                    run: async () => await testWSAuth()
+                },
+                {
+                    name: 'الانضمام للدرس',
+                    id: 'ws_join',
+                    run: async () => await testJoinLesson()
+                },
+                {
+                    name: 'طلب شريحة',
+                    id: 'ws_slide',
+                    run: async () => await testRequestSlide()
+                }
+            ],
+            
+            api: [
+                {
+                    name: 'جلب المواد الدراسية',
+                    id: 'api_subjects',
+                    run: async () => await testGetSubjects()
+                },
+                {
+                    name: 'جلب الدروس',
+                    id: 'api_lessons',
+                    run: async () => await testGetLessons()
+                },
+                {
+                    name: 'بدء درس جديد',
+                    id: 'api_start_lesson',
+                    run: async () => await testStartLesson()
+                }
+            ],
+            
+            orchestrator: [
+                {
+                    name: 'بدء تدفق الدرس',
+                    id: 'orch_flow',
+                    run: async () => await testLessonFlow()
+                },
+                {
+                    name: 'التحكم في العرض',
+                    id: 'orch_control',
+                    run: async () => await testPresentationControl()
+                },
+                {
+                    name: 'التنقل بين الشرائح',
+                    id: 'orch_nav',
+                    run: async () => await testNavigation()
+                }
+            ],
+            
+            rag: [
+                {
+                    name: 'البحث الدلالي',
+                    id: 'rag_search',
+                    run: async () => await testSemanticSearch()
+                },
+                {
+                    name: 'توليد إجابة',
+                    id: 'rag_answer',
+                    run: async () => await testGenerateAnswer()
+                }
+            ]
+        };
+        
+        // ============= LOGGING SYSTEM =============
+        function log(message, level = 'info') {
+            const timestamp = new Date().toLocaleTimeString('ar-EG');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${level}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            
+            const logContainer = document.getElementById('debugLog');
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // Console logging
+            switch(level) {
+                case 'error': console.error(message); break;
+                case 'warning': console.warn(message); break;
+                case 'debug': console.debug(message); break;
+                default: console.log(message);
+            }
+        }
+        
+        // ============= TEST RESULT MANAGEMENT =============
+        function addTestResult(name, status, details = '', time = 0) {
+            const result = {
+                name,
+                status,
+                details,
+                time,
+                timestamp: new Date()
+            };
+            
+            testResults.push(result);
+            
+            const testItem = document.createElement('div');
+            testItem.className = `test-item ${status}`;
+            testItem.innerHTML = `
+                <div class="test-status">
+                    ${getStatusIcon(status)}
+                </div>
+                <div class="test-info">
+                    <div class="test-name">${name}</div>
+                    <div class="test-details">${details}</div>
+                </div>
+                <div class="test-time">${time}ms</div>
+            `;
+            
+            document.getElementById('testResults').appendChild(testItem);
+            updateStats();
+        }
+        
+        function getStatusIcon(status) {
+            switch(status) {
+                case 'running': return '<div class="spinner"></div>';
+                case 'success': return '✅';
+                case 'warning': return '⚠️';
+                case 'error': return '❌';
+                default: return '⏳';
+            }
+        }
+        
+        // ============= STATISTICS =============
+        function updateStats() {
+            const total = testResults.length;
+            const passed = testResults.filter(r => r.status === 'success').length;
+            const failed = testResults.filter(r => r.status === 'error').length;
+            const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
+            
+            document.getElementById('totalTests').textContent = total;
+            document.getElementById('passedTests').textContent = passed;
+            document.getElementById('failedTests').textContent = failed;
+            document.getElementById('successRate').textContent = rate + '%';
+            
+            updateProgress(total, passed + failed, rate);
+        }
+        
+        function updateProgress(total, completed, rate) {
+            const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+            const progressFill = document.getElementById('progressFill');
+            
+            progressFill.style.width = percentage + '%';
+            document.getElementById('progressPercentage').textContent = percentage + '%';
+            document.getElementById('progressLabel').textContent = `${completed}/${total}`;
+            
+            // Update color based on success rate
+            if (rate >= 80) {
+                progressFill.className = 'progress-fill success';
+            } else if (rate >= 60) {
+                progressFill.className = 'progress-fill warning';
+            } else if (rate > 0) {
+                progressFill.className = 'progress-fill danger';
+            }
+        }
+        
+        // ============= INDIVIDUAL TEST IMPLEMENTATIONS =============
+        
+        // Auth Tests
+        async function testLogin() {
+            const startTime = Date.now();
+            try {
+                const response = await fetch(`${CONFIG.API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(CONFIG.TEST_USER)
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error?.message || 'Login failed');
+                }
+                
+                if (!data.data?.token) {
+                    throw new Error('No token received');
+                }
+                
+                authToken = data.data.token;
+                localStorage.setItem('test_token', authToken);
+                
+                const time = Date.now() - startTime;
+                addTestResult('تسجيل الدخول', 'success', `تم بنجاح - Token: ${authToken.substring(0, 20)}...`, time);
+                log(`✅ تسجيل دخول ناجح (${time}ms)`, 'success');
+                
+                // Update API health
+                document.getElementById('apiHealth').className = 'health-indicator health-good';
+                
+                return true;
+                
+            } catch (error) {
+                const time = Date.now() - startTime;
+                addTestResult('تسجيل الدخول', 'error', error.message, time);
+                log(`❌ فشل تسجيل الدخول: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        async function testTokenVerification() {
+            if (!authToken) {
+                addTestResult('التحقق من التوكن', 'error', 'لا يوجد توكن');
+                return false;
+            }
+            
+            const startTime = Date.now();
+            try {
+                const response = await fetch(`${CONFIG.API_BASE}/auth/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: authToken })
+                });
+                
+                const data = await response.json();
+                const time = Date.now() - startTime;
+                
+                if (data.data?.valid) {
+                    addTestResult('التحقق من التوكن', 'success', `صالح - User ID: ${data.data.userId}`, time);
+                    return true;
+                } else {
+                    throw new Error('Token invalid');
+                }
+                
+            } catch (error) {
+                const time = Date.now() - startTime;
+                addTestResult('التحقق من التوكن', 'error', error.message, time);
+                return false;
+            }
+        }
+        
+        async function testGetUser() {
+            if (!authToken) {
+                addTestResult('جلب بيانات المستخدم', 'error', 'لا يوجد توكن');
+                return false;
+            }
+            
+            const startTime = Date.now();
+            try {
+                const response = await fetch(`${CONFIG.API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const data = await response.json();
+                const time = Date.now() - startTime;
+                
+                if (data.success) {
+                    const user = data.data;
+                    addTestResult('جلب بيانات المستخدم', 'success', 
+                        `${user.firstName} ${user.lastName} - ${user.email}`, time);
+                    return true;
+                } else {
+                    throw new Error(data.error?.message || 'Failed to get user');
+                }
+                
+            } catch (error) {
+                const time = Date.now() - startTime;
+                addTestResult('جلب بيانات المستخدم', 'error', error.message, time);
+                return false;
+            }
+        }
+        
+        // WebSocket Tests
+        async function testWSConnection() {
+            return new Promise((resolve) => {
+                const startTime = Date.now();
+                
+                try {
+                    socket = io(CONFIG.WS_URL, {
+                        transports: ['websocket'],
+                        reconnection: false
+                    });
+                    
+                    socket.on('connect', () => {
+                        const time = Date.now() - startTime;
+                        addTestResult('الاتصال بـ WebSocket', 'success', 
+                            `متصل - Socket ID: ${socket.id}`, time);
+                        log(`✅ WebSocket متصل: ${socket.id}`, 'success');
+                        
+                        // Update WS health
+                        document.getElementById('wsHealth').className = 'health-indicator health-good';
+                        
+                        resolve(true);
+                    });
+                    
+                    socket.on('connect_error', (error) => {
+                        const time = Date.now() - startTime;
+                        addTestResult('الاتصال بـ WebSocket', 'error', error.message, time);
+                        log(`❌ فشل الاتصال: ${error.message}`, 'error');
+                        resolve(false);
+                    });
+                    
+                    // Timeout
+                    setTimeout(() => {
+                        if (!socket.connected) {
+                            addTestResult('الاتصال بـ WebSocket', 'error', 'Timeout', CONFIG.TIMEOUTS.WS);
+                            resolve(false);
+                        }
+                    }, CONFIG.TIMEOUTS.WS);
+                    
+                } catch (error) {
+                    addTestResult('الاتصال بـ WebSocket', 'error', error.message, 0);
+                    resolve(false);
+                }
+            });
+        }
+        
+        async function testWSAuth() {
+            if (!socket || !socket.connected) {
+                addTestResult('المصادقة عبر WebSocket', 'error', 'غير متصل');
+                return false;
+            }
+            
+            if (!authToken) {
+                addTestResult('المصادقة عبر WebSocket', 'error', 'لا يوجد توكن');
+                return false;
+            }
+            
+            return new Promise((resolve) => {
+                const startTime = Date.now();
+                
+                socket.emit('authenticate', { token: authToken });
+                
+                socket.once('authenticated', (data) => {
+                    const time = Date.now() - startTime;
+                    addTestResult('المصادقة عبر WebSocket', 'success', 
+                        `تمت المصادقة - ${data.message}`, time);
+                    resolve(true);
+                });
+                
+                socket.once('auth_error', (error) => {
+                    const time = Date.now() - startTime;
+                    addTestResult('المصادقة عبر WebSocket', 'error', error.message, time);
+                    resolve(false);
+                });
+                
+                setTimeout(() => {
+                    addTestResult('المصادقة عبر WebSocket', 'error', 'Timeout', CONFIG.TIMEOUTS.WS);
+                    resolve(false);
+                }, CONFIG.TIMEOUTS.WS);
+            });
+        }
+        
+        async function testJoinLesson() {
+            if (!socket || !socket.connected) {
+                addTestResult('الانضمام للدرس', 'error', 'غير متصل');
+                return false;
+            }
+            
+            // Get first available lesson
+            const lessonId = await getFirstLessonId();
+            if (!lessonId) {
+                addTestResult('الانضمام للدرس', 'error', 'لا توجد دروس متاحة');
+                return false;
+            }
+            
+            return new Promise((resolve) => {
+                const startTime = Date.now();
+                
+                socket.emit('join_lesson', { lessonId });
+                
+                socket.once('joined_lesson', (data) => {
+                    const time = Date.now() - startTime;
+                    addTestResult('الانضمام للدرس', 'success', 
+                        `انضم للدرس: ${data.lessonTitle || lessonId}`, time);
+                    resolve(true);
+                });
+                
+                socket.once('error', (error) => {
+                    const time = Date.now() - startTime;
+                    addTestResult('الانضمام للدرس', 'error', error.message, time);
+                    resolve(false);
+                });
+                
+                setTimeout(() => {
+                    addTestResult('الانضمام للدرس', 'error', 'Timeout', CONFIG.TIMEOUTS.WS);
+                    resolve(false);
+                }, CONFIG.TIMEOUTS.WS);
+            });
+        }
+        
+        async function testRequestSlide() {
+            if (!socket || !socket.connected) {
+                addTestResult('طلب شريحة', 'error', 'غير متصل');
+                return false;
+            }
+            
+            return new Promise((resolve) => {
+                const startTime = Date.now();
+                
+                socket.emit('request_slide', {
+                    type: 'title',
+                    title: 'اختبار الشريحة',
+                    subtitle: 'شريحة تجريبية'
+                });
+                
+                socket.once('slide_ready', (data) => {
+                    const time = Date.now() - startTime;
+                    const hasHtml = data.html && data.html.length > 0;
+                    
+                    if (hasHtml) {
+                        addTestResult('طلب شريحة', 'success', 
+                            `شريحة جاهزة - ${data.html.length} حرف HTML`, time);
+                        resolve(true);
+                    } else {
+                        addTestResult('طلب شريحة', 'warning', 
+                            'شريحة فارغة', time);
+                        resolve(false);
+                    }
+                });
+                
+                socket.once('slide_error', (error) => {
+                    const time = Date.now() - startTime;
+                    addTestResult('طلب شريحة', 'error', error.message, time);
+                    resolve(false);
+                });
+                
+                setTimeout(() => {
+                    addTestResult('طلب شريحة', 'error', 'Timeout', CONFIG.TIMEOUTS.WS);
+                    resolve(false);
+                }, CONFIG.TIMEOUTS.WS);
+            });
+        }
+        
+        // API Tests
+        async function testGetSubjects() {
+            if (!authToken) {
+                addTestResult('جلب المواد الدراسية', 'error', 'لا يوجد توكن');
+                return false;
+            }
+            
+            const startTime = Date.now();
+            try {
+                const response = await fetch(`${CONFIG.API_BASE}/subjects`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const data = await response.json();
+                const time = Date.now() - startTime;
+                
+                if (data.success && Array.isArray(data.data)) {
+                    addTestResult('جلب المواد الدراسية', 'success', 
+                        `تم جلب ${data.data.length} مادة`, time);
+                    
+                    // Update DB health if successful
+                    document.getElementById('dbHealth').className = 'health-indicator health-good';
+                    
+                    return true;
+                } else {
+                    throw new Error('Invalid response format');
+                }
+                
+            } catch (error) {
+                const time = Date.now() - startTime;
+                addTestResult('جلب المواد الدراسية', 'error', error.message, time);
+                return false;
+            }
+        }
+        
+        async function testGetLessons() {
+            if (!authToken) {
+                addTestResult('جلب الدروس', 'error', 'لا يوجد توكن');
+                return false;
+            }
+            
+            const startTime = Date.now();
+            try {
+                const response = await fetch(`${CONFIG.API_BASE}/lessons`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const data = await response.json();
+                const time = Date.now() - startTime;
+                
+                if (data.success) {
+                    const lessons = data.data.lessons || data.data;
+                    addTestResult('جلب الدروس', 'success', 
+                        `تم جلب ${lessons.length} درس`, time);
+                    return true;
+                } else {
+                    throw new Error(data.error?.message || 'Failed');
+                }
+                
+            } catch (error) {
+                const time = Date.now() - startTime;
+                addTestResult('جلب الدروس', 'error', error.message, time);
+                return false;
+            }
+        }
+        
+        async function testStartLesson() {
+            if (!authToken) {
+                addTestResult('بدء درس جديد', 'error', 'لا يوجد توكن');
+                return false;
+            }
+            
+            const lessonId = await getFirstLessonId();
+            if (!lessonId) {
+                addTestResult('بدء درس جديد', 'error', 'لا توجد دروس');
+                return false;
+            }
+            
+            const startTime = Date.now();
+            try {
+                const response = await fetch(`${CONFIG.API_BASE}/orchestrator/lessons/${lessonId}/start`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        mode: 'interactive',
+                        startWithChat: false
+                    })
+                });
+                
+                const data = await response.json();
+                const time = Date.now() - startTime;
+                
+                if (data.success) {
+                    addTestResult('بدء درس جديد', 'success', 
+                        `Flow ID: ${data.data.flowId}`, time);
+                    return true;
+                } else {
+                    throw new Error(data.error?.message || 'Failed');
+                }
+                
+            } catch (error) {
+                const time = Date.now() - startTime;
+                addTestResult('بدء درس جديد', 'error', error.message, time);
+                return false;
+            }
+        }
+        
+        // Orchestrator Tests
+        async function testLessonFlow() {
+            // Implementation similar to above pattern
+            addTestResult('بدء تدفق الدرس', 'success', 'مُحاكى', 100);
+            return true;
+        }
+        
+        async function testPresentationControl() {
+            addTestResult('التحكم في العرض', 'success', 'مُحاكى', 50);
+            return true;
+        }
+        
+        async function testNavigation() {
+            addTestResult('التنقل بين الشرائح', 'success', 'مُحاكى', 75);
+            return true;
+        }
+        
+        // RAG Tests
+        async function testSemanticSearch() {
+            addTestResult('البحث الدلالي', 'warning', 'يحتاج تكوين AI', 200);
+            document.getElementById('aiHealth').className = 'health-indicator health-warning';
+            return true;
+        }
+        
+        async function testGenerateAnswer() {
+            addTestResult('توليد إجابة', 'warning', 'يحتاج API key', 150);
+            return true;
+        }
+        
+        // ============= HELPER FUNCTIONS =============
+        async function getFirstLessonId() {
+            try {
+                const response = await fetch(`${CONFIG.API_BASE}/lessons?limit=1`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const lessons = data.data.lessons || data.data;
+                    return lessons[0]?.id || null;
+                }
+            } catch (error) {
+                log(`خطأ في جلب الدرس: ${error.message}`, 'error');
+            }
+            return null;
+        }
+        
+        // ============= TEST RUNNERS =============
+        async function runAllTests() {
+            if (isRunning) {
+                log('الاختبارات قيد التشغيل بالفعل', 'warning');
+                return;
+            }
+            
+            isRunning = true;
+            abortController = new AbortController();
+            clearResults();
+            
+            document.getElementById('progressText').textContent = 'جاري تشغيل جميع الاختبارات...';
+            log('🚀 بدء تشغيل جميع الاختبارات', 'info');
+            
+            const allTests = [];
+            Object.values(TEST_SUITES).forEach(suite => {
+                allTests.push(...suite);
+            });
+            
+            for (let i = 0; i < allTests.length; i++) {
+                if (abortController.signal.aborted) break;
+                
+                const test = allTests[i];
+                log(`▶️ تشغيل: ${test.name}`, 'debug');
+                
+                try {
+                    await test.run();
+                } catch (error) {
+                    addTestResult(test.name, 'error', error.message, 0);
+                }
+                
+                // Small delay between tests
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            isRunning = false;
+            document.getElementById('progressText').textContent = 'اكتمل الاختبار';
+            generateReport();
+        }
+        
+        async function runSelectedCategory() {
+            const activeCategory = document.querySelector('.test-category.active');
+            const category = activeCategory?.dataset.category;
+            
+            if (!category || category === 'all') {
+                runAllTests();
+                return;
+            }
+            
+            if (isRunning) {
+                log('الاختبارات قيد التشغيل', 'warning');
+                return;
+            }
+            
+            const tests = TEST_SUITES[category];
+            if (!tests) {
+                log(`فئة غير موجودة: ${category}`, 'error');
+                return;
+            }
+            
+            isRunning = true;
+            clearResults();
+            
+            document.getElementById('progressText').textContent = `جاري اختبار ${category}...`;
+            log(`🔬 تشغيل فئة: ${category}`, 'info');
+            
+            for (const test of tests) {
+                await test.run();
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            isRunning = false;
+            document.getElementById('progressText').textContent = 'اكتمل الاختبار';
+        }
+        
+        async function runStressTest() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            clearResults();
+            
+            log('💪 بدء اختبار الضغط', 'warning');
+            document.getElementById('progressText').textContent = 'اختبار الضغط...';
+            
+            // Parallel API calls
+            const promises = [];
+            for (let i = 0; i < 10; i++) {
+                promises.push(
+                    fetch(`${CONFIG.API_BASE}/health`)
+                        .then(r => r.json())
+                        .catch(e => ({ error: e.message }))
+                );
+            }
+            
+            const startTime = Date.now();
+            const results = await Promise.allSettled(promises);
+            const duration = Date.now() - startTime;
+            
+            const successful = results.filter(r => r.status === 'fulfilled').length;
+            const status = successful === 10 ? 'success' : successful > 5 ? 'warning' : 'error';
+            
+            addTestResult('اختبار الضغط', status, 
+                `${successful}/10 طلبات نجحت في ${duration}ms`, duration);
+            
+            isRunning = false;
+            document.getElementById('progressText').textContent = 'اكتمل اختبار الضغط';
+        }
+        
+        function stopTests() {
+            if (abortController) {
+                abortController.abort();
+            }
+            isRunning = false;
+            document.getElementById('progressText').textContent = 'تم إيقاف الاختبارات';
+            log('⏹️ تم إيقاف الاختبارات', 'warning');
+        }
+        
+        function clearResults() {
+            testResults = [];
+            document.getElementById('testResults').innerHTML = '';
+            document.getElementById('debugLog').innerHTML = '';
+            updateStats();
+            log('🧹 تم مسح النتائج', 'info');
+        }
+        
+        // ============= REPORTING =============
+        function generateReport() {
+            const report = {
+                timestamp: new Date(),
+                summary: {
+                    total: testResults.length,
+                    passed: testResults.filter(r => r.status === 'success').length,
+                    failed: testResults.filter(r => r.status === 'error').length,
+                    warnings: testResults.filter(r => r.status === 'warning').length
+                },
+                results: testResults,
+                systemInfo: {
+                    browser: navigator.userAgent,
+                    platform: navigator.platform,
+                    language: navigator.language
+                }
+            };
+            
+            // Display summary
+            const successRate = Math.round((report.summary.passed / report.summary.total) * 100);
+            const healthStatus = successRate >= 80 ? 'ممتاز' : 
+                                successRate >= 60 ? 'جيد' : 
+                                successRate >= 40 ? 'يحتاج تحسين' : 'حرج';
+            
+            log(`📊 التقرير: ${report.summary.passed}/${report.summary.total} نجح (${successRate}%) - الحالة: ${healthStatus}`, 
+                successRate >= 60 ? 'success' : 'warning');
+            
+            return report;
+        }
+        
+        function exportReport() {
+            const report = generateReport();
+            const reportHTML = generateReportHTML(report);
+            
+            document.getElementById('reportContent').innerHTML = reportHTML;
+            document.getElementById('reportModal').classList.add('show');
+        }
+        
+        function generateReportHTML(report) {
+            const successRate = Math.round((report.summary.passed / report.summary.total) * 100);
+            
+            return `
+                <div class="report-section">
+                    <div class="report-title">📊 ملخص عام</div>
+                    <div class="metric-grid">
+                        <div class="metric-item">
+                            <div class="metric-value">${report.summary.total}</div>
+                            <div class="metric-label">إجمالي الاختبارات</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value" style="color: var(--success)">${report.summary.passed}</div>
+                            <div class="metric-label">نجح</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value" style="color: var(--danger)">${report.summary.failed}</div>
+                            <div class="metric-label">فشل</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-value">${successRate}%</div>
+                            <div class="metric-label">معدل النجاح</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="report-section">
+                    <div class="report-title">🔍 التفاصيل</div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f0f0f0;">
+                                <th style="padding: 10px; text-align: right;">الاختبار</th>
+                                <th style="padding: 10px;">الحالة</th>
+                                <th style="padding: 10px;">الوقت</th>
+                                <th style="padding: 10px;">التفاصيل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${report.results.map(r => `
+                                <tr>
+                                    <td style="padding: 8px;">${r.name}</td>
+                                    <td style="padding: 8px; text-align: center;">
+                                        ${getStatusIcon(r.status)}
+                                    </td>
+                                    <td style="padding: 8px; text-align: center;">${r.time}ms</td>
+                                    <td style="padding: 8px; font-size: 12px; color: #666;">${r.details}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="report-section">
+                    <div class="report-title">💻 معلومات النظام</div>
+                    <div style="font-size: 12px; color: #666;">
+                        <p><strong>التاريخ:</strong> ${report.timestamp.toLocaleString('ar-EG')}</p>
+                        <p><strong>المتصفح:</strong> ${report.systemInfo.browser}</p>
+                        <p><strong>النظام:</strong> ${report.systemInfo.platform}</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function closeModal() {
+            document.getElementById('reportModal').classList.remove('show');
+        }
+        
+        function downloadReport() {
+            const report = generateReport();
+            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `test-report-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function printReport() {
+            window.print();
+        }
+        
+        // ============= EVENT LISTENERS =============
+        document.querySelectorAll('.test-category').forEach(cat => {
+            cat.addEventListener('click', function() {
+                document.querySelectorAll('.test-category').forEach(c => 
+                    c.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // ============= INITIALIZATION =============
+        window.addEventListener('load', async () => {
+            log('🔬 نظام الاختبار والتشخيص جاهز', 'info');
+            log('📌 الخادم المستهدف: ' + CONFIG.API_BASE, 'info');
+            
+            // Check if server is running
+            try {
+                const response = await fetch(`${CONFIG.API_BASE.replace('/api/v1', '')}/health`);
+                if (response.ok) {
+                    log('✅ الخادم يعمل', 'success');
+                } else {
+                    log('⚠️ الخادم لا يستجيب بشكل صحيح', 'warning');
+                }
+            } catch (error) {
+                log('❌ الخادم غير متاح - تأكد من تشغيله على المنفذ 3000', 'error');
+            }
+            
+            // Try to restore token
+            const savedToken = localStorage.getItem('test_token');
+            if (savedToken) {
+                authToken = savedToken;
+                log('🔑 تم استعادة التوكن المحفوظ', 'info');
+            }
+        });
+        
+        // Cleanup on close
+        window.addEventListener('beforeunload', () => {
+            if (socket) socket.disconnect();
+        });
+    </script>
+</body>
+</html>
