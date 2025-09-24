@@ -1,5 +1,5 @@
 // src/services/teaching/teaching-assistant.service.ts
-// ✨ النسخة الكاملة مع كل الخصائص المطلوبة
+// ✨ النسخة المُصلحة - تحل كل المشاكل
 // الوظيفة: توليد سكريبت تعليمي تفاعلي حقيقي بدلاً من قراءة الشرائح
 
 import { prisma } from '../../config/database.config';
@@ -113,10 +113,11 @@ interface CacheEntry {
 
 // ============= VALIDATION SCHEMAS =============
 
+// 🔧 FIX #1: تغيير UUID validation إلى string عادي
 const teachingOptionsSchema = z.object({
   slideContent: z.any(),
-  lessonId: z.string().uuid(),
-  studentGrade: z.number().min(1).max(12),
+  lessonId: z.string().min(1),  // ✅ يقبل أي string غير فارغ بدلاً من UUID
+  studentGrade: z.number().min(1).max(12).default(6),
   studentName: z.string().optional(),
   interactionType: z.enum([
     'explain', 'more_detail', 'example', 'problem', 
@@ -149,7 +150,7 @@ export class TeachingAssistantService {
     options: TeachingScriptOptions
   ): Promise<TeachingScript> {
     
-    // Validate input
+    // Validate input with better defaults
     const validatedOptions = this.validateOptions(options);
     
     // Check cache first
@@ -164,11 +165,11 @@ export class TeachingAssistantService {
       const context = await this.getEducationalContext(
         validatedOptions.lessonId,
         validatedOptions.slideContent,
-        validatedOptions.studentGrade
+        validatedOptions.studentGrade || 6
       );
       
       // 2. حدد مستوى الشرح
-      const level = this.getEducationalLevel(validatedOptions.studentGrade);
+      const level = this.getEducationalLevel(validatedOptions.studentGrade || 6);
       
       // 3. Handle special interactions first
       if (validatedOptions.interactionType) {
@@ -417,66 +418,93 @@ Return in this JSON format:
     slideContent: any,
     studentGrade: number
   ): Promise<EducationalContext> {
-    // 1. جيب معلومات الدرس الكاملة
-    const lesson = await prisma.lesson.findUnique({
-      where: { id: lessonId },
-      include: {
-        content: true,
-        concepts: true,
-        examples: true,
-        formulas: true,
-        unit: {
-          include: {
-            lessons: {
-              where: {
-                id: { not: lessonId },
-                isPublished: true
-              },
-              take: 3
+    
+    try {
+      // 1. جيب معلومات الدرس الكاملة
+      const lesson = await prisma.lesson.findUnique({
+        where: { id: lessonId },
+        include: {
+          content: true,
+          concepts: true,
+          examples: true,
+          formulas: true,
+          unit: {
+            include: {
+              lessons: {
+                where: {
+                  id: { not: lessonId },
+                  isPublished: true
+                },
+                take: 3
+              }
             }
           }
         }
+      });
+      
+      if (!lesson) {
+        return {
+          enrichedContent: null,
+          concepts: [],
+          examples: [],
+          formulas: [],
+          relatedLessons: []
+        };
       }
-    });
-    
-    if (!lesson) {
+      
+      // 2. Get student progress if available
+      const studentProgress = await this.getStudentProgress(lessonId, studentGrade);
+      
+      // 3. Process enriched content - 🔧 FIX #2
+      let enrichedContent = null;
+      if (lesson.content?.enrichedContent) {
+        try {
+          // Try parsing as JSON first
+          const parsed = typeof lesson.content.enrichedContent === 'string' 
+            ? JSON.parse(lesson.content.enrichedContent)
+            : lesson.content.enrichedContent;
+          enrichedContent = parsed;
+        } catch {
+          // If not JSON, use as string
+          enrichedContent = lesson.content.enrichedContent;
+        }
+      } else if (lesson.content?.fullText) {
+        enrichedContent = lesson.content.fullText;
+      }
+      
+      // 4. Use RAG for additional context
+      if (!enrichedContent && (slideContent.title || slideContent.content)) {
+        try {
+          const query = `${slideContent.title || ''} ${slideContent.content || ''}`.trim();
+          const ragResponse = await ragService.answerQuestion(query, lessonId);
+          enrichedContent = ragResponse.answer;
+        } catch (error) {
+          console.log('⚠️ RAG search failed, using fallback');
+        }
+      }
+      
       return {
-        enrichedContent: null,
+        enrichedContent: enrichedContent || '',
+        concepts: lesson.concepts || [],
+        examples: lesson.examples || [],
+        formulas: lesson.formulas || [],
+        relatedLessons: lesson.unit?.lessons || [],
+        studentProgress
+      };
+      
+    } catch (error) {
+      console.error('❌ Failed to get educational context:', error);
+      
+      // Return empty context on error
+      return {
+        enrichedContent: '',
         concepts: [],
         examples: [],
         formulas: [],
-        relatedLessons: []
+        relatedLessons: [],
+        studentProgress: null
       };
     }
-    
-    // 2. Get student progress if available
-    const studentProgress = await this.getStudentProgress(lessonId, studentGrade);
-    
-    // 3. Process enriched content
-    let enrichedContent = null;
-    if (lesson.content?.enrichedContent) {
-      try {
-        enrichedContent = JSON.parse(lesson.content.enrichedContent);
-      } catch {
-        enrichedContent = lesson.content.fullText;
-      }
-    }
-    
-    // 4. Use RAG for additional context
-    if (!enrichedContent && (slideContent.title || slideContent.content)) {
-      const query = `${slideContent.title} ${slideContent.content}`.trim();
-      const ragResponse = await ragService.answerQuestion(query, lessonId);
-      enrichedContent = ragResponse.answer;
-    }
-    
-    return {
-      enrichedContent,
-      concepts: lesson.concepts || [],
-      examples: lesson.examples || [],
-      formulas: lesson.formulas || [],
-      relatedLessons: lesson.unit.lessons || [],
-      studentProgress
-    };
   }
   
   /**
@@ -548,6 +576,18 @@ Return in this JSON format:
     const voiceStyle = voiceStyles[options.voiceStyle || 'friendly'];
     const pace = paceInstructions[options.paceSpeed || 'normal'];
     
+    // 🔧 FIX #3: Handle enrichedContent safely
+    let enrichedContentText = '';
+    if (context.enrichedContent) {
+      if (typeof context.enrichedContent === 'string') {
+        enrichedContentText = context.enrichedContent.slice(0, 500);
+      } else if (typeof context.enrichedContent === 'object') {
+        enrichedContentText = JSON.stringify(context.enrichedContent).slice(0, 500);
+      } else {
+        enrichedContentText = String(context.enrichedContent).slice(0, 500);
+      }
+    }
+    
     let prompt = `أنت مدرس رياضيات مصري محترف وخبير في التعليم التفاعلي.
 ${options.studentName ? `اسم الطالب: ${options.studentName}` : ''}
 
@@ -563,8 +603,8 @@ ${slideContent.equation ? `المعادلة: ${slideContent.equation}` : ''}
 
 📖 السياق من المنهج:
 ================
-${context.enrichedContent ? `المحتوى المُحسّن: ${context.enrichedContent.slice(0, 500)}` : ''}
-${context.concepts?.length ? `المفاهيم: ${context.concepts.map((c: any) => c.nameAr).join(', ')}` : ''}
+${enrichedContentText ? `المحتوى المُحسّن: ${enrichedContentText}` : ''}
+${context.concepts?.length ? `المفاهيم: ${context.concepts.map((c: any) => c.nameAr || c.name || 'مفهوم').join(', ')}` : ''}
 ${context.examples?.length ? `عدد الأمثلة المتاحة: ${context.examples.length}` : ''}
 
 👤 معلومات الطالب:
@@ -907,14 +947,27 @@ ${options.sessionHistory?.length ? `عدد الشرائح السابقة: ${opti
   // ============= HELPER METHODS =============
   
   /**
-   * Validate input options
+   * 🔧 Validate input options - محسّن لقبول أي lesson ID
    */
   private validateOptions(options: TeachingScriptOptions): TeachingScriptOptions {
     try {
-      return teachingOptionsSchema.parse(options) as TeachingScriptOptions;
+      // Add defaults for missing required fields
+      const optionsWithDefaults = {
+        ...options,
+        studentGrade: options.studentGrade || 6,
+        lessonId: options.lessonId || 'default'
+      };
+      
+      return teachingOptionsSchema.parse(optionsWithDefaults) as TeachingScriptOptions;
     } catch (error) {
       console.warn('⚠️ Invalid options, using defaults:', error);
-      return options; // Use as-is with defaults
+      
+      // Return with safe defaults
+      return {
+        ...options,
+        studentGrade: options.studentGrade || 6,
+        lessonId: options.lessonId || 'default'
+      };
     }
   }
   
@@ -1072,7 +1125,7 @@ ${options.sessionHistory?.length ? `عدد الشرائح السابقة: ${opti
     
     // Add key concepts
     if (context.concepts && context.concepts.length > 0) {
-      summary += `تعلمنا عن ${context.concepts.slice(0, 3).map(c => c.nameAr).join(' و')}. `;
+      summary += `تعلمنا عن ${context.concepts.slice(0, 3).map(c => c.nameAr || c.name || 'مفهوم').join(' و')}. `;
     }
     
     // Add session highlights
@@ -1096,8 +1149,12 @@ ${options.sessionHistory?.length ? `عدد الشرائح السابقة: ${opti
   ): string {
     let explanation = `طيب، خلينا نفصّل أكثر في ${slideContent.title || 'الموضوع ده'}. `;
     
+    // 🔧 Safe handling of enrichedContent
     if (context.enrichedContent) {
-      explanation += `${context.enrichedContent.slice(0, 200)}... `;
+      const contentText = typeof context.enrichedContent === 'string' 
+        ? context.enrichedContent 
+        : JSON.stringify(context.enrichedContent);
+      explanation += `${contentText.slice(0, 200)}... `;
     }
     
     explanation += 'ده معناه إن... ';
@@ -1182,7 +1239,7 @@ ${options.sessionHistory?.length ? `عدد الشرائح السابقة: ${opti
    * Generate cache key for script
    */
   private generateCacheKey(options: TeachingScriptOptions): string {
-    const key = `${options.lessonId}_${options.slideContent.title || 'untitled'}_${options.studentGrade}_${options.interactionType || 'default'}`;
+    const key = `${options.lessonId}_${options.slideContent?.title || 'untitled'}_${options.studentGrade || 6}_${options.interactionType || 'default'}`;
     return crypto.createHash('md5').update(key).digest('hex');
   }
   

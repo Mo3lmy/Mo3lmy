@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/websocket/session.service.ts
-// النسخة المُصلحة بالكامل - تستخدم LearningSession الصحيح
+// ✨ النسخة المُصلحة - تحل مشكلة Unique constraint
 
 import { prisma } from '../../config/database.config';
 import type { LearningSession } from '@prisma/client';
@@ -38,38 +38,41 @@ interface SessionData {
 export class SessionService {
   
   /**
-   * إنشاء أو استرجاع جلسة تعلم
+   * 🔧 إنشاء أو استرجاع جلسة تعلم - محلولة المشكلة
    */
   async getOrCreateSession(
     userId: string, 
     lessonId: string, 
     socketId?: string
-  ): Promise<LearningSession> {
+  ): Promise<ExtendedSession> {
     try {
-      // البحث عن جلسة نشطة موجودة
+      // 🔍 البحث عن أي جلسة موجودة (نشطة أو غير نشطة)
       const existingSession = await prisma.learningSession.findFirst({
         where: {
           userId,
-          lessonId,
-          isActive: true
+          lessonId
+          // ❌ إزالة شرط isActive لنجد أي session موجودة
         }
       });
       
       if (existingSession) {
-        // تحديث الـ socketId والوقت
+        // ✅ تحديث الجلسة الموجودة وتفعيلها
         const updated = await prisma.learningSession.update({
           where: { id: existingSession.id },
           data: {
             socketId: socketId || null,
-            lastActivityAt: new Date()
+            isActive: true,  // تفعيل الجلسة
+            lastActivityAt: new Date(),
+            // إعادة تعيين completedAt إذا كانت الجلسة منتهية
+            completedAt: null
           }
         });
         
-        console.log(`📝 Session updated: ${updated.id}`);
-        return updated;
+        console.log(`✅ Session reactivated: ${updated.id}`);
+        return this.mapToExtendedSession(updated);
       }
       
-      // إنشاء جلسة جديدة
+      // 🆕 إنشاء جلسة جديدة فقط إذا لم توجد أي جلسة
       const newSession = await prisma.learningSession.create({
         data: {
           userId,
@@ -90,13 +93,38 @@ export class SessionService {
         }
       });
       
-      console.log(`📝 New session created: ${newSession.id}`);
-      return newSession;
+      console.log(`✅ New session created: ${newSession.id}`);
+      return this.mapToExtendedSession(newSession);
       
     } catch (error: any) {
+      // 🔧 معالجة خطأ الـ unique constraint
+      if (error.code === 'P2002') {
+        console.log('⚠️ Unique constraint error - trying to recover...');
+        
+        // محاولة إيجاد الجلسة الموجودة وتحديثها
+        const fallbackSession = await prisma.learningSession.findFirst({
+          where: { userId, lessonId }
+        });
+        
+        if (fallbackSession) {
+          const updated = await prisma.learningSession.update({
+            where: { id: fallbackSession.id },
+            data: {
+              socketId: socketId || null,
+              isActive: true,
+              lastActivityAt: new Date(),
+              completedAt: null
+            }
+          });
+          
+          console.log(`✅ Session recovered after error: ${updated.id}`);
+          return this.mapToExtendedSession(updated);
+        }
+      }
+      
       console.error('❌ Session creation/update failed:', error);
       
-      // Fallback: create minimal session object
+      // Fallback: return minimal session object
       return {
         id: `temp-${Date.now()}`,
         userId,
@@ -115,8 +143,18 @@ export class SessionService {
           autoPlay: true,
           fontSize: 'medium'
         })
-      } as LearningSession;
+      } as ExtendedSession;
     }
+  }
+  
+  /**
+   * 🔧 Helper function to map to ExtendedSession
+   */
+  private mapToExtendedSession(session: LearningSession): ExtendedSession {
+    return {
+      ...session,
+      // Extended properties will be added when including relations
+    } as ExtendedSession;
   }
   
   /**
@@ -256,7 +294,7 @@ export class SessionService {
   }
   
   /**
-   * تنظيف الجلسات القديمة
+   * 🔧 تنظيف الجلسات القديمة - محسّن
    */
   async cleanupInactiveSessions(): Promise<number> {
     try {
@@ -280,7 +318,22 @@ export class SessionService {
         console.log(`🧹 Cleaned up ${result.count} inactive sessions`);
       }
       
-      return result.count;
+      // 🆕 حذف الجلسات القديمة جداً (أكثر من 24 ساعة)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const deleted = await prisma.learningSession.deleteMany({
+        where: {
+          isActive: false,
+          completedAt: {
+            lt: oneDayAgo
+          }
+        }
+      });
+      
+      if (deleted.count > 0) {
+        console.log(`🗑️ Deleted ${deleted.count} old sessions`);
+      }
+      
+      return result.count + deleted.count;
       
     } catch (error) {
       console.error('❌ Failed to cleanup sessions:', error);
@@ -477,6 +530,39 @@ export class SessionService {
     } catch (error) {
       console.error('❌ Failed to resume session:', error);
       return null;
+    }
+  }
+  
+  /**
+   * 🆕 Force clean duplicate sessions
+   */
+  async cleanDuplicateSessions(userId: string, lessonId: string): Promise<number> {
+    try {
+      // Get all sessions for this user/lesson
+      const sessions = await prisma.learningSession.findMany({
+        where: { userId, lessonId },
+        orderBy: { lastActivityAt: 'desc' }
+      });
+      
+      if (sessions.length <= 1) {
+        return 0;
+      }
+      
+      // Keep the most recent, delete the rest
+      const toDelete = sessions.slice(1).map(s => s.id);
+      
+      const deleted = await prisma.learningSession.deleteMany({
+        where: {
+          id: { in: toDelete }
+        }
+      });
+      
+      console.log(`🧹 Cleaned ${deleted.count} duplicate sessions`);
+      return deleted.count;
+      
+    } catch (error) {
+      console.error('❌ Failed to clean duplicates:', error);
+      return 0;
     }
   }
 }
