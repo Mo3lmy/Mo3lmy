@@ -12,12 +12,11 @@ import { websocketService } from './services/websocket/websocket.service';
 // ============= IMPORT ALL ROUTES =============
 // Basic REST routes
 import authRoutes from './api/rest/auth.routes';
-import lessonsRoutes from './api/rest/lessons.routes';      // ✅ ADDED
-import subjectsRoutes from './api/rest/subjects.routes';    // ✅ ADDED
+import lessonsRoutes from './api/rest/lessons.routes';
+import subjectsRoutes from './api/rest/subjects.routes';
 import contentRoutes from './api/rest/content.routes';
 import chatRoutes from './api/rest/chat.routes';
 import quizRoutes from './api/rest/quiz.routes';
-
 
 // Create Express app
 const app: Application = express();
@@ -45,9 +44,9 @@ const limiter = rateLimit({
 // Aggressive rate limiting for auth endpoints
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // غيّرناها من 5 إلى 50 للتطوير
+  max: 50,
   message: 'Too many authentication attempts',
-  skipSuccessfulRequests: true, // مهم: لا يحسب المحاولات الناجحة
+  skipSuccessfulRequests: true,
 });
 
 app.use('/api/', limiter);
@@ -77,19 +76,18 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: config.NODE_ENV,
-    version: '2.2.0', // Updated version with math components
+    version: '3.0.0', // Clean version
     services: {
       websocket: {
         connected: websocketService.getConnectedUsersCount(),
         status: 'active'
       },
-      orchestrator: 'active',
       database: 'connected',
       ai: 'ready',
       rag: 'ready',
       slideGenerator: 'ready',
-      realtimeChat: 'active',
-      mathComponents: 'ready' // New service
+      lessonService: 'active',
+      mathComponents: 'ready'
     }
   });
 });
@@ -104,22 +102,20 @@ app.get('/api/status', (req: Request, res: Response) => {
       ai: 'ready',
       rag: 'ready',
       websocket: 'active',
-      orchestrator: 'active',
+      lessonService: 'active',
       slideGenerator: 'ready',
-      realtimeChat: 'active',
-      mathComponents: 'ready' // New service
+      mathComponents: 'ready'
     },
     timestamp: new Date().toISOString(),
   });
 });
 
-// ============= 🧮 MATH COMPONENTS TEST PAGE (NEW) =============
+// ============= TEST PAGES =============
 app.get('/test-math.html', (req: Request, res: Response) => {
-  // Serve the test-math.html file from public directory
   res.sendFile(path.join(__dirname, '../public/test-math.html'));
 });
 
-// ============= ENHANCED WEBSOCKET TEST PAGE WITH SLIDES =============
+// WebSocket Test Page (نفس الكود الطويل بتاعك)
 app.get('/test-websocket', (req: Request, res: Response) => {
   res.send(`
 <!DOCTYPE html>
@@ -317,7 +313,7 @@ app.get('/test-websocket', (req: Request, res: Response) => {
             background: #f8f9fa;
         }
         
-        /* Slide Styles (from CSS file) */
+        /* Slide Styles */
         .slide-container {
             width: 100%;
             height: 100%;
@@ -401,32 +397,6 @@ app.get('/test-websocket', (req: Request, res: Response) => {
             transform: translateY(-3px);
             box-shadow: 0 10px 20px rgba(0,0,0,0.2);
         }
-        
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-50px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        
-        @keyframes scaleIn {
-            from { opacity: 0; transform: scale(0.8); }
-            to { opacity: 1; transform: scale(1); }
-        }
-        
-        .animate-fade-in { animation: fadeIn 0.8s ease-out; }
-        .animate-slide-up { animation: slideUp 0.8s ease-out; }
-        .animate-slide-in { animation: slideIn 0.6s ease-out backwards; }
-        .animate-scale-in { animation: scaleIn 0.5s ease-out backwards; }
     </style>
 </head>
 <body>
@@ -690,7 +660,6 @@ app.get('/test-websocket', (req: Request, res: Response) => {
         }
         
         function navigateSlide(direction) {
-            // Simple navigation (would be connected to socket in real app)
             if (direction === 'next' && slideNumber < slides.length - 1) {
                 slideNumber++;
             } else if (direction === 'previous' && slideNumber > 0) {
@@ -712,7 +681,6 @@ app.get('/test-websocket', (req: Request, res: Response) => {
             document.getElementById('summaryBtn').disabled = true;
         }
         
-        // Initialize
         window.onload = () => {
             log('🚀 جاهز للاختبار', 'info');
             log('💡 اضغط "اتصال" للبدء', 'info');
@@ -723,29 +691,23 @@ app.get('/test-websocket', (req: Request, res: Response) => {
   `);
 });
 
-// ============= 🚀 API ROUTES - ORGANIZED PROPERLY =============
+// ============= API ROUTES =============
 
-// 1️⃣ Authentication routes (FIRST)
+// Authentication routes
 app.use('/api/v1/auth', authRoutes);
 
-// 2️⃣ Basic REST endpoints (✅ ADDED)
-app.use('/api/v1/lessons', lessonsRoutes);       // ✅ NEW
-app.use('/api/v1/subjects', subjectsRoutes);     // ✅ NEW
-
-// 3️⃣ Core feature routes
+// Core feature routes
+app.use('/api/v1/lessons', lessonsRoutes);
+app.use('/api/v1/subjects', subjectsRoutes);
 app.use('/api/v1/content', contentRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/quiz', quizRoutes);
 
-
-
-// Note: quizRoutesV1 extends the existing quiz routes - removed duplicate
-
-// ============= API DOCUMENTATION ENDPOINT (FULLY UPDATED) =============
+// ============= API DOCUMENTATION =============
 app.get('/api', (req: Request, res: Response) => {
   res.json({
-    message: 'Smart Education Platform API',
-    version: '2.2.0', // Updated with math components
+    message: 'Smart Education Platform API - Clean Version',
+    version: '3.0.0',
     endpoints: {
       auth: {
         base: '/api/v1/auth',
@@ -758,7 +720,6 @@ app.get('/api', (req: Request, res: Response) => {
         ]
       },
       
-      // ✅ ADDED - Lessons endpoints
       lessons: {
         base: '/api/v1/lessons',
         routes: [
@@ -772,7 +733,6 @@ app.get('/api', (req: Request, res: Response) => {
         ]
       },
       
-      // ✅ ADDED - Subjects endpoints  
       subjects: {
         base: '/api/v1/subjects',
         routes: [
@@ -804,21 +764,6 @@ app.get('/api', (req: Request, res: Response) => {
         ]
       },
       
-      curriculum: {
-        base: '/api/v1/curriculum',
-        routes: [
-          'POST /search - بحث بنظام RAG',
-          'POST /ask - سؤال عن المنهج',
-          'GET /suggest - اقتراحات البحث',
-          'GET /trending - المواضيع الرائجة',
-          'POST /explain/concept - شرح مفهوم',
-          'POST /explain/formula - شرح معادلة',
-          'POST /insights - رؤى تعليمية',
-          'POST /adaptive - محتوى متكيف',
-          'GET /simplify/:text - تبسيط النص',
-        ]
-      },
-      
       quiz: {
         base: '/api/v1/quiz',
         routes: [
@@ -828,38 +773,6 @@ app.get('/api', (req: Request, res: Response) => {
           'GET /history - سجل الاختبارات',
           'GET /statistics/:lessonId - إحصائيات',
           'POST /generate - توليد أسئلة',
-          'POST /generate/adaptive - أسئلة متكيفة',
-          'POST /regenerate - إعادة توليد',
-          'GET /templates - قوالب الأسئلة',
-        ]
-      },
-      
-      student: {
-        base: '/api/v1/student',
-        routes: [
-          'GET /progress - التقدم الكامل',
-          'POST /progress/update - تحديث التقدم',
-          'GET /progress/subject/:subjectId - تقدم المادة',
-          'GET /progress/statistics - الإحصائيات',
-          'GET /progress/achievements - الإنجازات',
-          'GET /progress/leaderboard - لوحة الصدارة',
-          'GET /progress/learning-path - مسار التعلم',
-          'GET /gamification/stats - إحصائيات اللعبة',
-          'GET /gamification/challenges - التحديات',
-          'POST /gamification/challenges/:challengeId/complete - إكمال تحدي',
-          'GET /gamification/rewards - المكافآت',
-          'POST /gamification/rewards/:rewardId/claim - استلام مكافأة',
-        ]
-      },
-      
-      orchestrator: {
-        base: '/api/v1/orchestrator',
-        routes: [
-          'GET /lessons/:lessonId/flow - هيكل تدفق الدرس',
-          'POST /lessons/:lessonId/action - تنفيذ إجراء',
-          'GET /lessons/:lessonId/sections - أقسام الدرس',
-          'POST /lessons/:lessonId/navigate - التنقل',
-          'GET /status - حالة الخدمة',
         ]
       },
       
@@ -878,50 +791,16 @@ app.get('/api', (req: Request, res: Response) => {
           lessons: [
             'join_lesson - الانضمام لدرس',
             'leave_lesson - مغادرة الدرس',
-            'joined_lesson - تأكيد الانضمام',
-            'user_joined_lesson - مستخدم انضم',
-            'user_left_lesson - مستخدم غادر'
+            'joined_lesson - تأكيد الانضمام'
           ],
           slides: [
             'request_slide - طلب شريحة',
             'slide_ready - الشريحة جاهزة',
             'slide_error - خطأ في الشريحة',
-            'navigate_slide - التنقل بين الشرائح',
-            'update_slide - تحديث الشريحة'
-          ],
-          math: [ // NEW section
-            'request_math_slide - طلب شريحة رياضية',
-            'math_slide_ready - الشريحة الرياضية جاهزة',
-            'solve_equation - حل معادلة',
-            'equation_solved - المعادلة محلولة',
-            'update_math_variables - تحديث المتغيرات',
-            'variables_updated - المتغيرات محدثة',
-            'request_graph - طلب رسم بياني',
-            'graph_ready - الرسم البياني جاهز',
-            'open_calculator - فتح الآلة الحاسبة',
-            'calculator_ready - الآلة الحاسبة جاهزة'
-          ],
-          orchestrator: [
-            'start_orchestrated_lesson - بدء درس تفاعلي',
-            'lesson_flow_started - بدء التدفق',
-            'navigate_smart - تنقل ذكي',
-            'chat_with_action - محادثة مع إجراءات',
-            'request_action - طلب إجراء',
-            'get_lesson_structure - هيكل الدرس',
-            'generate_smart_slide - توليد شريحة ذكية'
           ],
           chat: [
             'chat_message - رسالة محادثة',
             'ai_response - رد الذكاء الاصطناعي',
-            'ai_typing - الذكاء الاصطناعي يكتب',
-            'stream_start - بدء البث',
-            'stream_chunk - جزء من البث',
-            'stream_end - انتهاء البث'
-          ],
-          session: [
-            'save_preferences - حفظ التفضيلات',
-            'session_restored - استعادة الجلسة',
-            'session_ended - انتهاء الجلسة'
           ]
         }
       }
@@ -929,15 +808,12 @@ app.get('/api', (req: Request, res: Response) => {
     testPages: [
       '/test - قائمة صفحات الاختبار',
       '/test-websocket - اختبار WebSocket والشرائح',
-      '/test-math.html - اختبار المكونات الرياضية التفاعلية', // NEW
-      '/test-orchestrator.html - النظام التفاعلي الذكي',
-      '/test-chat.html - المحادثة الذكية',
-      '/test-full.html - اختبار شامل'
+      '/test-math.html - اختبار المكونات الرياضية',
     ]
   });
 });
 
-// Test pages directory listing (UPDATED)
+// Test pages directory listing
 app.get('/test', (req: Request, res: Response) => {
   res.send(`
 <!DOCTYPE html>
@@ -981,7 +857,6 @@ app.get('/test', (req: Request, res: Response) => {
             color: #333;
             transition: all 0.3s;
             border: 2px solid transparent;
-            position: relative;
         }
         .test-link:hover {
             background: #667eea;
@@ -997,17 +872,6 @@ app.get('/test', (req: Request, res: Response) => {
             font-size: 14px;
             opacity: 0.8;
         }
-        .new-badge {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: #48bb78;
-            color: white;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-        }
     </style>
 </head>
 <body>
@@ -1019,21 +883,8 @@ app.get('/test', (req: Request, res: Response) => {
                 <p>اختبار الاتصال وتوليد الشرائح</p>
             </a>
             <a href="/test-math.html" class="test-link">
-                <span class="new-badge">جديد</span>
-                <h3>🧮 المكونات الرياضية التفاعلية</h3>
+                <h3>🧮 المكونات الرياضية</h3>
                 <p>اختبار عرض المعادلات والتفاعل معها</p>
-            </a>
-            <a href="/test-orchestrator.html" class="test-link">
-                <h3>🎯 Orchestrator System</h3>
-                <p>النظام التفاعلي الذكي الكامل</p>
-            </a>
-            <a href="/test-chat.html" class="test-link">
-                <h3>💬 Real-time Chat</h3>
-                <p>المحادثة الذكية مع AI</p>
-            </a>
-            <a href="/test-full.html" class="test-link">
-                <h3>🚀 Full System Test</h3>
-                <p>اختبار شامل لكل المكونات</p>
             </a>
         </div>
     </div>

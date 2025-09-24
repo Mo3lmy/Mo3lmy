@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/websocket/websocket.service.ts
-// النسخة المُصلحة بالكامل - تحل جميع مشاكل المصادقة والاتصال
+// النسخة النظيفة - بدون أي dependencies معطلة
 
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -9,9 +9,6 @@ import { prisma } from '../../config/database.config';
 import { sessionService, type ExtendedSession } from './session.service';
 import type { LearningSession } from '@prisma/client';
 import { EnhancedSlideGenerator } from '../../core/video/slide.generator';
-// import { realtimeChatService } from './realtime-chat.service'; // DISABLED
-// import { setupOrchestratorEvents } from './orchestrator-events'; // DISABLED
-// import { lessonOrchestrator } from '../orchestrator/lesson-orchestrator.service'; // DISABLED
 import { openAIService } from '../ai/openai.service';
 
 // ============= MATH IMPORTS =============
@@ -48,28 +45,14 @@ export class WebSocketService {
   initialize(httpServer: HTTPServer): void {
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: function(origin, callback) {
-          // في التطوير، اسمح بكل الأصول
-          if (config.NODE_ENV === 'development') {
-            callback(null, true);
-          } else {
-            const allowedOrigins = ['https://yourdomain.com'];
-            if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-              callback(null, true);
-            } else {
-              callback(new Error('Not allowed by CORS'));
-            }
-          }
-        },
+        origin: config.NODE_ENV === 'development' ? '*' : ['https://yourdomain.com'],
         credentials: true,
         methods: ['GET', 'POST']
       },
       
-      // دعم polling و websocket معاً
       transports: ['polling', 'websocket'],
       allowUpgrades: true,
       
-      // Connection settings محسنة
       pingTimeout: 60000,
       pingInterval: 25000,
       connectTimeout: 45000,
@@ -85,15 +68,14 @@ export class WebSocketService {
     console.log('   📌 Path: /socket.io/');
     console.log('   🔌 Transports: polling + websocket');
     console.log('   🧮 Math components: ENABLED');
-    console.log('   📚 Dynamic lessons: ENABLED');
-    console.log('   🔐 Authentication: Event-based');
+    console.log('   📚 Simple lessons: ENABLED');
     
     // Start cleanup interval
     this.startCleanupInterval();
     
     // Initialize slideGenerator
     slideGenerator.initialize().then(() => {
-      console.log('✅ Slide generator initialized');
+      console.log('✅ Slide generator ready');
     }).catch(err => {
       console.error('⚠️ Slide generator initialization failed:', err);
     });
@@ -106,57 +88,39 @@ export class WebSocketService {
     if (!this.io) return;
     
     this.io.on('connection', async (socket: Socket) => {
-      console.log(`\n✅ NEW CONNECTION`);
-      console.log(`   🔌 Socket ID: ${socket.id}`);
-      console.log(`   📅 Time: ${new Date().toISOString()}`);
-      console.log(`   👥 Total sockets: ${this.io?.sockets.sockets.size || 0}`);
+      console.log(`✅ NEW CONNECTION: ${socket.id}`);
       
-      // إرسال رسالة ترحيب فورية بدون مصادقة
+      // Welcome message without auth
       socket.emit('welcome', {
         message: 'مرحباً بك في منصة التعليم الذكية! 👋',
         socketId: socket.id,
         serverTime: new Date().toISOString(),
-        requiresAuth: true,
         features: {
           math: true,
-          interactive: true,
-          voice: false,
-          dynamicLessons: true
+          slides: true,
+          chat: true,
+          lessons: true
         }
       });
       
-      // ============= AUTHENTICATION EVENT HANDLER =============
+      // ============= SIMPLIFIED AUTHENTICATION =============
       socket.on('authenticate', async (data: { token: string }) => {
         try {
-          console.log(`🔐 Authentication attempt for socket: ${socket.id}`);
-          
-          // التحقق من وجود التوكن
-          if (!data || !data.token) {
-            console.log('   ❌ No token provided');
+          if (!data?.token) {
             socket.emit('auth_error', {
               success: false,
-              message: 'Token is required',
+              message: 'Token required',
               code: 'NO_TOKEN'
             });
             return;
           }
           
-          console.log(`   🔑 Token received: ${data.token.substring(0, 20)}...`);
-          
           let user: UserData | null = null;
           
-          // في وضع التطوير - استخدم مستخدم تجريبي
+          // Development mode - use test user
           if (config.NODE_ENV === 'development') {
-            console.log('   📝 Development mode - using test user');
-            
             const testUser = await prisma.user.findFirst({
-              where: {
-                OR: [
-                  { email: 'dev@test.com' },
-                  { email: 'student@test.com' },
-                  { email: 'test@test.com' }
-                ]
-              },
+              where: { email: { contains: 'test' } },
               select: {
                 id: true,
                 email: true,
@@ -169,15 +133,13 @@ export class WebSocketService {
             
             if (testUser) {
               user = testUser as UserData;
-              console.log(`   ✅ Test user found: ${user.email}`);
             } else {
-              // إنشاء مستخدم تجريبي
-              console.log('   ⚠️ Creating test user...');
+              // Create test user
               const newUser = await prisma.user.create({
                 data: {
-                  email: 'dev@test.com',
-                  password: '$2b$10$dummy', // dummy hash
-                  firstName: 'Dev',
+                  email: 'test@test.com',
+                  password: '$2b$10$dummy',
+                  firstName: 'Test',
                   lastName: 'User',
                   role: 'STUDENT',
                   grade: 6,
@@ -194,14 +156,11 @@ export class WebSocketService {
                 role: newUser.role,
                 grade: newUser.grade
               };
-              console.log(`   ✅ Test user created: ${user.email}`);
             }
           } else {
-            // Production mode - verify real token
+            // Production - verify real token
             try {
               const decoded = jwt.verify(data.token, config.JWT_SECRET) as any;
-              console.log(`   🔓 Token decoded: userId=${decoded.userId}`);
-              
               const dbUser = await prisma.user.findUnique({
                 where: { id: decoded.userId },
                 select: {
@@ -216,24 +175,18 @@ export class WebSocketService {
               
               if (dbUser) {
                 user = dbUser as UserData;
-                console.log(`   ✅ User found: ${user.email}`);
-              } else {
-                throw new Error('User not found in database');
               }
-            } catch (err: any) {
-              console.error('   ❌ Token verification failed:', err.message);
+            } catch (err) {
               socket.emit('auth_error', {
                 success: false,
                 message: 'Invalid token',
-                code: 'INVALID_TOKEN',
-                error: err.message
+                code: 'INVALID_TOKEN'
               });
               return;
             }
           }
           
           if (!user) {
-            console.log('   ❌ Authentication failed - no user');
             socket.emit('auth_error', {
               success: false,
               message: 'Authentication failed',
@@ -242,45 +195,29 @@ export class WebSocketService {
             return;
           }
           
-          // حفظ بيانات المستخدم في Socket
+          // Save user data
           socket.data.user = user;
           socket.data.authenticated = true;
-          socket.data.authenticatedAt = new Date();
           
-          // تخزين Socket reference
+          // Store socket reference
           this.connectedUsers.set(user.id, socket);
           
-          // إرسال تأكيد المصادقة - مهم جداً
+          // Send auth confirmation
           socket.emit('authenticated', {
             success: true,
             userId: user.id,
             email: user.email,
             userName: `${user.firstName} ${user.lastName}`,
-            message: 'Authentication successful',
-            timestamp: new Date().toISOString()
+            message: 'Authentication successful'
           });
           
-          console.log(`   ✅ Authentication successful for ${user.email}`);
-          console.log(`   👥 Total authenticated users: ${this.connectedUsers.size}`);
-          
-          // التحقق من آخر جلسة نشطة
-          const lastSession = await sessionService.getLastActiveSession(user.id);
-          if (lastSession) {
-            console.log(`   📝 Found last session: ${lastSession.id}`);
-            socket.emit('session_available', {
-              sessionId: lastSession.id,
-              lessonId: lastSession.lessonId,
-              currentSlide: lastSession.currentSlide,
-              lastActivity: lastSession.lastActivityAt,
-              lessonTitle: lastSession.lesson?.title || 'Unknown'
-            });
-          }
+          console.log(`✅ Authenticated: ${user.email}`);
           
         } catch (error: any) {
-          console.error('❌ Authentication error:', error);
+          console.error('❌ Auth error:', error);
           socket.emit('auth_error', {
             success: false,
-            message: error.message || 'Authentication failed',
+            message: 'Authentication failed',
             code: 'AUTH_ERROR'
           });
         }
@@ -290,9 +227,7 @@ export class WebSocketService {
       
       socket.on('join_lesson', async (data: { lessonId: string }) => {
         try {
-          // التحقق من المصادقة أولاً
           if (!socket.data.authenticated || !socket.data.user) {
-            console.log('❌ Join lesson attempt without authentication');
             socket.emit('error', {
               code: 'NOT_AUTHENTICATED',
               message: 'يجب تسجيل الدخول أولاً'
@@ -303,9 +238,7 @@ export class WebSocketService {
           const user = socket.data.user as UserData;
           const lessonId = data.lessonId;
           
-          console.log(`📚 ${user.email} joining lesson: ${lessonId}`);
-          
-          // التحقق من وجود الدرس
+          // Check if lesson exists
           const lesson = await prisma.lesson.findUnique({
             where: { id: lessonId },
             select: {
@@ -328,79 +261,53 @@ export class WebSocketService {
           });
           
           if (!lesson) {
-            console.log(`   ❌ Lesson not found: ${lessonId}`);
             socket.emit('error', {
               code: 'LESSON_NOT_FOUND',
-              message: 'الدرس غير موجود',
-              lessonId
+              message: 'الدرس غير موجود'
             });
             return;
           }
           
-          console.log(`   ✅ Lesson found: ${lesson.titleAr || lesson.title}`);
-          
-          // إنشاء أو استعادة الجلسة
+          // Create or get session
           const session = await sessionService.getOrCreateSession(
             user.id,
             lessonId,
             socket.id
           );
           
-          // تخزين معلومات الجلسة
+          // Store session info
           this.userSessions.set(user.id, {
             sessionId: session.id,
             lessonId,
             userId: user.id
           });
           
-          console.log(`   📝 Session ${session.id} ${session.isActive ? 'restored' : 'created'}`);
-          
-          // الانضمام لغرفة الدرس
+          // Join room
           const roomName = `lesson:${lessonId}`;
           socket.join(roomName);
           
-          // تتبع المشاركين
+          // Track participants
           if (!this.rooms.has(lessonId)) {
             this.rooms.set(lessonId, new Set());
           }
           this.rooms.get(lessonId)!.add(user.id);
           
-          const participants = Array.from(this.rooms.get(lessonId)!);
-          
-          // إرسال تأكيد الانضمام
+          // Send confirmation
           socket.emit('joined_lesson', {
             success: true,
             lessonId,
             lessonTitle: lesson.titleAr || lesson.title,
             sessionId: session.id,
-            unitTitle: lesson.unit.title,
-            subjectName: lesson.unit.subject.nameAr || lesson.unit.subject.name,
-            grade: lesson.unit.subject.grade,
-            participants: participants.length,
-            session: {
-              id: session.id,
-              currentSlide: session.currentSlide,
-              totalSlides: session.totalSlides,
-              isResumed: session.lastActivityAt > new Date(Date.now() - 60 * 60 * 1000)
-            },
             message: `انضممت بنجاح لدرس: ${lesson.titleAr || lesson.title}`
           });
           
-          // إشعار الآخرين
-          socket.to(roomName).emit('user_joined_lesson', {
-            userId: user.id,
-            userName: `${user.firstName} ${user.lastName}`,
-            participants: participants.length
-          });
-          
-          console.log(`   ✅ Joined successfully. Room has ${participants.length} participants`);
+          console.log(`✅ ${user.email} joined lesson: ${lessonId}`);
           
         } catch (error: any) {
           console.error('❌ Join lesson error:', error);
           socket.emit('error', {
             code: 'JOIN_FAILED',
-            message: 'فشل الانضمام للدرس',
-            error: error.message
+            message: 'فشل الانضمام للدرس'
           });
         }
       });
@@ -409,7 +316,6 @@ export class WebSocketService {
       
       socket.on('request_slide', async (data: any) => {
         try {
-          // التحقق من المصادقة
           if (!socket.data.authenticated) {
             socket.emit('slide_error', {
               message: 'يجب تسجيل الدخول أولاً',
@@ -418,24 +324,15 @@ export class WebSocketService {
             return;
           }
           
-          const user = socket.data.user as UserData;
-          console.log(`🖼️ Slide request from ${user.email}`);
-          
-          // التحقق من وجود جلسة نشطة (اختياري)
-          const sessionInfo = this.userSessions.get(user.id);
-          
-          // توليد الشريحة
           await slideGenerator.initialize();
           
-          // تحديد نوع المحتوى
           const slideContent = {
             id: `slide-${Date.now()}`,
             type: data.type || 'content',
             content: data.content || {
               title: data.title || 'شريحة تجريبية',
-              subtitle: data.subtitle,
               text: data.text,
-              points: data.points
+              bullets: data.bullets
             },
             duration: 10,
             transitions: { 
@@ -449,33 +346,20 @@ export class WebSocketService {
             data.theme || 'default'
           );
           
-          // إرسال الشريحة
           socket.emit('slide_ready', {
             success: true,
             html: slideHTML,
             slideNumber: data.slideNumber || 0,
-            type: slideContent.type,
-            timestamp: new Date().toISOString(),
-            message: 'تم توليد الشريحة بنجاح'
+            type: slideContent.type
           });
           
-          console.log(`   ✅ Slide generated and sent`);
-          
-          // تحديث الجلسة إذا كانت موجودة
-          if (sessionInfo && data.slideNumber !== undefined) {
-            await sessionService.updateSlidePosition(
-              sessionInfo.sessionId,
-              data.slideNumber,
-              100 // افتراض 100 شريحة كحد أقصى
-            );
-          }
+          console.log(`✅ Slide generated for ${socket.data.user.email}`);
           
         } catch (error: any) {
-          console.error('❌ Slide generation error:', error);
+          console.error('❌ Slide error:', error);
           socket.emit('slide_error', {
             message: 'فشل توليد الشريحة',
-            error: error.message,
-            code: 'GENERATION_FAILED'
+            error: error.message
           });
         }
       });
@@ -486,22 +370,16 @@ export class WebSocketService {
         try {
           if (!socket.data.authenticated) {
             socket.emit('math_slide_error', {
-              message: 'يجب تسجيل الدخول أولاً',
-              code: 'NOT_AUTHENTICATED'
+              message: 'يجب تسجيل الدخول أولاً'
             });
             return;
           }
           
-          const user = socket.data.user as UserData;
-          console.log(`🧮 Math slide request from ${user.email}`);
-          
-          // Default math content
-          const mathContent = data.mathContent || data.content || {
-            title: 'معادلة رياضية تفاعلية',
-            expressions: [latexRenderer.getCommonExpressions().quadratic]
+          const mathContent = data.content || {
+            title: 'معادلة رياضية',
+            expressions: ['x^2 + 2x + 1 = 0']
           };
           
-          // توليد شريحة رياضية
           const slideHTML = await mathSlideGenerator.generateMathSlide(
             {
               title: mathContent.title,
@@ -515,24 +393,22 @@ export class WebSocketService {
           socket.emit('math_slide_ready', {
             success: true,
             html: slideHTML,
-            type: 'math',
-            timestamp: new Date().toISOString()
+            type: 'math'
           });
           
-          console.log('   ✅ Math slide generated');
+          console.log('✅ Math slide generated');
           
         } catch (error: any) {
           console.error('❌ Math slide error:', error);
           socket.emit('math_slide_error', {
-            message: 'فشل توليد الشريحة الرياضية',
-            error: error.message
+            message: 'فشل توليد الشريحة الرياضية'
           });
         }
       });
       
-      // ============= CHAT EVENTS =============
+      // ============= SIMPLE CHAT =============
       
-      socket.on('chat_message', async (data: { lessonId: string; message: string }) => {
+      socket.on('chat_message', async (data: { message: string; lessonId?: string }) => {
         if (!socket.data.authenticated) {
           socket.emit('error', {
             code: 'NOT_AUTHENTICATED',
@@ -544,42 +420,33 @@ export class WebSocketService {
         const user = socket.data.user as UserData;
         
         try {
-          console.log(`💬 Chat message from ${user.email}: ${data.message}`);
-          
-          // Store chat message in database
-          const chatMessage = await prisma.chatMessage.create({
-            data: {
-              userId: user.id,
-              lessonId: data.lessonId,
-              userMessage: data.message,
-              role: 'USER'
+          // Simple AI response
+          const aiResponse = await openAIService.chat([
+            {
+              role: 'system',
+              content: 'أنت مساعد تعليمي ودود. أجب بشكل مختصر ومفيد.'
+            },
+            {
+              role: 'user', 
+              content: data.message
             }
+          ], {
+            temperature: 0.7,
+            maxTokens: 150
+          });
+                    
+          socket.emit('ai_response', {
+            message: aiResponse,
+            timestamp: new Date().toISOString()
           });
           
-          // Broadcast message to lesson room
-          const roomName = `lesson:${data.lessonId}`;
-          this.io?.to(roomName).emit('chat_message_received', {
-            messageId: chatMessage.id,
-            userId: user.id,
-            userName: `${user.firstName} ${user.lastName}`,
-            message: data.message,
-            timestamp: chatMessage.createdAt,
-            lessonId: data.lessonId
-          });
-          
-          // Send acknowledgment to sender
-          socket.emit('chat_message_sent', {
-            messageId: chatMessage.id,
-            success: true,
-            timestamp: chatMessage.createdAt
-          });
+          console.log(`💬 Chat processed for ${user.email}`);
           
         } catch (error: any) {
-          console.error('❌ Chat message error:', error);
+          console.error('❌ Chat error:', error);
           socket.emit('error', {
             code: 'CHAT_FAILED',
-            message: 'فشل إرسال الرسالة',
-            error: error.message
+            message: 'فشل الرد على الرسالة'
           });
         }
       });
@@ -595,190 +462,31 @@ export class WebSocketService {
       
       socket.on('get_status', () => {
         const user = socket.data.user as UserData | undefined;
-        const sessionInfo = user ? this.userSessions.get(user.id) : undefined;
         
         socket.emit('status', {
           connected: true,
           authenticated: socket.data.authenticated || false,
           userId: user?.id,
           socketId: socket.id,
-          rooms: Array.from(socket.rooms),
-          totalUsers: this.connectedUsers.size,
-          hasActiveSession: !!sessionInfo,
-          sessionInfo: sessionInfo || null,
-          features: {
-            math: true,
-            interactive: true,
-            voice: false,
-            dynamicLessons: true
-          }
+          totalUsers: this.connectedUsers.size
         });
-      });
-      
-      // ============= DYNAMIC LESSONS =============
-      
-      socket.on('get_available_lessons', async (options?: any) => {
-        if (!socket.data.authenticated) {
-          socket.emit('available_lessons', {
-            lessons: [],
-            error: 'يجب تسجيل الدخول أولاً'
-          });
-          return;
-        }
-        
-        try {
-          const lessons = await prisma.lesson.findMany({
-            where: { isPublished: true },
-            select: {
-              id: true,
-              title: true,
-              titleAr: true,
-              description: true,
-              difficulty: true,
-              estimatedMinutes: true,
-              unit: {
-                select: {
-                  title: true,
-                  subject: {
-                    select: {
-                      name: true,
-                      nameAr: true,
-                      grade: true,
-                      icon: true
-                    }
-                  }
-                }
-              }
-            },
-            take: options?.limit || 50,
-            orderBy: { createdAt: 'desc' }
-          });
-          
-          socket.emit('available_lessons', {
-            lessons: lessons.map(lesson => ({
-              id: lesson.id,
-              title: lesson.titleAr || lesson.title,
-              description: lesson.description,
-              subject: lesson.unit.subject.nameAr || lesson.unit.subject.name,
-              grade: lesson.unit.subject.grade,
-              difficulty: lesson.difficulty,
-              estimatedMinutes: lesson.estimatedMinutes || 30
-            })),
-            total: lessons.length
-          });
-          
-        } catch (error) {
-          console.error('Error fetching lessons:', error);
-          socket.emit('available_lessons', {
-            lessons: [],
-            error: 'فشل جلب الدروس'
-          });
-        }
-      });
-      
-      // ============= ORCHESTRATOR EVENTS =============
-      
-      // Setup orchestrator events only after authentication
-      socket.on('setup_orchestrator', () => {
-        if (socket.data.authenticated && socket.data.user) {
-          const user = socket.data.user as UserData;
-          
-          // Basic orchestrator event setup
-          console.log(`🎯 Setting up orchestrator for ${user.email}`);
-          
-          // Add orchestrator-specific event handlers here
-          socket.on('orchestrator_request', async (requestData: any) => {
-            try {
-              console.log(`🎯 Orchestrator request from ${user.email}:`, requestData);
-              
-              // Handle different orchestrator request types
-              switch (requestData.type) {
-                case 'lesson_flow':
-                  socket.emit('orchestrator_response', {
-                    type: 'lesson_flow',
-                    data: {
-                      currentStep: requestData.step || 'intro',
-                      nextSteps: ['content', 'quiz', 'summary'],
-                      lessonId: requestData.lessonId
-                    }
-                  });
-                  break;
-                  
-                case 'adaptive_content':
-                  socket.emit('orchestrator_response', {
-                    type: 'adaptive_content',
-                    data: {
-                      contentLevel: requestData.userLevel || 'beginner',
-                      recommendations: ['practice', 'review', 'advance']
-                    }
-                  });
-                  break;
-                  
-                default:
-                  socket.emit('orchestrator_response', {
-                    type: 'unknown',
-                    error: 'Unknown orchestrator request type'
-                  });
-              }
-              
-            } catch (error: any) {
-              console.error('❌ Orchestrator request error:', error);
-              socket.emit('orchestrator_error', {
-                message: 'فشل في معالجة طلب المرشد',
-                error: error.message
-              });
-            }
-          });
-          
-          socket.emit('orchestrator_ready', { 
-            message: 'Orchestrator events configured',
-            userId: user.id,
-            supportedTypes: ['lesson_flow', 'adaptive_content']
-          });
-        } else {
-          socket.emit('error', { code: 'NOT_AUTHENTICATED', message: 'Authentication required' });
-        }
       });
       
       // ============= DISCONNECTION =============
       
       socket.on('disconnect', async (reason) => {
-        console.log(`\n❌ DISCONNECTION`);
-        console.log(`   🔌 Socket ID: ${socket.id}`);
-        console.log(`   📊 Reason: ${reason}`);
+        console.log(`❌ DISCONNECTED: ${socket.id} - ${reason}`);
         
         const user = socket.data.user as UserData | undefined;
         if (user) {
-          console.log(`   👤 User: ${user.email}`);
-          
-          // حفظ الجلسة للاستئناف لاحقاً
-          const sessionInfo = this.userSessions.get(user.id);
-          if (sessionInfo) {
-            await prisma.learningSession.update({
-              where: { id: sessionInfo.sessionId },
-              data: {
-                lastActivityAt: new Date(),
-                socketId: null
-              }
-            }).catch(() => {});
-            
-            console.log(`   📝 Session preserved: ${sessionInfo.sessionId}`);
-          }
-          
-          // تنظيف
+          // Clean up
           this.connectedUsers.delete(user.id);
           this.userSessions.delete(user.id);
           
-          // إزالة من الغرف
+          // Remove from rooms
           this.rooms.forEach((users, lessonId) => {
             if (users.has(user.id)) {
               users.delete(user.id);
-              
-              this.io?.to(`lesson:${lessonId}`).emit('user_left_lesson', {
-                userId: user.id,
-                userName: `${user.firstName} ${user.lastName}`,
-                participants: users.size
-              });
               
               if (users.size === 0) {
                 this.rooms.delete(lessonId);
@@ -786,19 +494,8 @@ export class WebSocketService {
             }
           });
           
-          // إشعار الآخرين
-          socket.broadcast.emit('user_disconnected', {
-            userId: user.id,
-            userName: `${user.firstName} ${user.lastName}`,
-            totalUsers: this.connectedUsers.size
-          });
+          console.log(`👤 ${user.email} disconnected`);
         }
-        
-        console.log(`   👥 Remaining users: ${this.connectedUsers.size}`);
-      });
-      
-      socket.on('error', (error) => {
-        console.error(`❌ Socket error:`, error);
       });
     });
   }
@@ -807,24 +504,13 @@ export class WebSocketService {
    * Cleanup interval for inactive sessions
    */
   private startCleanupInterval(): void {
-    // تنظيف الجلسات غير النشطة كل ساعة
+    // Clean up inactive sessions every hour
     setInterval(async () => {
       const count = await sessionService.cleanupInactiveSessions();
       if (count > 0) {
         console.log(`🧹 Cleaned up ${count} inactive sessions`);
       }
-    }, 60 * 60 * 1000); // كل ساعة
-    
-    // تحديث آخر نشاط للجلسات النشطة كل 5 دقائق
-    setInterval(async () => {
-      const sessionEntries = Array.from(this.userSessions.entries());
-      for (const [userId, sessionInfo] of sessionEntries) {
-        await prisma.learningSession.update({
-          where: { id: sessionInfo.sessionId },
-          data: { lastActivityAt: new Date() }
-        }).catch(() => {});
-      }
-    }, 5 * 60 * 1000); // كل 5 دقائق
+    }, 60 * 60 * 1000);
   }
   
   // ============= PUBLIC METHODS =============
@@ -868,27 +554,6 @@ export class WebSocketService {
   
   getIO(): SocketIOServer | null {
     return this.io;
-  }
-  
-  sendOrchestratedContent(userId: string, eventName: string, data: any): boolean {
-    return this.sendToUser(userId, eventName, data);
-  }
-  
-  broadcastOrchestratorUpdate(lessonId: string, update: any): void {
-    this.sendToLesson(lessonId, 'orchestrator_update', update);
-  }
-  
-  async getActiveFlow(userId: string, lessonId: string): Promise<any> {
-    // Implementation for getting active flow
-    return null;
-  }
-  
-  sendActionResult(userId: string, action: string, result: any): void {
-    this.sendToUser(userId, 'action_result', {
-      action,
-      result,
-      timestamp: new Date().toISOString()
-    });
   }
 }
 
