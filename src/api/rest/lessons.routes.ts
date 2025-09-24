@@ -770,4 +770,30 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const lessons = await prisma.lesson.findMany({
+      include: {
+        unit: {
+          include: {
+            subject: true
+          }
+        }
+      },
+      take: 20
+    });
+    
+    res.json(
+      successResponse({
+        lessons,
+        total: lessons.length
+      }, 'Lessons retrieved')
+    );
+  } catch (error) {
+    res.status(500).json(
+      errorResponse('FETCH_FAILED', 'Failed to fetch lessons')
+    );
+  }
+});
+
 export default router;

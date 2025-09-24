@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>معلمي - منصة التعليم الذكية</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* ==================== RESET & BASE ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            direction: rtl;
+            overflow-x: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* ==================== THEME SYSTEM ==================== */
+        .theme-primary {
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-dark: #2d3748;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --slide-bg: #ffffff;
+            --chat-user: #667eea;
+            --chat-ai: #48bb78;
+        }
+
+        .theme-intermediate {
+            --bg-gradient: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            --primary-color: #48bb78;
+            --secondary-color: #38a169;
+            --text-dark: #1a202c;
+            --card-bg: rgba(255, 255, 255, 0.92);
+            --slide-bg: #f7fafc;
+            --chat-user: #48bb78;
+            --chat-ai: #4299e1;
+        }
+
+        .theme-professional {
+            --bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+            --primary-color: #4299e1;
+            --secondary-color: #3182ce;
+            --text-dark: #1a202c;
+            --card-bg: rgba(255, 255, 255, 0.98);
+            --slide-bg: #ffffff;
+            --chat-user: #4299e1;
+            --chat-ai: #805ad5;
+        }
+
+        /* Apply theme */
+        body.theme-primary,
+        body.theme-intermediate,
+        body.theme-professional {
+            background: var(--bg-gradient);
+            min-height: 100vh;
+        }
+
+        /* ==================== SCREENS ==================== */
+        .screen {
+            display: none;
+            min-height: 100vh;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ==================== LOGIN SCREEN ==================== */
+        #loginScreen {
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .login-container {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            width: 90%;
+            max-width: 450px;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-header h1 {
+            color: #667eea;
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 900;
+        }
+
+        .login-header p {
+            color: #718096;
+            font-size: 1.1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #4a5568;
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            font-family: 'Tajawal', sans-serif;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Tajawal', sans-serif;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ==================== DASHBOARD SCREEN ==================== */
+        #dashboardScreen {
+            flex-direction: column;
+            padding: 2rem;
+        }
+
+        .dashboard-header {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .user-details h2 {
+            color: var(--text-dark);
+            font-size: 1.2rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .user-details p {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .subjects-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .subject-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .subject-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: var(--primary-color);
+        }
+
+        .subject-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .subject-card.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .subject-card.disabled:hover {
+            transform: none;
+        }
+
+        .subject-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .subject-card h3 {
+            color: var(--text-dark);
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .subject-card p {
+            color: #718096;
+            margin-bottom: 1rem;
+        }
+
+        .subject-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.9rem;
+            color: #718096;
+        }
+
+        /* ==================== LESSONS SCREEN ==================== */
+        .lessons-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .lesson-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .lesson-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .lesson-number {
+            background: var(--primary-color);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .lesson-card h4 {
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+        }
+
+        .lesson-card p {
+            color: #718096;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .lesson-progress {
+            background: #e2e8f0;
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .lesson-progress-bar {
+            height: 100%;
+            background: var(--primary-color);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        /* ==================== CLASSROOM SCREEN ==================== */
+        #classroomScreen {
+            padding: 0;
+            background: var(--bg-gradient);
+        }
+
+        .classroom-container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+        }
+
+        /* Main Content Area */
+        .classroom-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--slide-bg);
+        }
+
+        .classroom-header {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lesson-info h3 {
+            color: var(--text-dark);
+            font-size: 1.3rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .lesson-info p {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .classroom-controls {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .control-btn {
+            background: white;
+            border: 2px solid #e2e8f0;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'Tajawal', sans-serif;
+        }
+
+        .control-btn:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .control-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        /* Slide Viewer */
+        .slide-viewer {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .slide-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+            padding: 3rem;
+            max-width: 900px;
+            width: 100%;
+            min-height: 500px;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        /* Slide Navigation */
+        .slide-navigation {
+            background: var(--card-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .slide-nav-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'Tajawal', sans-serif;
+            font-weight: 600;
+        }
+
+        .slide-nav-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .slide-nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .slide-counter {
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        /* Audio Player */
+        .audio-player-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .audio-btn {
+            background: white;
+            border: 2px solid var(--primary-color);
+            color: var(--primary-color);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .audio-btn:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .audio-btn.playing {
+            background: var(--primary-color);
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* Sidebar */
+        .classroom-sidebar {
+            width: 400px;
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-tabs {
+            display: flex;
+            background: white;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .sidebar-tab {
+            flex: 1;
+            padding: 1rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            color: #718096;
+            transition: all 0.3s ease;
+            font-family: 'Tajawal', sans-serif;
+        }
+
+        .sidebar-tab.active {
+            color: var(--primary-color);
+            border-bottom: 3px solid var(--primary-color);
+            margin-bottom: -2px;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Chat Section */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .chat-message {
+            display: flex;
+            gap: 0.75rem;
+            animation: messageSlide 0.3s ease;
+        }
+
+        @keyframes messageSlide {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .chat-message.user {
+            flex-direction: row-reverse;
+        }
+
+        .chat-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .chat-message.user .chat-avatar {
+            background: var(--chat-user);
+        }
+
+        .chat-message.ai .chat-avatar {
+            background: var(--chat-ai);
+        }
+
+        .chat-bubble {
+            background: white;
+            padding: 0.75rem 1rem;
+            border-radius: 15px;
+            max-width: 80%;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .chat-message.user .chat-bubble {
+            background: var(--chat-user);
+            color: white;
+        }
+
+        .chat-input-container {
+            padding: 1rem;
+            background: white;
+            border-top: 2px solid #e2e8f0;
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            resize: none;
+            font-family: 'Tajawal', sans-serif;
+            font-size: 0.95rem;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .chat-send-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Tajawal', sans-serif;
+            font-weight: 600;
+        }
+
+        .chat-send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Quiz Section */
+        .quiz-container {
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .quiz-question {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .quiz-question h4 {
+            color: var(--text-dark);
+            margin-bottom: 1rem;
+        }
+
+        .quiz-options {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .quiz-option {
+            padding: 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+            font-family: 'Tajawal', sans-serif;
+        }
+
+        .quiz-option:hover {
+            border-color: var(--primary-color);
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .quiz-option.selected {
+            border-color: var(--primary-color);
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .quiz-option.correct {
+            border-color: #48bb78;
+            background: rgba(72, 187, 120, 0.1);
+        }
+
+        .quiz-option.wrong {
+            border-color: #f56565;
+            background: rgba(245, 101, 101, 0.1);
+        }
+
+        /* Loading Spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Progress Bar */
+        .lesson-progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            z-index: 1000;
+        }
+
+        .lesson-progress-fill {
+            height: 100%;
+            background: var(--primary-color);
+            transition: width 0.3s ease;
+        }
+
+        /* Notification Toast */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 2000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success {
+            border-left: 4px solid #48bb78;
+        }
+
+        .toast.error {
+            border-left: 4px solid #f56565;
+        }
+
+        .toast.info {
+            border-left: 4px solid var(--primary-color);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .classroom-sidebar {
+                width: 350px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .classroom-container {
+                flex-direction: column;
+            }
+
+            .classroom-sidebar {
+                width: 100%;
+                height: 400px;
+            }
+
+            .subjects-container,
+            .lessons-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body class="theme-primary">
+    <!-- Progress Bar -->
+    <div class="lesson-progress-bar">
+        <div class="lesson-progress-fill" id="progressBar" style="width: 0%"></div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>معلمي 🎓</h1>
+                <p>منصة التعليم الذكية</p>
+            </div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="email">البريد الإلكتروني</label>
+                    <input type="email" id="email" placeholder="student@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">كلمة المرور</label>
+                    <input type="password" id="password" placeholder="••••••••" required>
+                </div>
+                <div class="form-group">
+                    <label for="grade">المرحلة الدراسية</label>
+                    <select id="grade" required>
+                        <option value="">اختر المرحلة</option>
+                        <option value="primary">ابتدائي (colorful)</option>
+                        <option value="intermediate">إعدادي (متوسط)</option>
+                        <option value="secondary">ثانوي (professional)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" id="loginBtn">
+                    <span id="loginText">تسجيل الدخول</span>
+                    <span class="loading-spinner" style="display: none;"></span>
+                </button>
+                <div style="margin-top: 1rem; text-align: center; color: #718096; font-size: 0.9rem;">
+                    للتجربة: student@test.com / Test@123
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboardScreen" class="screen">
+        <div class="dashboard-header">
+            <div class="user-info">
+                <div class="user-avatar" id="userAvatar">س</div>
+                <div class="user-details">
+                    <h2 id="userName">مرحباً بك</h2>
+                    <p id="userGrade">طالب</p>
+                </div>
+            </div>
+            <button class="control-btn" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i>
+                تسجيل الخروج
+            </button>
+        </div>
+
+        <h2 style="color: white; margin-bottom: 1.5rem;">اختر المادة الدراسية</h2>
+        
+        <div class="subjects-container" id="subjectsContainer">
+            <!-- Subjects will be loaded here -->
+        </div>
+
+        <div id="lessonsSection" style="display: none;">
+            <h2 style="color: white; margin-bottom: 1.5rem;">دروس الرياضيات</h2>
+            <div class="lessons-container" id="lessonsContainer">
+                <!-- Lessons will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Classroom Screen -->
+    <div id="classroomScreen" class="screen">
+        <div class="classroom-container">
+            <!-- Main Content -->
+            <div class="classroom-main">
+                <div class="classroom-header">
+                    <div class="lesson-info">
+                        <h3 id="lessonTitle">جاري التحميل...</h3>
+                        <p id="lessonUnit">وحدة...</p>
+                    </div>
+                    <div class="classroom-controls">
+                        <button class="control-btn" onclick="toggleAudio()">
+                            <i class="fas fa-volume-up"></i>
+                            الصوت
+                        </button>
+                        <button class="control-btn" onclick="goToDashboard()">
+                            <i class="fas fa-home"></i>
+                            الرئيسية
+                        </button>
+                    </div>
+                </div>
+
+                <div class="slide-viewer">
+                    <div class="slide-container" id="slideContainer">
+                        <!-- Slide content will be loaded here -->
+                        <div style="text-align: center; padding: 3rem;">
+                            <div class="loading-spinner" style="width: 50px; height: 50px; border-color: var(--primary-color); border-top-color: transparent;"></div>
+                            <p style="margin-top: 1rem; color: #718096;">جاري تحضير الدرس...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-navigation">
+                    <button class="slide-nav-btn" onclick="previousSlide()" id="prevBtn">
+                        <i class="fas fa-chevron-right"></i>
+                        السابق
+                    </button>
+                    
+                    <div class="audio-player-container">
+                        <button class="audio-btn" onclick="toggleSlideAudio()" id="audioBtn">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <span class="slide-counter">
+                            شريحة <span id="currentSlide">1</span> من <span id="totalSlides">1</span>
+                        </span>
+                    </div>
+
+                    <button class="slide-nav-btn" onclick="nextSlide()" id="nextBtn">
+                        التالي
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="classroom-sidebar">
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" onclick="switchTab('chat')">
+                        <i class="fas fa-comments"></i>
+                        المعلم الذكي
+                    </button>
+                    <button class="sidebar-tab" onclick="switchTab('quiz')">
+                        <i class="fas fa-question-circle"></i>
+                        الأسئلة
+                    </button>
+                    <button class="sidebar-tab" onclick="switchTab('notes')">
+                        <i class="fas fa-sticky-note"></i>
+                        ملاحظات
+                    </button>
+                </div>
+
+                <div class="sidebar-content">
+                    <!-- Chat Tab -->
+                    <div id="chatTab" class="chat-container">
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="chat-message ai">
+                                <div class="chat-avatar">🤖</div>
+                                <div class="chat-bubble">
+                                    مرحباً! أنا معلمك الذكي. اسألني أي سؤال عن الدرس وسأساعدك في الفهم.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chat-input-container">
+                            <textarea class="chat-input" id="chatInput" placeholder="اكتب سؤالك هنا..." rows="2"></textarea>
+                            <button class="chat-send-btn" onclick="sendMessage()">
+                                إرسال
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quiz Tab -->
+                    <div id="quizTab" class="quiz-container" style="display: none;">
+                        <h3 style="margin-bottom: 1.5rem;">اختبر فهمك</h3>
+                        <div id="quizQuestions">
+                            <!-- Quiz questions will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Notes Tab -->
+                    <div id="notesTab" style="display: none; padding: 1.5rem;">
+                        <h3 style="margin-bottom: 1rem;">ملاحظاتك الخاصة</h3>
+                        <textarea style="width: 100%; height: 300px; padding: 1rem; border: 2px solid #e2e8f0; border-radius: 10px; font-family: 'Tajawal', sans-serif; resize: vertical;" placeholder="اكتب ملاحظاتك هنا..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">
+        <i class="fas fa-check-circle" id="toastIcon"></i>
+        <span id="toastMessage">رسالة النظام</span>
+    </div>
+
+    <!-- Audio element for voice -->
+    <audio id="slideAudio" style="display: none;"></audio>
+
+    <script>
+        // ==================== Global Variables ====================
+        let socket = null;
+        let currentUser = null;
+        let currentToken = null;
+        let currentGrade = 'primary';
+        let currentLesson = null;
+        let currentSlideIndex = 0;
+        let slides = [];
+        let slideVoices = {};
+        let isAudioPlaying = false;
+        let quizQuestions = [];
+
+        // ==================== Initialization ====================
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if already logged in
+            const savedToken = localStorage.getItem('token');
+            const savedUser = localStorage.getItem('user');
+            if (savedToken && savedUser) {
+                currentToken = savedToken;
+                currentUser = JSON.parse(savedUser);
+                currentGrade = currentUser.grade || 'primary';
+                applyTheme();
+                showDashboard();
+            }
+
+            // Setup form submission
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            
+            // Setup enter key for chat
+            document.getElementById('chatInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        });
+
+        // ==================== Theme System ====================
+        function applyTheme() {
+            const themes = {
+                'primary': 'theme-primary',
+                'intermediate': 'theme-intermediate', 
+                'secondary': 'theme-professional'
+            };
+            
+            document.body.className = themes[currentGrade] || 'theme-primary';
+        }
+
+        // ==================== Authentication ====================
+        async function handleLogin(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const grade = document.getElementById('grade').value;
+            
+            if (!grade) {
+                showToast('الرجاء اختيار المرحلة الدراسية', 'error');
+                return;
+            }
+            
+            currentGrade = grade;
+            applyTheme();
+            
+            // Show loading
+            document.getElementById('loginBtn').disabled = true;
+            document.getElementById('loginText').style.display = 'none';
+            document.querySelector('#loginBtn .loading-spinner').style.display = 'inline-block';
+            
+            try {
+                // Try login first
+                let response = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                let data = await response.json();
+                
+                // If login fails, try to register
+                if (!data.success) {
+                    response = await fetch('/api/v1/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email,
+                            password,
+                            firstName: 'طالب',
+                            lastName: 'جديد',
+                            grade: 6
+                        })
+                    });
+                    
+                    data = await response.json();
+                    
+                    if (data.success) {
+                        // Try login again
+                        response = await fetch('/api/v1/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, password })
+                        });
+                        data = await response.json();
+                    }
+                }
+                
+                if (data.success) {
+                    currentToken = data.data.token;
+                    currentUser = { ...data.data.user, grade: currentGrade };
+                    
+                    // Save to localStorage
+                    localStorage.setItem('token', currentToken);
+                    localStorage.setItem('user', JSON.stringify(currentUser));
+                    
+                    showToast('تم تسجيل الدخول بنجاح!', 'success');
+                    showDashboard();
+                    connectWebSocket();
+                } else {
+                    showToast(data.message || 'فشل تسجيل الدخول', 'error');
+                }
+            } catch (error) {
+                showToast('حدث خطأ في الاتصال', 'error');
+                console.error(error);
+            } finally {
+                document.getElementById('loginBtn').disabled = false;
+                document.getElementById('loginText').style.display = 'inline';
+                document.querySelector('#loginBtn .loading-spinner').style.display = 'none';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            currentToken = null;
+            currentUser = null;
+            if (socket) {
+                socket.disconnect();
+            }
+            showLogin();
+            showToast('تم تسجيل الخروج', 'info');
+        }
+
+        // ==================== WebSocket Connection ====================
+        function connectWebSocket() {
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            socket = io('http://localhost:3000', {
+                transports: ['websocket', 'polling']
+            });
+            
+            socket.on('connect', () => {
+                console.log('WebSocket connected');
+                
+                // Authenticate with the server
+                socket.emit('authenticate', {
+                    token: currentToken
+                });
+            });
+            
+            socket.on('authenticated', (data) => {
+                console.log('Authenticated with WebSocket', data);
+                if (data.greeting) {
+                    addChatMessage(data.greeting, 'ai');
+                }
+            });
+            
+            socket.on('slide_ready', (data) => {
+                console.log('Slide received:', data);
+                if (data.html) {
+                    slides[data.slideNumber] = data.html;
+                    if (data.slideNumber === currentSlideIndex) {
+                        displaySlide(data.html);
+                    }
+                }
+                if (data.audioUrl) {
+                    slideVoices[data.slideNumber] = data.audioUrl;
+                }
+                if (data.teachingScript) {
+                    // Can show teaching script in chat if needed
+                }
+            });
+            
+            socket.on('lesson_slides_ready', (data) => {
+                console.log('All slides ready:', data);
+                if (data.slides && data.slides.length > 0) {
+                    slides = data.slides;
+                    currentSlideIndex = 0;
+                    displaySlide(slides[0]);
+                    updateSlideCounter();
+                }
+            });
+            
+            socket.on('teaching_response', (data) => {
+                console.log('Teaching response:', data);
+                if (data.response) {
+                    addChatMessage(data.response, 'ai');
+                }
+            });
+            
+            socket.on('error', (error) => {
+                console.error('WebSocket error:', error);
+                showToast('خطأ في الاتصال', 'error');
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('WebSocket disconnected');
+            });
+        }
+
+        // ==================== Navigation ====================
+        function showLogin() {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('loginScreen').classList.add('active');
+        }
+
+        function showDashboard() {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('dashboardScreen').classList.add('active');
+            
+            // Update user info
+            if (currentUser) {
+                document.getElementById('userName').textContent = `مرحباً، ${currentUser.firstName || 'طالب'}!`;
+                document.getElementById('userAvatar').textContent = (currentUser.firstName || 'ط')[0];
+                document.getElementById('userGrade').textContent = getGradeText(currentGrade);
+            }
+            
+            loadSubjects();
+        }
+
+        function showClassroom() {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('classroomScreen').classList.add('active');
+        }
+
+        function goToDashboard() {
+            if (socket && currentLesson) {
+                socket.emit('leave_lesson', { lessonId: currentLesson.id });
+            }
+            currentLesson = null;
+            slides = [];
+            slideVoices = {};
+            currentSlideIndex = 0;
+            showDashboard();
+        }
+
+        // ==================== Content Loading ====================
+        async function loadSubjects() {
+            const subjectsData = [
+                {
+                    id: 'math',
+                    name: 'الرياضيات',
+                    icon: '🔢',
+                    description: 'تعلم الحساب والهندسة',
+                    lessons: 33,
+                    active: true
+                },
+                {
+                    id: 'science',
+                    name: 'العلوم',
+                    icon: '🔬',
+                    description: 'اكتشف عالم العلوم',
+                    lessons: 0,
+                    active: false
+                },
+                {
+                    id: 'arabic',
+                    name: 'اللغة العربية',
+                    icon: '📚',
+                    description: 'قواعد وأدب',
+                    lessons: 0,
+                    active: false
+                },
+                {
+                    id: 'english',
+                    name: 'اللغة الإنجليزية',
+                    icon: '🌍',
+                    description: 'Learn English',
+                    lessons: 0,
+                    active: false
+                }
+            ];
+            
+            const container = document.getElementById('subjectsContainer');
+            container.innerHTML = '';
+            
+            subjectsData.forEach(subject => {
+                const card = document.createElement('div');
+                card.className = `subject-card ${!subject.active ? 'disabled' : ''}`;
+                card.innerHTML = `
+                    <div class="subject-icon">${subject.icon}</div>
+                    <h3>${subject.name}</h3>
+                    <p>${subject.description}</p>
+                    <div class="subject-stats">
+                        <span><i class="fas fa-book"></i> ${subject.lessons} درس</span>
+                        <span><i class="fas fa-clock"></i> ${subject.active ? 'متاح' : 'قريباً'}</span>
+                    </div>
+                `;
+                
+                if (subject.active) {
+                    card.onclick = () => loadLessons(subject.id);
+                }
+                
+                container.appendChild(card);
+            });
+        }
+
+        async function loadLessons(subjectId) {
+            if (subjectId !== 'math') {
+                showToast('هذه المادة غير متاحة حالياً', 'info');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/v1/lessons', {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.data.lessons) {
+                    const container = document.getElementById('lessonsContainer');
+                    container.innerHTML = '';
+                    
+                    // Show only first 6 lessons for demo
+                    const lessons = data.data.lessons.slice(0, 6);
+                    
+                    lessons.forEach((lesson, index) => {
+                        const card = document.createElement('div');
+                        card.className = 'lesson-card';
+                        card.innerHTML = `
+                            <div class="lesson-number">${index + 1}</div>
+                            <h4>${lesson.title}</h4>
+                            <p>${lesson.description || 'درس في الرياضيات'}</p>
+                            <div class="lesson-progress">
+                                <div class="lesson-progress-bar" style="width: 0%"></div>
+                            </div>
+                        `;
+                        card.onclick = () => startLesson(lesson);
+                        container.appendChild(card);
+                    });
+                    
+                    document.getElementById('lessonsSection').style.display = 'block';
+                    document.getElementById('subjectsContainer').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error loading lessons:', error);
+                showToast('خطأ في تحميل الدروس', 'error');
+            }
+        }
+
+        async function startLesson(lesson) {
+            currentLesson = lesson;
+            showClassroom();
+            
+            // Update lesson info
+            document.getElementById('lessonTitle').textContent = lesson.title;
+            document.getElementById('lessonUnit').textContent = lesson.unit?.title || 'الوحدة الأولى';
+            
+            // Connect to lesson via WebSocket
+            if (socket && socket.connected) {
+                socket.emit('join_lesson', {
+                    lessonId: lesson.id,
+                    userId: currentUser.id
+                });
+                
+                // Request slides generation
+                setTimeout(() => {
+                    generateAllSlides();
+                }, 500);
+                
+                // Load quiz questions
+                loadQuizQuestions(lesson.id);
+            }
+        }
+
+        // ==================== Slide Management ====================
+        function generateAllSlides() {
+            if (!socket || !currentLesson) return;
+            
+            showToast('جاري تحضير الشرائح...', 'info');
+            
+            // Request all slides for the lesson
+            socket.emit('generate_lesson_slides', {
+                lessonId: currentLesson.id,
+                theme: getThemeForGrade(),
+                includeVoice: true,
+                includeTeaching: true
+            });
+        }
+
+        function displaySlide(html) {
+            const container = document.getElementById('slideContainer');
+            container.innerHTML = html;
+            
+            // Auto-play voice if available
+            if (slideVoices[currentSlideIndex]) {
+                playSlideAudio(slideVoices[currentSlideIndex]);
+            }
+        }
+
+        function nextSlide() {
+            if (currentSlideIndex < slides.length - 1) {
+                currentSlideIndex++;
+                displaySlide(slides[currentSlideIndex]);
+                updateSlideCounter();
+                updateProgress();
+            } else {
+                showToast('انتهى الدرس! أحسنت!', 'success');
+                // Show quiz
+                switchTab('quiz');
+            }
+        }
+
+        function previousSlide() {
+            if (currentSlideIndex > 0) {
+                currentSlideIndex--;
+                displaySlide(slides[currentSlideIndex]);
+                updateSlideCounter();
+            }
+        }
+
+        function updateSlideCounter() {
+            document.getElementById('currentSlide').textContent = currentSlideIndex + 1;
+            document.getElementById('totalSlides').textContent = slides.length;
+            
+            // Update navigation buttons
+            document.getElementById('prevBtn').disabled = currentSlideIndex === 0;
+            document.getElementById('nextBtn').disabled = currentSlideIndex === slides.length - 1;
+        }
+
+        function updateProgress() {
+            const progress = ((currentSlideIndex + 1) / slides.length) * 100;
+            document.getElementById('progressBar').style.width = progress + '%';
+        }
+
+        // ==================== Audio Management ====================
+        function toggleAudio() {
+            // Global audio toggle
+        }
+
+        function toggleSlideAudio() {
+            const audioBtn = document.getElementById('audioBtn');
+            const audio = document.getElementById('slideAudio');
+            
+            if (isAudioPlaying) {
+                audio.pause();
+                isAudioPlaying = false;
+                audioBtn.innerHTML = '<i class="fas fa-play"></i>';
+                audioBtn.classList.remove('playing');
+            } else {
+                if (slideVoices[currentSlideIndex]) {
+                    playSlideAudio(slideVoices[currentSlideIndex]);
+                } else {
+                    // Request voice generation
+                    if (socket && currentLesson) {
+                        socket.emit('generate_slide_voice', {
+                            lessonId: currentLesson.id,
+                            slideNumber: currentSlideIndex,
+                            theme: getThemeForGrade()
+                        });
+                        showToast('جاري توليد الصوت...', 'info');
+                    }
+                }
+            }
+        }
+
+        function playSlideAudio(audioUrl) {
+            const audio = document.getElementById('slideAudio');
+            const audioBtn = document.getElementById('audioBtn');
+            
+            audio.src = audioUrl;
+            audio.play().then(() => {
+                isAudioPlaying = true;
+                audioBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                audioBtn.classList.add('playing');
+            }).catch(error => {
+                console.error('Error playing audio:', error);
+            });
+            
+            audio.onended = () => {
+                isAudioPlaying = false;
+                audioBtn.innerHTML = '<i class="fas fa-play"></i>';
+                audioBtn.classList.remove('playing');
+            };
+        }
+
+        // ==================== Chat System ====================
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message
+            addChatMessage(message, 'user');
+            
+            // Send to server
+            if (socket && socket.connected) {
+                socket.emit('teaching_request', {
+                    lessonId: currentLesson?.id,
+                    message: message,
+                    type: 'chat',
+                    context: {
+                        slideNumber: currentSlideIndex,
+                        lessonTitle: currentLesson?.title
+                    }
+                });
+            }
+            
+            // Clear input
+            input.value = '';
+        }
+
+        function addChatMessage(message, sender) {
+            const messagesContainer = document.getElementById('chatMessages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${sender}`;
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'chat-avatar';
+            avatar.textContent = sender === 'user' ? 'أ' : '🤖';
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble';
+            bubble.textContent = message;
+            
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(bubble);
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // ==================== Quiz System ====================
+        async function loadQuizQuestions(lessonId) {
+            try {
+                const response = await fetch(`/api/v1/quiz/questions/${lessonId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.data) {
+                    quizQuestions = data.data;
+                    displayQuizQuestions();
+                }
+            } catch (error) {
+                console.error('Error loading quiz:', error);
+            }
+        }
+
+        function displayQuizQuestions() {
+            const container = document.getElementById('quizQuestions');
+            container.innerHTML = '';
+            
+            // Show only first 3 questions for demo
+            const questions = quizQuestions.slice(0, 3);
+            
+            questions.forEach((q, index) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'quiz-question';
+                
+                questionDiv.innerHTML = `
+                    <h4>${index + 1}. ${q.question}</h4>
+                    <div class="quiz-options">
+                        ${q.options ? q.options.map((opt, i) => `
+                            <button class="quiz-option" onclick="selectAnswer(${index}, ${i})">
+                                ${opt}
+                            </button>
+                        `).join('') : ''}
+                    </div>
+                `;
+                
+                container.appendChild(questionDiv);
+            });
+        }
+
+        function selectAnswer(questionIndex, optionIndex) {
+            // Handle quiz answer selection
+            const options = document.querySelectorAll(`.quiz-question:nth-child(${questionIndex + 1}) .quiz-option`);
+            options.forEach(opt => opt.classList.remove('selected'));
+            options[optionIndex].classList.add('selected');
+            
+            // Here you would normally check the answer
+            showToast('تم حفظ إجابتك', 'info');
+        }
+
+        // ==================== Tab Management ====================
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Show/hide content
+            document.getElementById('chatTab').style.display = tab === 'chat' ? 'flex' : 'none';
+            document.getElementById('quizTab').style.display = tab === 'quiz' ? 'block' : 'none';
+            document.getElementById('notesTab').style.display = tab === 'notes' ? 'block' : 'none';
+        }
+
+        // ==================== Utilities ====================
+        function getGradeText(grade) {
+            const grades = {
+                'primary': 'المرحلة الابتدائية',
+                'intermediate': 'المرحلة الإعدادية',
+                'secondary': 'المرحلة الثانوية'
+            };
+            return grades[grade] || 'طالب';
+        }
+
+        function getThemeForGrade() {
+            const themes = {
+                'primary': 'kids',
+                'intermediate': 'default',
+                'secondary': 'dark'
+            };
+            return themes[currentGrade] || 'default';
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const msg = document.getElementById('toastMessage');
+            
+            // Update icon
+            const icons = {
+                'success': 'fa-check-circle',
+                'error': 'fa-times-circle',
+                'info': 'fa-info-circle'
+            };
+            
+            icon.className = `fas ${icons[type] || icons.info}`;
+            msg.textContent = message;
+            
+            // Update toast class
+            toast.className = `toast ${type}`;
+            toast.classList.add('show');
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
