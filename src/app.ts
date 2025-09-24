@@ -17,12 +17,7 @@ import subjectsRoutes from './api/rest/subjects.routes';    // ✅ ADDED
 import contentRoutes from './api/rest/content.routes';
 import chatRoutes from './api/rest/chat.routes';
 import quizRoutes from './api/rest/quiz.routes';
-import orchestratorRoutes from './api/rest/orchestrator.routes';
 
-// Advanced v1 routes
-import curriculumRoutesV1 from './api/v1/curriculum';
-import quizRoutesV1 from './api/v1/quiz';
-import studentRoutesV1 from './api/v1/student';
 
 // Create Express app
 const app: Application = express();
@@ -742,12 +737,7 @@ app.use('/api/v1/content', contentRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/quiz', quizRoutes);
 
-// 4️⃣ Advanced features
-app.use('/api/v1/curriculum', curriculumRoutesV1);
-app.use('/api/v1/student', studentRoutesV1);
 
-// 5️⃣ Orchestrator system
-app.use('/api/v1/orchestrator', orchestratorRoutes);
 
 // Note: quizRoutesV1 extends the existing quiz routes - removed duplicate
 
