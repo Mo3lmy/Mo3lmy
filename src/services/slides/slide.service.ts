@@ -2,7 +2,7 @@
 // الوظيفة: توليد شرائح HTML جميلة وسريعة بدون puppeteer
 
 export interface SlideContent {
-  type: 'title' | 'content' | 'bullet' | 'image' | 'equation' | 'quiz' | 'summary';
+  type: 'title' | 'content' | 'bullet' | 'image' | 'equation' | 'quiz' | 'summary' | 'interactive' | 'video' | 'code';
   title?: string;
   subtitle?: string;
   content?: string;
@@ -13,11 +13,31 @@ export interface SlideContent {
     question: string;
     options: string[];
     correctIndex?: number;
+    explanation?: string;
+    hints?: string[];
+  };
+  interactive?: {
+    type: 'drag-drop' | 'fill-blank' | 'match' | 'draw';
+    data: any;
+  };
+  video?: {
+    url: string;
+    poster?: string;
+    autoplay?: boolean;
+  };
+  code?: {
+    language: string;
+    code: string;
+    runnable?: boolean;
   };
   metadata?: {
     duration?: number;
     animations?: string[];
     theme?: string;
+    emotionalTone?: 'encouraging' | 'challenging' | 'fun' | 'serious';
+    adaptiveDifficulty?: boolean;
+    voiceScript?: string;
+    teachingNotes?: string;
   };
 }
 
@@ -80,6 +100,12 @@ export class SlideService {
         return this.generateQuizSlide(content, theme);
       case 'summary':
         return this.generateSummarySlide(content, theme);
+      case 'interactive':
+        return this.generateInteractiveSlide(content, theme);
+      case 'video':
+        return this.generateVideoSlide(content, theme);
+      case 'code':
+        return this.generateCodeSlide(content, theme);
       default:
         return this.generateContentSlide(content, theme);
     }
@@ -389,6 +415,410 @@ export class SlideService {
         </div>
       </div>
     `;
+  }
+
+  private generateInteractiveSlide(content: SlideContent, theme: SlideTheme): string {
+    if (!content.interactive) return this.generateContentSlide(content, theme);
+
+    const { type, data } = content.interactive;
+
+    switch (type) {
+      case 'drag-drop':
+        return this.generateDragDropSlide(content, theme, data);
+      case 'fill-blank':
+        return this.generateFillBlankSlide(content, theme, data);
+      case 'match':
+        return this.generateMatchingSlide(content, theme, data);
+      case 'draw':
+        return this.generateDrawingSlide(content, theme, data);
+      default:
+        return this.generateContentSlide(content, theme);
+    }
+  }
+
+  private generateVideoSlide(content: SlideContent, theme: SlideTheme): string {
+    const video = content.video;
+    if (!video) return this.generateContentSlide(content, theme);
+
+    return `
+      <div class="slide slide-video" style="
+        background: ${theme.backgroundColor};
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      ">
+        ${content.title ? `
+          <h2 style="
+            color: ${theme.primaryColor};
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-align: center;
+          ">${content.title}</h2>
+        ` : ''}
+        <div class="video-container" style="
+          width: 100%;
+          max-width: 900px;
+          border-radius: 15px;
+          overflow: hidden;
+          box-shadow: 0 10px 50px rgba(0,0,0,0.2);
+        ">
+          <video
+            controls
+            ${video.autoplay ? 'autoplay' : ''}
+            ${video.poster ? `poster="${video.poster}"` : ''}
+            style="width: 100%; height: auto;">
+            <source src="${video.url}" type="video/mp4">
+            متصفحك لا يدعم عرض الفيديو
+          </video>
+        </div>
+        ${content.content ? `
+          <p style="
+            font-size: 1.2em;
+            text-align: center;
+            margin-top: 30px;
+            color: #4a5568;
+            max-width: 80%;
+          ">${content.content}</p>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  private generateCodeSlide(content: SlideContent, theme: SlideTheme): string {
+    const code = content.code;
+    if (!code) return this.generateContentSlide(content, theme);
+
+    return `
+      <div class="slide slide-code" style="
+        background: ${theme.backgroundColor};
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+      ">
+        ${content.title ? `
+          <h2 style="
+            color: ${theme.primaryColor};
+            font-size: 2.5em;
+            margin-bottom: 30px;
+          ">${content.title}</h2>
+        ` : ''}
+        <div class="code-container" style="
+          background: #1e1e1e;
+          color: #d4d4d4;
+          padding: 30px;
+          border-radius: 10px;
+          box-shadow: 0 5px 30px rgba(0,0,0,0.2);
+          font-family: 'Consolas', 'Monaco', monospace;
+          font-size: 1.1em;
+          line-height: 1.6;
+          overflow-x: auto;
+        ">
+          <div style="
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #444;
+            color: #9ca3af;
+          ">
+            ${code.language.toUpperCase()}
+          </div>
+          <pre style="margin: 0; white-space: pre-wrap;">${this.escapeHtml(code.code)}</pre>
+        </div>
+        ${code.runnable ? `
+          <button style="
+            margin-top: 20px;
+            padding: 12px 30px;
+            background: ${theme.primaryColor};
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+          ">▶ تشغيل الكود</button>
+        ` : ''}
+        ${content.content ? `
+          <p style="
+            font-size: 1.2em;
+            margin-top: 30px;
+            color: #4a5568;
+          ">${content.content}</p>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  private generateDragDropSlide(content: SlideContent, theme: SlideTheme, data: any): string {
+    return `
+      <div class="slide slide-drag-drop" style="
+        background: ${theme.backgroundColor};
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+      ">
+        <h2 style="color: ${theme.primaryColor}; font-size: 2.5em; margin-bottom: 40px;">
+          ${content.title || 'نشاط السحب والإفلات'}
+        </h2>
+        <div class="drag-drop-area" style="
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 30px;
+        ">
+          <div class="draggable-items" style="
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+          ">
+            <h3>العناصر</h3>
+            ${(data.items || []).map((item: string, index: number) => `
+              <div data-draggable="${index}" style="
+                background: ${theme.primaryColor}20;
+                padding: 15px;
+                margin: 10px 0;
+                border-radius: 8px;
+                cursor: move;
+                border: 2px solid ${theme.primaryColor};
+              ">${item}</div>
+            `).join('')}
+          </div>
+          <div class="drop-zones" style="
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+          ">
+            <h3>الأهداف</h3>
+            ${(data.targets || []).map((target: string, index: number) => `
+              <div data-drop-zone="${index}" style="
+                background: #f7f7f7;
+                padding: 15px;
+                margin: 10px 0;
+                border-radius: 8px;
+                min-height: 50px;
+                border: 2px dashed #cbd5e0;
+              ">${target}</div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private generateFillBlankSlide(content: SlideContent, theme: SlideTheme, data: any): string {
+    const text = (data.text || '').replace(/___/g, `
+      <input type="text" style="
+        border: none;
+        border-bottom: 2px solid ${theme.primaryColor};
+        padding: 5px 10px;
+        font-size: 1em;
+        font-family: inherit;
+        width: 150px;
+        text-align: center;
+      " placeholder="...">
+    `);
+
+    return `
+      <div class="slide slide-fill-blank" style="
+        background: ${theme.backgroundColor};
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      ">
+        <h2 style="
+          color: ${theme.primaryColor};
+          font-size: 2.5em;
+          margin-bottom: 40px;
+        ">${content.title || 'أكمل الفراغات'}</h2>
+        <div style="
+          background: white;
+          padding: 40px;
+          border-radius: 20px;
+          box-shadow: 0 5px 30px rgba(0,0,0,0.1);
+          max-width: 800px;
+          font-size: 1.4em;
+          line-height: 2.5;
+        ">
+          ${text}
+        </div>
+        ${data.options ? `
+          <div style="
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+          ">
+            ${data.options.map((option: string) => `
+              <span style="
+                background: ${theme.primaryColor}20;
+                padding: 10px 20px;
+                border-radius: 20px;
+                border: 2px solid ${theme.primaryColor};
+                cursor: pointer;
+              ">${option}</span>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  private generateMatchingSlide(content: SlideContent, theme: SlideTheme, data: any): string {
+    return `
+      <div class="slide slide-matching" style="
+        background: ${theme.backgroundColor};
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+      ">
+        <h2 style="
+          color: ${theme.primaryColor};
+          font-size: 2.5em;
+          margin-bottom: 40px;
+          text-align: center;
+        ">${content.title || 'صل بين العناصر'}</h2>
+        <div style="
+          display: flex;
+          justify-content: space-between;
+          max-width: 900px;
+          margin: 0 auto;
+        ">
+          <div class="left-column" style="width: 40%;">
+            ${(data.leftItems || []).map((item: string, index: number) => `
+              <div style="
+                background: white;
+                padding: 20px;
+                margin: 15px 0;
+                border-radius: 10px;
+                box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+                border: 3px solid ${theme.primaryColor};
+                cursor: pointer;
+                text-align: center;
+              " data-match-left="${index}">
+                ${item}
+              </div>
+            `).join('')}
+          </div>
+          <div class="connections" style="
+            width: 20%;
+            position: relative;
+          ">
+            <svg style="width: 100%; height: 100%; position: absolute;">
+              <!-- Connection lines will be drawn here -->
+            </svg>
+          </div>
+          <div class="right-column" style="width: 40%;">
+            ${(data.rightItems || []).map((item: string, index: number) => `
+              <div style="
+                background: white;
+                padding: 20px;
+                margin: 15px 0;
+                border-radius: 10px;
+                box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+                border: 3px solid ${theme.secondaryColor};
+                cursor: pointer;
+                text-align: center;
+              " data-match-right="${index}">
+                ${item}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private generateDrawingSlide(content: SlideContent, theme: SlideTheme, data: any): string {
+    return `
+      <div class="slide slide-drawing" style="
+        background: ${theme.backgroundColor};
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      ">
+        <h2 style="
+          color: ${theme.primaryColor};
+          font-size: 2.5em;
+          margin-bottom: 30px;
+        ">${content.title || 'لوحة الرسم'}</h2>
+        <canvas id="drawing-canvas" style="
+          background: white;
+          border: 3px solid ${theme.primaryColor};
+          border-radius: 15px;
+          box-shadow: 0 5px 30px rgba(0,0,0,0.15);
+          cursor: crosshair;
+        " width="800" height="500"></canvas>
+        <div class="drawing-tools" style="
+          margin-top: 20px;
+          display: flex;
+          gap: 15px;
+        ">
+          <button style="
+            padding: 10px 20px;
+            background: ${theme.primaryColor};
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+          ">قلم</button>
+          <button style="
+            padding: 10px 20px;
+            background: #e53e3e;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+          ">ممحاة</button>
+          <button style="
+            padding: 10px 20px;
+            background: #48bb78;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+          ">مسح الكل</button>
+        </div>
+        ${content.content ? `
+          <p style="
+            font-size: 1.2em;
+            margin-top: 20px;
+            text-align: center;
+            color: #4a5568;
+          ">${content.content}</p>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  private escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
   }
 
   /**

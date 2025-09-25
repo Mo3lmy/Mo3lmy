@@ -44,9 +44,35 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: config.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+
+    // Allowed origins for development and production
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001'
+    ];
+
+    // In production, add your production domains
+    if (config.NODE_ENV === 'production') {
+      allowedOrigins.push('https://yourdomain.com');
+    }
+
+    // Check if origin is allowed
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+
+    // In development, allow all origins
+    if (config.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'), false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

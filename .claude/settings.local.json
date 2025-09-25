@@ -4,7 +4,18 @@
       "Bash(npx create-next-app:*)",
       "Bash(npx --yes create-next-app@latest frontend --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --no-turbopack --eslint)",
       "Bash(git add:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"yes\" npx prisma migrate reset --force --skip-seed)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma studio:*)",
+      "Bash(curl:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,7 +1,17 @@
-import axios, { AxiosInstance, AxiosError } from 'axios'
+import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios'
 import { AuthResponse, User } from '@/types'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+
+interface ApiErrorResponse {
+  success: false
+  error?: {
+    code?: string
+    message: string
+    details?: any
+  }
+  message?: string
+}
 
 class ApiService {
   private api: AxiosInstance
@@ -18,7 +28,16 @@ class ApiService {
 
     // Load token from localStorage if available
     if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem('auth_token')
+      try {
+        const authStorage = localStorage.getItem('auth-storage')
+        if (authStorage) {
+          const authData = JSON.parse(authStorage)
+          this.token = authData.state?.token || null
+        }
+      } catch (error) {
+        console.warn('Failed to load token from localStorage:', error)
+        this.token = null
+      }
     }
 
     // Request interceptor
@@ -29,13 +48,13 @@ class ApiService {
         }
         return config
       },
-      (error) => Promise.reject(error)
+      (error) => Promise.reject(this.formatError(error))
     )
 
     // Response interceptor
     this.api.interceptors.response.use(
-      (response) => response,
-      (error: AxiosError) => {
+      (response) => this.handleResponse(response),
+      (error: AxiosError<ApiErrorResponse>) => {
         if (error.response?.status === 401) {
           // Token expired or invalid
           this.logout()
@@ -43,24 +62,71 @@ class ApiService {
             window.location.href = '/login'
           }
         }
-        return Promise.reject(error.response?.data || error.message)
+        return Promise.reject(this.formatError(error))
       }
     )
   }
 
+  private handleResponse(response: AxiosResponse) {
+    // Normalize response format
+    if (response.data && typeof response.data === 'object') {
+      // If response has both success and data fields, return as is
+      if ('success' in response.data && 'data' in response.data) {
+        return response.data
+      }
+      // If response has data directly, wrap it
+      if (!('success' in response.data)) {
+        return {
+          success: true,
+          data: response.data
+        }
+      }
+    }
+    return response.data
+  }
+
+  private formatError(error: AxiosError<ApiErrorResponse> | any): Error {
+    let message = 'An unexpected error occurred'
+
+    if (error.response?.data) {
+      const data = error.response.data
+      // Check for error field with message
+      if (data.error?.message) {
+        message = data.error.message
+      }
+      // Check for direct message field
+      else if (data.message) {
+        message = data.message
+      }
+    } else if (error.message) {
+      message = error.message
+    }
+
+    // Network errors
+    if (!error.response) {
+      if (error.code === 'ECONNABORTED') {
+        message = 'Request timeout - please try again'
+      } else if (error.message === 'Network Error') {
+        message = 'Cannot connect to server - please check your connection'
+      }
+    }
+
+    const formattedError = new Error(message)
+    ;(formattedError as any).statusCode = error.response?.status
+    ;(formattedError as any).code = error.response?.data?.error?.code || error.code
+
+    return formattedError
+  }
+
   setToken(token: string) {
     this.token = token
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('auth_token', token)
-    }
+    // Note: Token is primarily managed by the authStore via zustand persist
+    // This method is called when login/register is successful
   }
 
   logout() {
     this.token = null
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('user')
-    }
+    // Note: localStorage cleanup is primarily handled by authStore
   }
 
   // Auth endpoints
@@ -90,12 +156,14 @@ class ApiService {
 
   async getMe(): Promise<User> {
     const response = await this.api.get('/api/v1/auth/me')
+    // The response is wrapped in the success format: { success: true, data: user }
     return response.data
   }
 
   async verifyToken(): Promise<boolean> {
     try {
-      const response = await this.api.post('/api/v1/auth/verify')
+      if (!this.token) return false
+      const response = await this.api.post('/api/v1/auth/verify', { token: this.token })
       return response.data.success || false
     } catch {
       return false
