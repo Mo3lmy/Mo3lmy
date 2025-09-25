@@ -4,30 +4,44 @@ import { documentProcessor } from './document.processor';
 import type { RAGContext, RAGResponse, SearchResult } from '../../types/rag.types';
 
 /**
- * Enhanced RAG Service with Safe Optimizations
- * Version: 2.0 - Backward Compatible
+ * Enhanced RAG Service with Smart Features
+ * Version: 3.0 - Optimized for Performance & Quality
  */
 export class RAGService {
-  private cache: Map<string, { answer: string; timestamp: number; hits: number }> = new Map();
-  private readonly CACHE_TTL = parseInt(process.env.CACHE_TTL || '3600') * 1000; // Convert to ms
+  private cache: Map<string, { answer: string; timestamp: number; hits: number; confidence: number }> = new Map();
+  private readonly CACHE_TTL = parseInt(process.env.CACHE_TTL || '3600') * 1000;
   
-  // ============= NEW: Feature Flags for Safe Control =============
+  // ============= Feature Flags =============
   private readonly FEATURES = {
-    USE_CACHE: process.env.USE_CACHE !== 'false', // Default: true (changed from === 'true')
-    USE_SMART_CONTEXT: process.env.USE_SMART_CONTEXT !== 'false', // Default: true
-    USE_FALLBACK_SEARCH: process.env.USE_FALLBACK_SEARCH !== 'false', // Default: true
-    LOG_PERFORMANCE: process.env.LOG_PERFORMANCE === 'true', // Default: false
-    CACHE_CONFIDENCE_THRESHOLD: parseInt(process.env.CACHE_CONFIDENCE_THRESHOLD || '40'), // Lowered from 50
-    MAX_CACHE_SIZE: parseInt(process.env.MAX_CACHE_SIZE || '200'), // Increased from 100
+    USE_CACHE: process.env.USE_CACHE !== 'false',
+    USE_SMART_CONTEXT: process.env.USE_SMART_CONTEXT !== 'false',
+    USE_FALLBACK_SEARCH: process.env.USE_FALLBACK_SEARCH !== 'false',
+    LOG_PERFORMANCE: process.env.LOG_PERFORMANCE === 'true',
+    CACHE_CONFIDENCE_THRESHOLD: parseInt(process.env.CACHE_CONFIDENCE_THRESHOLD || '40'),
+    MAX_CACHE_SIZE: parseInt(process.env.MAX_CACHE_SIZE || '300'),
+    // 🆕 New features
+    USE_SMART_MODEL: process.env.USE_SMART_MODEL !== 'false',
+    ADAPTIVE_DIFFICULTY: process.env.ADAPTIVE_DIFFICULTY !== 'false',
   };
 
-  // ============= NEW: Performance Metrics =============
+  // ============= Performance Metrics =============
   private metrics = {
     cacheHits: 0,
     cacheMisses: 0,
     totalQuestions: 0,
     averageConfidence: 0,
+    averageResponseTime: 0,
+    modelUsage: new Map<string, number>(),
   };
+  
+  // 🆕 User learning profiles (simple in-memory)
+  private userProfiles: Map<string, {
+    level: number;
+    correctAnswers: number;
+    totalAttempts: number;
+    weakTopics: string[];
+    strongTopics: string[];
+  }> = new Map();
 
   /**
    * Answer a question using RAG - ENHANCED VERSION
@@ -40,88 +54,79 @@ export class RAGService {
     const startTime = Date.now();
     this.metrics.totalQuestions++;
     
-    console.log('🤔 Processing question:', question);
+    console.log('🤔 Processing:', question.substring(0, 50) + '...');
     
-    // ============= IMPROVED: Better Cache Check =============
+    // ============= Cache Check =============
     if (this.FEATURES.USE_CACHE) {
       const cacheKey = this.generateCacheKey(question, lessonId);
       const cached = this.getFromCache(cacheKey);
       if (cached) {
         this.metrics.cacheHits++;
-        console.log(`📦 Cache hit! (${this.metrics.cacheHits}/${this.metrics.totalQuestions} = ${Math.round(this.metrics.cacheHits/this.metrics.totalQuestions*100)}%)`);
-        
-        // Update cache hit counter
-        const cacheEntry = this.cache.get(cacheKey);
-        if (cacheEntry) {
-          cacheEntry.hits++;
-        }
+        const hitRate = Math.round((this.metrics.cacheHits / this.metrics.totalQuestions) * 100);
+        console.log(`📦 Cache hit! (${hitRate}% hit rate)`);
         
         return {
-          answer: cached,
+          answer: cached.answer,
           sources: [],
-          confidence: 100,
+          confidence: cached.confidence,
         };
       }
       this.metrics.cacheMisses++;
     }
     
-    // ============= ENHANCED: Search with Fallback =============
+    // ============= Smart Search =============
     let relevantChunks: SearchResult[] = [];
     
     try {
       relevantChunks = lessonId
         ? await vectorSearch.searchInLesson(lessonId, question, 5)
-        : await vectorSearch.enhancedSearch(question, 8); // Already using enhanced!
+        : await vectorSearch.enhancedSearch(question, 8);
       
-      // NEW: If no results and fallback enabled, try broader search
+      // Fallback if needed
       if (relevantChunks.length === 0 && this.FEATURES.USE_FALLBACK_SEARCH && lessonId) {
-        console.log('🔄 No results in lesson, trying broader search...');
+        console.log('🔄 Fallback to broader search...');
         relevantChunks = await vectorSearch.enhancedSearch(question, 5);
       }
     } catch (error) {
-      console.error('❌ Search error, using fallback:', error);
-      // Fallback to basic search if enhanced fails
-      try {
-        relevantChunks = await vectorSearch.searchSimilar(question, 5);
-      } catch (fallbackError) {
-        console.error('❌ Fallback search also failed:', fallbackError);
-      }
+      console.error('❌ Search error:', error);
+      relevantChunks = await vectorSearch.searchSimilar(question, 5);
     }
     
     if (relevantChunks.length === 0) {
       return {
-        answer: 'عذراً، لم أتمكن من العثور على معلومات كافية للإجابة على سؤالك. يُرجى محاولة صياغة السؤال بطريقة مختلفة أو تحديد الدرس المطلوب.',
+        answer: 'عذراً، لم أجد معلومات كافية. حاول صياغة السؤال بطريقة أخرى أو حدد الدرس.',
         sources: [],
         confidence: 0,
       };
     }
     
-    // ============= IMPROVED: Smart Context Building =============
+    // ============= Context Building =============
     const context = this.FEATURES.USE_SMART_CONTEXT 
       ? this.buildSmartContext(question, relevantChunks)
       : this.buildContext(question, relevantChunks);
     
-    // Generate answer using OpenAI
-    const answer = await this.generateAnswer(context, question);
+    // 🆕 Get user profile for personalization
+    const userProfile = userId ? this.getUserProfile(userId) : null;
     
-    // Calculate confidence based on relevance scores
-    const confidence = this.calculateConfidence(relevantChunks);
+    // ============= Generate Answer with Smart Model Selection =============
+    const answer = await this.generateAnswer(context, question, userProfile);
     
-    // Update average confidence metric
-    this.metrics.averageConfidence = 
-      (this.metrics.averageConfidence * (this.metrics.totalQuestions - 1) + confidence) / 
-      this.metrics.totalQuestions;
+    // Calculate confidence
+    const confidence = this.calculateEnhancedConfidence(relevantChunks, question);
     
-    // ============= IMPROVED: Better Caching Strategy =============
+    // Update metrics
+    this.updateMetrics(confidence, Date.now() - startTime);
+    
+    // Cache if good confidence
     if (this.FEATURES.USE_CACHE && confidence > this.FEATURES.CACHE_CONFIDENCE_THRESHOLD) {
       const cacheKey = this.generateCacheKey(question, lessonId);
       this.saveToCache(cacheKey, answer, confidence);
     }
     
-    // Log performance if enabled
+    // Log performance
     if (this.FEATURES.LOG_PERFORMANCE) {
       const duration = Date.now() - startTime;
-      console.log(`⚡ Performance: ${duration}ms | Confidence: ${confidence}% | Chunks: ${relevantChunks.length}`);
+      console.log(`⚡ ${duration}ms | Confidence: ${confidence}% | Chunks: ${relevantChunks.length}`);
     }
     
     return {
@@ -132,10 +137,443 @@ export class RAGService {
   }
   
   /**
-   * NEW: Smart context building for better answers
+   * 🆕 Generate answer with smart model selection
+   */
+  private async generateAnswer(
+    context: string, 
+    question: string,
+    userProfile?: any
+  ): Promise<string> {
+    // Build personalized prompt
+    const systemPrompt = this.buildPersonalizedPrompt(userProfile);
+    
+    const userPrompt = `السياق التعليمي:
+=====================================
+${context}
+=====================================
+
+سؤال الطالب: ${question}
+
+أجب بوضوح مع مراعاة مستوى الطالب.`;
+    
+    try {
+      // 🆕 Smart model selection based on question type
+      const options: any = {
+        temperature: 0.5,
+        maxTokens: 800,
+        autoSelectModel: this.FEATURES.USE_SMART_MODEL,
+      };
+      
+      // Detect task type for better model selection
+      if (question.includes('حل') || question.includes('معادلة')) {
+        options.taskType = 'math';
+      } else if (question.includes('اشرح') || question.includes('explain')) {
+        options.taskType = 'explanation';
+      } else if (question.includes('quiz') || question.includes('اختبار')) {
+        options.taskType = 'quiz';
+      }
+      
+      const answer = await openAIService.chat([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ], options);
+      
+      return answer;
+    } catch (error) {
+      console.error('Error generating answer:', error);
+      return 'عذراً، حدث خطأ. حاول مرة أخرى.';
+    }
+  }
+  
+  /**
+   * 🆕 Build personalized system prompt
+   */
+  private buildPersonalizedPrompt(userProfile?: any): string {
+    let basePrompt = `أنت مساعد تعليمي ذكي متخصص في المناهج المصرية.
+
+دورك:
+- الإجابة بوضوح ودقة
+- استخدام السياق المُعطى
+- الشرح المناسب للمستوى
+- إعطاء أمثلة عند الحاجة
+- اللغة العربية الفصحى البسيطة`;
+    
+    if (userProfile) {
+      // Add personalization
+      if (userProfile.level < 5) {
+        basePrompt += '\n\n💡 الطالب مبتدئ: استخدم لغة بسيطة جداً وأمثلة كثيرة.';
+      } else if (userProfile.level > 8) {
+        basePrompt += '\n\n🚀 الطالب متقدم: يمكنك استخدام مفاهيم متقدمة.';
+      }
+      
+      if (userProfile.weakTopics?.length > 0) {
+        basePrompt += `\n⚠️ نقاط ضعف: ${userProfile.weakTopics.join(', ')} - اشرح بتفصيل أكثر.`;
+      }
+    }
+    
+    return basePrompt;
+  }
+  
+  /**
+   * 🆕 Enhanced confidence calculation
+   */
+  private calculateEnhancedConfidence(chunks: SearchResult[], question: string): number {
+    if (chunks.length === 0) return 0;
+    
+    // Base confidence from scores
+    const topChunks = chunks.slice(0, 3);
+    const avgScore = topChunks.reduce((sum, c) => sum + (c.score || 0), 0) / topChunks.length;
+    
+    // Bonuses
+    let confidence = avgScore * 100;
+    
+    // Diversity bonus (multiple good sources)
+    const highQuality = chunks.filter(c => c.score > 0.6).length;
+    confidence += Math.min(highQuality * 5, 15);
+    
+    // Keyword match bonus
+    const questionWords = question.toLowerCase().split(' ');
+    const contextWords = chunks[0]?.chunk.text.toLowerCase().split(' ') || [];
+    const matchCount = questionWords.filter(w => contextWords.includes(w)).length;
+    confidence += Math.min(matchCount * 3, 10);
+    
+    // Adjacent chunks bonus (continuity)
+    const hasAdjacentChunks = this.checkAdjacentChunks(chunks);
+    if (hasAdjacentChunks) confidence += 5;
+    
+    return Math.min(Math.round(confidence), 100);
+  }
+  
+  /**
+   * 🆕 Check if we have adjacent chunks (better context)
+   */
+  private checkAdjacentChunks(chunks: SearchResult[]): boolean {
+    const indices = chunks
+      .map(c => c.chunk.metadata?.chunkIndex)
+      .filter(i => i !== undefined)
+      .sort((a, b) => a - b);
+    
+    for (let i = 1; i < indices.length; i++) {
+      if (indices[i] - indices[i-1] === 1) return true;
+    }
+    return false;
+  }
+  
+  /**
+   * 🆕 ENHANCED Quiz Generation - Dynamic & Adaptive
+   */
+  async generateQuizQuestions(
+    lessonId: string, 
+    count: number = 5,
+    userId?: string
+  ): Promise<any[]> {
+    console.log(`📝 Generating ${count} adaptive quiz questions`);
+    
+    // Get lesson content
+    const chunks = await vectorSearch.searchInLesson(lessonId, '', 15);
+    if (chunks.length === 0) {
+      throw new Error('No content found');
+    }
+    
+    const context = this.buildSmartContext('', chunks);
+    
+    // 🆕 Get user profile for adaptive difficulty
+    const userProfile = userId ? this.getUserProfile(userId) : null;
+    const difficulty = this.determineQuizDifficulty(userProfile);
+    
+    // 🆕 Enhanced quiz prompt with variety
+    const systemPrompt = `أنت خبير في إنشاء أسئلة تعليمية متنوعة وذكية.
+
+مستوى الصعوبة: ${difficulty}
+أنواع الأسئلة المطلوبة:
+- اختيار من متعدد (MCQ)
+- صح أو خطأ 
+- أكمل الفراغات
+- مسائل تطبيقية
+
+قواعد مهمة:
+1. نوّع الأسئلة (لا تكرر نفس النمط)
+2. الخيارات الخاطئة يجب أن تكون منطقية
+3. تدرج في الصعوبة
+4. اربط بالحياة اليومية عند الإمكان
+5. أضف تلميحات للأسئلة الصعبة`;
+    
+    const userPrompt = `من المحتوى التالي:
+=====================================
+${context}
+=====================================
+
+أنشئ ${count} أسئلة متنوعة.
+
+الصيغة المطلوبة (JSON):
+[
+  {
+    "type": "mcq|true_false|fill_blank|problem",
+    "question": "نص السؤال",
+    "options": ["خيار1", "خيار2", "خيار3", "خيار4"],
+    "correctAnswer": "الإجابة الصحيحة",
+    "explanation": "شرح مختصر",
+    "hint": "تلميح مساعد",
+    "difficulty": "easy|medium|hard",
+    "points": 1-5,
+    "tags": ["tag1", "tag2"]
+  }
+]`;
+    
+    try {
+      // Use smart model selection for quiz generation
+      const questions = await openAIService.chatJSON([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ], {
+        temperature: 0.8, // Higher for variety
+        maxTokens: 2000,
+        model: 'gpt-4o-mini', // Good for structured output
+      });
+      
+      // 🆕 Enhance questions with adaptive features
+      return this.enhanceQuizQuestions(questions, userProfile);
+      
+    } catch (error) {
+      console.error('Quiz generation error:', error);
+      return this.generateFallbackQuestions(count);
+    }
+  }
+  
+  /**
+   * 🆕 Determine quiz difficulty based on user profile
+   */
+  private determineQuizDifficulty(userProfile: any): string {
+    if (!userProfile) return 'متوسط';
+    
+    const successRate = userProfile.totalAttempts > 0
+      ? userProfile.correctAnswers / userProfile.totalAttempts
+      : 0.5;
+    
+    if (successRate > 0.8 && userProfile.level > 7) return 'صعب';
+    if (successRate < 0.4 || userProfile.level < 4) return 'سهل';
+    return 'متوسط';
+  }
+  
+  /**
+   * 🆕 Enhance quiz questions with adaptive features
+   */
+  private enhanceQuizQuestions(questions: any[], userProfile: any): any[] {
+    if (!Array.isArray(questions)) return [];
+    
+    return questions.map((q, index) => {
+      // Add adaptive difficulty
+      if (userProfile && this.FEATURES.ADAPTIVE_DIFFICULTY) {
+        // Make first question easier, last harder
+        if (index === 0 && userProfile.level < 5) {
+          q.difficulty = 'easy';
+          q.hint = q.hint || 'تذكر الأساسيات';
+        } else if (index === questions.length - 1 && userProfile.level > 7) {
+          q.difficulty = 'hard';
+          q.points = (q.points || 1) + 2;
+        }
+      }
+      
+      // Add variety validation
+      if (!q.type) {
+        // Assign type based on index for variety
+        const types = ['mcq', 'true_false', 'fill_blank', 'problem'];
+        q.type = types[index % types.length];
+      }
+      
+      // Ensure all fields
+      return {
+        ...q,
+        id: `q_${Date.now()}_${index}`,
+        points: q.points || (q.difficulty === 'hard' ? 3 : q.difficulty === 'easy' ? 1 : 2),
+        tags: q.tags || [],
+        createdAt: new Date().toISOString()
+      };
+    });
+  }
+  
+  /**
+   * 🆕 Fallback questions if generation fails
+   */
+  private generateFallbackQuestions(count: number): any[] {
+    const questions = [];
+    const types = ['mcq', 'true_false', 'fill_blank'];
+    
+    for (let i = 0; i < count; i++) {
+      questions.push({
+        type: types[i % types.length],
+        question: `سؤال ${i + 1}: ما هو...؟`,
+        options: ['خيار أ', 'خيار ب', 'خيار ج', 'خيار د'],
+        correctAnswer: 'خيار أ',
+        explanation: 'هذا سؤال تجريبي',
+        difficulty: 'medium',
+        points: 2,
+        hint: 'فكر في الدرس',
+        tags: ['تجريبي']
+      });
+    }
+    return questions;
+  }
+  
+  /**
+   * 🆕 Explain wrong answer with personalized feedback
+   */
+  async explainWrongAnswer(
+    question: string,
+    userAnswer: string,
+    correctAnswer: string,
+    userId?: string
+  ): Promise<string> {
+    const userProfile = userId ? this.getUserProfile(userId) : null;
+    
+    const prompt = `الطالب أجاب خطأ على هذا السؤال:
+السؤال: ${question}
+إجابة الطالب: ${userAnswer}
+الإجابة الصحيحة: ${correctAnswer}
+
+${userProfile?.level < 5 ? 'الطالب مبتدئ، اشرح ببساطة شديدة.' : ''}
+
+اشرح:
+1. لماذا الإجابة خاطئة (بدون إحراج)
+2. الإجابة الصحيحة مع السبب
+3. نصيحة لتجنب هذا الخطأ
+4. مثال توضيحي
+
+كن مشجعاً وإيجابياً.`;
+    
+    try {
+      const explanation = await openAIService.chat([
+        { role: 'system', content: 'أنت معلم صبور ومشجع.' },
+        { role: 'user', content: prompt }
+      ], {
+        temperature: 0.7,
+        maxTokens: 400,
+        model: 'gpt-3.5-turbo' // Fast for feedback
+      });
+      
+      // Track weak areas
+      if (userId) {
+        this.updateUserWeakAreas(userId, question);
+      }
+      
+      return explanation;
+    } catch (error) {
+      return 'لا بأس، الخطأ جزء من التعلم! حاول مرة أخرى وركز على المعطيات.';
+    }
+  }
+  
+  /**
+   * Explain a concept with grade-appropriate language
+   */
+  async explainConcept(
+    concept: string,
+    gradeLevel: number
+  ): Promise<string> {
+    console.log(`💡 Explaining "${concept}" for grade ${gradeLevel}`);
+    
+    // Check cache
+    const cacheKey = `explain_${concept}_${gradeLevel}`;
+    if (this.FEATURES.USE_CACHE) {
+      const cached = this.getFromCache(cacheKey);
+      if (cached) return cached.answer;
+    }
+    
+    const ageGroup = gradeLevel <= 6 ? 'الابتدائية' : gradeLevel <= 9 ? 'الإعدادية' : 'الثانوية';
+    
+    const systemPrompt = `أنت معلم متميز للمرحلة ${ageGroup}.
+تشرح بأسلوب:
+- ${gradeLevel <= 6 ? 'قصصي ممتع مع شخصيات' : 'علمي مبسط'}
+- ${gradeLevel <= 9 ? 'أمثلة من الحياة اليومية' : 'ربط بالتطبيقات العملية'}
+- تشبيهات مناسبة للعمر`;
+    
+    const userPrompt = `اشرح "${concept}" لطالب في الصف ${gradeLevel}.
+
+الشرح يجب أن يتضمن:
+1. تعريف بسيط (سطر واحد)
+2. ${gradeLevel <= 6 ? 'قصة قصيرة أو شخصية كرتونية' : 'مثال من الحياة'}
+3. ${gradeLevel <= 9 ? 'نشاط عملي بسيط' : 'تطبيق علمي'}
+4. خلاصة في جملة
+
+اجعله ${gradeLevel <= 6 ? 'ممتع جداً! 🌟' : 'مشوق ومفيد'}`;
+    
+    try {
+      const explanation = await openAIService.chat([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ], {
+        temperature: 0.7,
+        maxTokens: 600,
+        autoSelectModel: true
+      });
+      
+      // Cache good explanations
+      if (this.FEATURES.USE_CACHE) {
+        this.saveToCache(cacheKey, explanation, 95);
+      }
+      
+      return explanation;
+    } catch (error) {
+      return `${concept} هو مفهوم مهم في المنهج. راجع الكتاب المدرسي.`;
+    }
+  }
+  
+  /**
+   * 🆕 Generate personalized study plan
+   */
+  async generateStudyPlan(
+    userId: string,
+    lessonId: string,
+    targetDate?: Date
+  ): Promise<any> {
+    const userProfile = this.getUserProfile(userId);
+    
+    const daysUntilTarget = targetDate 
+      ? Math.ceil((targetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : 7;
+    
+    const prompt = `أنشئ خطة دراسية مخصصة:
+- المدة: ${daysUntilTarget} أيام
+- مستوى الطالب: ${userProfile.level}/10
+- نقاط الضعف: ${userProfile.weakTopics.join(', ') || 'عام'}
+- نقاط القوة: ${userProfile.strongTopics.join(', ') || 'عام'}
+
+الخطة يجب أن تتضمن:
+1. جدول يومي (وقت + موضوع)
+2. تمارين متدرجة
+3. مراجعات دورية
+4. نصائح للحفظ
+5. وقت للراحة
+
+صيغة JSON.`;
+    
+    try {
+      const plan = await openAIService.chatJSON([
+        { role: 'system', content: 'أنت مخطط تعليمي خبير.' },
+        { role: 'user', content: prompt }
+      ], {
+        temperature: 0.6,
+        model: 'gpt-4o-mini'
+      });
+      
+      return plan;
+    } catch (error) {
+      // Simple fallback plan
+      return {
+        days: daysUntilTarget,
+        dailyPlan: [
+          { day: 1, topic: 'مراجعة الأساسيات', time: '30 دقيقة' },
+          { day: 2, topic: 'حل تمارين', time: '45 دقيقة' }
+        ],
+        tips: ['راجع يومياً', 'اكتب ملخصات', 'احل تمارين متنوعة']
+      };
+    }
+  }
+  
+  /**
+   * 🆕 Smart Context Building with relevance scoring
    */
   private buildSmartContext(question: string, chunks: SearchResult[]): string {
-    // Group chunks by lesson
+    // Group by lesson and sort
     const chunksByLesson = new Map<string, SearchResult[]>();
     
     chunks.forEach(chunk => {
@@ -146,62 +584,44 @@ export class RAGService {
       chunksByLesson.get(lessonId)!.push(chunk);
     });
     
-    // Smart selection strategy
+    // Smart selection
     const selectedChunks: SearchResult[] = [];
     
-    // 1. Take top 3 highest scoring chunks
+    // Top scoring chunks
     const topScored = chunks
       .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
+      .slice(0, 4);
     selectedChunks.push(...topScored);
     
-    // 2. Add adjacent chunks if they're from the same lesson
+    // Add adjacent chunks for continuity
     topScored.forEach(chunk => {
       const lessonChunks = chunksByLesson.get(chunk.lessonInfo?.id || '');
       if (lessonChunks && lessonChunks.length > 1) {
-        // Find adjacent chunks (by chunkIndex)
         const currentIndex = chunk.chunk.metadata?.chunkIndex || 0;
         const adjacent = lessonChunks.filter(c => {
           const idx = c.chunk.metadata?.chunkIndex || 0;
           return Math.abs(idx - currentIndex) === 1 && !selectedChunks.includes(c);
         });
-        selectedChunks.push(...adjacent.slice(0, 1)); // Add max 1 adjacent
+        selectedChunks.push(...adjacent.slice(0, 1));
       }
     });
     
-    // 3. Remove duplicates and sort by lesson + chunk index
+    // Remove duplicates and build context
     const uniqueChunks = Array.from(new Set(selectedChunks));
-    uniqueChunks.sort((a, b) => {
-      // First by lesson
-      const lessonCompare = (a.lessonInfo?.id || '').localeCompare(b.lessonInfo?.id || '');
-      if (lessonCompare !== 0) return lessonCompare;
-      
-      // Then by chunk index
-      return (a.chunk.metadata?.chunkIndex || 0) - (b.chunk.metadata?.chunkIndex || 0);
-    });
-    
-    // Build context with better formatting
-    let context = 'معلومات من المنهج ذات الصلة:\n\n';
+    let context = 'معلومات ذات صلة:\n\n';
     let currentLesson = '';
     
     uniqueChunks.forEach((chunk, index) => {
-      // Add lesson header if changed
       if (chunk.lessonInfo?.title && chunk.lessonInfo.title !== currentLesson) {
         currentLesson = chunk.lessonInfo.title;
-        context += `\n📚 من درس: ${currentLesson}\n`;
-        context += '─'.repeat(40) + '\n';
+        context += `\n📚 ${currentLesson}\n${'─'.repeat(30)}\n`;
       }
       
-      context += `[معلومة ${index + 1}]:\n`;
-      context += `${chunk.chunk.text}\n`;
+      context += `[${index + 1}] ${chunk.chunk.text}\n`;
       
-      // Add relevance indicator
       if (chunk.score > 0.7) {
-        context += `✅ (صلة قوية: ${Math.round(chunk.score * 100)}%)\n`;
-      } else if (chunk.score > 0.4) {
-        context += `✓ (صلة متوسطة: ${Math.round(chunk.score * 100)}%)\n`;
+        context += `✅ صلة قوية (${Math.round(chunk.score * 100)}%)\n`;
       }
-      
       context += '\n';
     });
     
@@ -209,22 +629,17 @@ export class RAGService {
   }
   
   /**
-   * Original context building (kept for backward compatibility)
+   * Original context building (backward compatible)
    */
   private buildContext(question: string, chunks: SearchResult[]): string {
-    let context = 'معلومات من المنهج ذات الصلة:\n\n';
+    let context = 'معلومات من المنهج:\n\n';
     
-    // Sort chunks by relevance score
-    const sortedChunks = chunks.sort((a, b) => b.score - a.score);
+    chunks.sort((a, b) => b.score - a.score);
     
-    // Take top chunks and format them
-    sortedChunks.forEach((chunk, index) => {
-      context += `[معلومة ${index + 1}]:\n`;
-      context += `${chunk.chunk.text}\n`;
-      
-      // Add lesson info if available
+    chunks.forEach((chunk, index) => {
+      context += `[${index + 1}]:\n${chunk.chunk.text}\n`;
       if (chunk.lessonInfo) {
-        context += `(من درس: ${chunk.lessonInfo.title})\n`;
+        context += `(${chunk.lessonInfo.title})\n`;
       }
       context += '\n---\n\n';
     });
@@ -233,367 +648,98 @@ export class RAGService {
   }
   
   /**
-   * Generate answer using OpenAI with improved prompting
+   * 🆕 User Profile Management
    */
-  private async generateAnswer(context: string, question: string): Promise<string> {
-    const systemPrompt = `أنت مساعد تعليمي ذكي متخصص في المناهج المصرية للمرحلة الابتدائية والإعدادية والثانوية.
-
-دورك:
-- الإجابة على أسئلة الطلاب بوضوح ودقة
-- استخدام المعلومات من السياق المُعطى فقط
-- الشرح بطريقة مناسبة لمستوى الطالب
-- إعطاء أمثلة توضيحية عند الحاجة
-- استخدام لغة عربية فصحى بسيطة
-
-قواعد مهمة:
-1. اعتمد على المعلومات في السياق المُعطى فقط
-2. إذا لم تجد الإجابة في السياق، قل ذلك بوضوح
-3. لا تختلق معلومات غير موجودة
-4. اجعل إجابتك منظمة ومرتبة
-5. استخدم التنقيط والترقيم عند الحاجة`;
-    
-    const userPrompt = `السياق التعليمي من المنهج:
-=====================================
-${context}
-=====================================
-
-سؤال الطالب: ${question}
-
-من فضلك أجب على السؤال بناءً على المعلومات المتوفرة في السياق أعلاه.
-إذا كانت المعلومات غير كافية، اذكر ذلك بوضوح.`;
-    
-    try {
-      const answer = await openAIService.chat([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ], {
-        temperature: 0.5, // Lower temperature for more consistent educational answers
-        maxTokens: 800,
+  private getUserProfile(userId: string): any {
+    if (!this.userProfiles.has(userId)) {
+      this.userProfiles.set(userId, {
+        level: 5,
+        correctAnswers: 0,
+        totalAttempts: 0,
+        weakTopics: [],
+        strongTopics: []
       });
-      
-      return answer;
-    } catch (error) {
-      console.error('Error generating answer:', error);
-      return 'عذراً، حدث خطأ أثناء معالجة السؤال. يُرجى المحاولة مرة أخرى.';
+    }
+    return this.userProfiles.get(userId);
+  }
+  
+  /**
+   * 🆕 Update user weak areas
+   */
+  private updateUserWeakAreas(userId: string, topic: string): void {
+    const profile = this.getUserProfile(userId);
+    if (!profile.weakTopics.includes(topic)) {
+      profile.weakTopics.push(topic);
+      // Keep only last 5 weak topics
+      if (profile.weakTopics.length > 5) {
+        profile.weakTopics.shift();
+      }
     }
   }
   
   /**
-   * ENHANCED: Better confidence calculation
+   * 🆕 Update user performance
    */
-  private calculateConfidence(chunks: SearchResult[]): number {
-    if (chunks.length === 0) return 0;
-    
-    // Take top 3 chunks for confidence calculation
-    const topChunks = chunks.slice(0, 3);
-    const topScores = topChunks.map(c => c.score || 0);
-    
-    // Calculate weighted average (first result weighs more)
-    const weights = [0.5, 0.3, 0.2];
-    let weightedSum = 0;
-    let weightTotal = 0;
-    
-    topScores.forEach((score, index) => {
-      const weight = weights[index] || 0.1;
-      weightedSum += score * weight;
-      weightTotal += weight;
-    });
-    
-    const avgScore = weightTotal > 0 ? weightedSum / weightTotal : 0;
-    
-    // Bonus for multiple high-quality sources
-    const highQualityCount = chunks.filter(c => c.score > 0.6).length;
-    const diversityBonus = Math.min(highQualityCount * 0.05, 0.15);
-    
-    // Convert to percentage (0-100)
-    return Math.min(Math.round((avgScore + diversityBonus) * 100), 100);
-  }
-  
-  /**
-   * Generate quiz questions from lesson content
-   */
-  async generateQuizQuestions(lessonId: string, count: number = 5): Promise<any[]> {
-    console.log(`📝 Generating ${count} quiz questions for lesson ${lessonId}`);
-    
-    // Get lesson content chunks
-    const chunks = await vectorSearch.searchInLesson(lessonId, '', 10);
-    
-    if (chunks.length === 0) {
-      throw new Error('No content found for lesson');
-    }
-    
-    const context = this.FEATURES.USE_SMART_CONTEXT
-      ? this.buildSmartContext('', chunks)
-      : this.buildContext('', chunks);
-    
-    const systemPrompt = `أنت مُعلم متخصص في إنشاء أسئلة اختبارات تعليمية للمناهج المصرية.
-
-مهمتك: إنشاء أسئلة اختيار من متعدد بناءً على المحتوى المُعطى.
-
-قواعد الأسئلة:
-1. يجب أن تكون واضحة ومحددة
-2. الخيارات يجب أن تكون متقاربة لتجنب الإجابات الواضحة
-3. يجب أن تغطي نقاط مختلفة من المحتوى
-4. مناسبة لمستوى الطالب
-5. باللغة العربية الفصحى البسيطة`;
-    
-    const userPrompt = `بناءً على المحتوى التعليمي التالي:
-=====================================
-${context}
-=====================================
-
-قم بإنشاء ${count} أسئلة اختيار من متعدد.
-
-يجب أن يكون الرد في صيغة JSON array بالشكل التالي بالضبط:
-[
-  {
-    "question": "نص السؤال هنا",
-    "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
-    "correctAnswer": "الخيار الصحيح (يجب أن يكون أحد الخيارات بالضبط)",
-    "explanation": "شرح مختصر للإجابة الصحيحة"
-  }
-]
-
-مهم جداً: الرد يجب أن يكون JSON صالح فقط، بدون أي نص إضافي أو markdown.`;
-    
-    try {
-      const response = await openAIService.chat([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ], {
-        temperature: 0.7,
-        maxTokens: 1500,
-      });
-      
-      // Clean response from any markdown
-      const cleanedResponse = response
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-      
-      try {
-        const questions = JSON.parse(cleanedResponse);
-        
-        // Validate structure
-        if (Array.isArray(questions)) {
-          return questions.slice(0, count);
+  updateUserPerformance(
+    userId: string,
+    correct: boolean,
+    topic?: string
+  ): void {
+    const profile = this.getUserProfile(userId);
+    profile.totalAttempts++;
+    if (correct) {
+      profile.correctAnswers++;
+      // Update strong topics
+      if (topic && !profile.strongTopics.includes(topic)) {
+        profile.strongTopics.push(topic);
+        if (profile.strongTopics.length > 5) {
+          profile.strongTopics.shift();
         }
-        return [];
-      } catch (parseError) {
-        console.error('Failed to parse quiz questions:', parseError);
-        return [];
-      }
-    } catch (error) {
-      console.error('Error generating quiz questions:', error);
-      return [];
-    }
-  }
-  
-  /**
-   * Explain a concept in simple terms
-   */
-  async explainConcept(
-    concept: string,
-    gradeLevel: number
-  ): Promise<string> {
-    console.log(`💡 Explaining concept "${concept}" for grade ${gradeLevel}`);
-    
-    // Check cache
-    const cacheKey = `explain-${concept}-${gradeLevel}`;
-    if (this.FEATURES.USE_CACHE) {
-      const cached = this.getFromCache(cacheKey);
-      if (cached) {
-        console.log('📦 Returning cached explanation');
-        return cached;
       }
     }
     
-    const ageGroup = gradeLevel <= 6 ? 'الابتدائية' : gradeLevel <= 9 ? 'الإعدادية' : 'الثانوية';
-    
-    const systemPrompt = `أنت معلم متميز متخصص في تبسيط المفاهيم العلمية للطلاب.
-تشرح للطلاب في المرحلة ${ageGroup} (الصف ${gradeLevel}).
-
-أسلوبك في الشرح:
-1. استخدم لغة بسيطة مناسبة للعمر
-2. أعط أمثلة من الحياة اليومية
-3. استخدم التشبيهات المناسبة
-4. ابدأ بالأساسيات ثم تدرج
-5. تجنب المصطلحات المعقدة`;
-    
-    const userPrompt = `اشرح مفهوم "${concept}" بطريقة بسيطة وواضحة.
-
-الشرح يجب أن يشمل:
-- تعريف بسيط
-- أمثلة من الحياة اليومية (2-3 أمثلة)
-- تشبيه مناسب للفهم
-- الفائدة من تعلم هذا المفهوم
-
-اجعل الشرح ممتعاً ومشوقاً للطالب.`;
-    
-    try {
-      const explanation = await openAIService.chat([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ], {
-        temperature: 0.6,
-        maxTokens: 600,
-      });
-      
-      // Cache the explanation
-      if (this.FEATURES.USE_CACHE) {
-        this.saveToCache(cacheKey, explanation, 95);
-      }
-      
-      return explanation;
-    } catch (error) {
-      console.error('Error explaining concept:', error);
-      return `${concept} هو أحد المفاهيم المهمة في المنهج. يُرجى مراجعة الكتاب المدرسي أو سؤال المعلم للحصول على شرح مفصل.`;
+    // Update level
+    const successRate = profile.correctAnswers / profile.totalAttempts;
+    if (successRate > 0.8 && profile.totalAttempts > 10) {
+      profile.level = Math.min(10, profile.level + 1);
+    } else if (successRate < 0.4 && profile.totalAttempts > 10) {
+      profile.level = Math.max(1, profile.level - 1);
     }
   }
   
   /**
-   * Generate study tips for a topic
+   * Cache management
    */
-  async generateStudyTips(
-    topic: string,
-    gradeLevel: number
-  ): Promise<string[]> {
-    console.log(`📚 Generating study tips for "${topic}"`);
-    
-    const prompt = `قدم 5 نصائح دراسية فعالة لطالب في الصف ${gradeLevel} لدراسة موضوع "${topic}".
-
-النصائح يجب أن تكون:
-- عملية وسهلة التطبيق
-- مناسبة للعمر
-- متنوعة (ذاكرة، فهم، تطبيق)
-- محفزة للطالب
-
-أرجع النصائح في صيغة JSON array من النصوص فقط.`;
-    
-    try {
-      const response = await openAIService.chat([
-        { role: 'system', content: 'أنت مستشار تعليمي متخصص في تقنيات الدراسة الفعالة.' },
-        { role: 'user', content: prompt },
-      ], {
-        temperature: 0.7,
-        maxTokens: 400,
-      });
-      
-      // Try to parse as JSON array
-      try {
-        const cleanedResponse = response
-          .replace(/```json\n?/g, '')
-          .replace(/```\n?/g, '')
-          .trim();
-        return JSON.parse(cleanedResponse);
-      } catch {
-        // If not JSON, split by lines
-        return response
-          .split('\n')
-          .filter(line => line.trim().length > 0)
-          .slice(0, 5);
-      }
-    } catch (error) {
-      console.error('Error generating study tips:', error);
-      return [
-        'اقرأ الدرس بتركيز وحدد النقاط المهمة',
-        'اكتب ملخص بكلماتك الخاصة',
-        'حل تمارين متنوعة للتطبيق',
-        'راجع الدرس بانتظام',
-        'اسأل عن الأجزاء الصعبة',
-      ];
-    }
-  }
-  
-  /**
-   * Process and index a lesson for RAG
-   */
-  async indexLesson(lessonId: string): Promise<void> {
-    console.log(`🔄 Indexing lesson ${lessonId} for RAG`);
-    await documentProcessor.processLessonContent(lessonId);
-  }
-  
-  /**
-   * Summarize lesson content
-   */
-  async summarizeLesson(lessonId: string): Promise<string> {
-    console.log(`📋 Summarizing lesson ${lessonId}`);
-    
-    // Get lesson content
-    const chunks = await vectorSearch.searchInLesson(lessonId, '', 20);
-    
-    if (chunks.length === 0) {
-      return 'لا يوجد محتوى متاح للتلخيص';
-    }
-    
-    const context = chunks.map(c => c.chunk.text).join('\n\n');
-    
-    const prompt = `لخص المحتوى التعليمي التالي في فقرة واحدة واضحة:
-
-${context}
-
-التلخيص يجب أن يشمل:
-- الأفكار الرئيسية
-- المفاهيم المهمة
-- النقاط الأساسية للحفظ
-
-اجعل التلخيص في حدود 150-200 كلمة.`;
-    
-    try {
-      return await openAIService.chat([
-        { role: 'system', content: 'أنت متخصص في تلخيص المحتوى التعليمي بشكل واضح ومفيد.' },
-        { role: 'user', content: prompt },
-      ], {
-        temperature: 0.5,
-        maxTokens: 400,
-      });
-    } catch (error) {
-      console.error('Error summarizing lesson:', error);
-      return 'عذراً، لم أتمكن من تلخيص الدرس.';
-    }
-  }
-  
-  /**
-   * IMPROVED: Better cache management
-   */
-  private getFromCache(key: string): string | null {
+  private getFromCache(key: string): { answer: string; confidence: number } | null {
     const cached = this.cache.get(key);
     if (!cached) return null;
     
-    // Check if expired
     if (Date.now() - cached.timestamp > this.CACHE_TTL) {
       this.cache.delete(key);
       return null;
     }
     
-    return cached.answer;
+    cached.hits++;
+    return { answer: cached.answer, confidence: cached.confidence };
   }
   
-  /**
-   * ENHANCED: Generate better cache keys
-   */
   private generateCacheKey(question: string, lessonId?: string): string {
-  const normalized = question
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/[؟?!.،,؛:]/g, '') 
-    .replace(/[ًٌٍَُِّْ]/g, ''); 
+    const normalized = question
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[؟?!.،,؛:]/g, '')
+      .replace(/[ًٌٍَُِّْ]/g, '');
     
-  return `rag_${normalized}_${lessonId || 'general'}`;
-}
+    return `rag_${normalized}_${lessonId || 'general'}`;
+  }
   
-  /**
-   * IMPROVED: Save to cache with metadata
-   */
   private saveToCache(key: string, answer: string, confidence: number): void {
-    // Remove oldest entries if cache is full
+    // Manage cache size
     if (this.cache.size >= this.FEATURES.MAX_CACHE_SIZE) {
-      // Find and remove least frequently used entries
       const entries = Array.from(this.cache.entries());
       entries.sort((a, b) => (a[1].hits || 0) - (b[1].hits || 0));
       
-      // Remove bottom 20%
       const toRemove = Math.ceil(entries.length * 0.2);
       for (let i = 0; i < toRemove; i++) {
         this.cache.delete(entries[i][0]);
@@ -602,27 +748,27 @@ ${context}
     
     this.cache.set(key, {
       answer,
+      confidence,
       timestamp: Date.now(),
       hits: 0,
     });
-    
-    // Log cache status
-    if (this.FEATURES.LOG_PERFORMANCE) {
-      console.log(`💾 Cache: ${this.cache.size}/${this.FEATURES.MAX_CACHE_SIZE} entries`);
-    }
   }
   
   /**
-   * Clear cache
+   * 🆕 Update metrics
    */
-  clearCache(): void {
-    const size = this.cache.size;
-    this.cache.clear();
-    console.log(`🗑️ RAG cache cleared (${size} entries removed)`);
+  private updateMetrics(confidence: number, responseTime: number): void {
+    this.metrics.averageConfidence = 
+      (this.metrics.averageConfidence * (this.metrics.totalQuestions - 1) + confidence) / 
+      this.metrics.totalQuestions;
+    
+    this.metrics.averageResponseTime = 
+      (this.metrics.averageResponseTime * (this.metrics.totalQuestions - 1) + responseTime) / 
+      this.metrics.totalQuestions;
   }
   
   /**
-   * NEW: Get performance metrics
+   * Get performance metrics
    */
   getMetrics(): any {
     return {
@@ -631,21 +777,32 @@ ${context}
       cacheHitRate: this.metrics.totalQuestions > 0 
         ? Math.round((this.metrics.cacheHits / this.metrics.totalQuestions) * 100) 
         : 0,
+      avgResponseTime: Math.round(this.metrics.averageResponseTime),
+      userProfiles: this.userProfiles.size
     };
   }
   
   /**
-   * NEW: Get feature status
+   * Clear cache
+   */
+  clearCache(): void {
+    const size = this.cache.size;
+    this.cache.clear();
+    console.log(`🗑️ Cleared ${size} cache entries`);
+  }
+  
+  /**
+   * Get feature status
    */
   getFeatureStatus(): any {
     return this.FEATURES;
   }
 }
 
-// Export singleton instance
+// Export singleton
 export const ragService = new RAGService();
 
-// ============= IMPROVED: Better cache cleanup =============
+// Cache cleanup interval
 setInterval(() => {
   const now = Date.now();
   const service = ragService as any;
@@ -661,8 +818,8 @@ setInterval(() => {
       }
     }
     
-    if (removed > 0 && service.FEATURES?.LOG_PERFORMANCE) {
-      console.log(`🧹 Cache cleanup: removed ${removed} expired entries`);
+    if (removed > 0) {
+      console.log(`🧹 Cleaned ${removed} expired entries`);
     }
   }
-}, 3600000); // Every hour
+}, 3600000);

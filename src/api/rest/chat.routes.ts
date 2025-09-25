@@ -11,15 +11,15 @@ const router = Router();
 // Validation schemas
 const sendMessageSchema = z.object({
   message: z.string().min(1).max(1000),
-  sessionId: z.string().uuid().optional(),
-  lessonId: z.string().uuid().optional(),
+  sessionId: z.string().optional(),
+  lessonId: z.string().optional(),
   context: z.object({
     language: z.enum(['ar', 'en']).optional(),
   }).optional(),
 });
 
 const chatHistorySchema = z.object({
-  lessonId: z.string().uuid().optional(),
+  lessonId: z.string().optional(),
   limit: z.string().default('50').transform(Number).pipe(z.number().min(1).max(100)),
 });
 
@@ -34,8 +34,9 @@ router.post(
   validateBody(sendMessageSchema),
   asyncHandler(async (req: Request, res: Response) => {
     const response = await chatService.processMessage(
-      req.user!.userId,
-      req.body
+      req.body.message,
+      req.body.context || {},
+      req.user!.userId
     );
     
     res.json(
@@ -76,7 +77,7 @@ router.get(
 router.get(
   '/session/:sessionId/summary',
   authenticate,
-  validateParams(z.object({ sessionId: z.string().uuid() })),
+  validateParams(z.object({ sessionId: z.string().min(1) })),
   asyncHandler(async (req: Request, res: Response) => {
     const summary = await chatService.getConversationSummary(
       req.params.sessionId
@@ -104,7 +105,7 @@ router.post(
   '/feedback',
   authenticate,
   validateBody(z.object({
-    messageId: z.string().uuid(),
+    messageId: z.string().min(1),
     rating: z.number().min(1).max(5),
     feedback: z.string().optional(),
   })),
@@ -127,7 +128,7 @@ router.get(
   '/suggestions',
   authenticate,
   validateQuery(z.object({
-    lessonId: z.string().uuid().optional(),
+    lessonId: z.string().optional(),
   })),
   asyncHandler(async (req: Request, res: Response) => {
     const { lessonId } = req.query as any;

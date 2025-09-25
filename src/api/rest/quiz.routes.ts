@@ -9,15 +9,15 @@ import asyncHandler from 'express-async-handler';
 
 const router = Router();
 
-// Validation schemas
+// Validation schemas - FIXED: Removed UUID validation
 const startQuizSchema = z.object({
-  lessonId: z.string().uuid(),
+  lessonId: z.string().min(1),  // ✅ تم التعديل
   questionCount: z.number().min(1).max(20).optional(),
 });
 
 const submitAnswerSchema = z.object({
-  attemptId: z.string().uuid(),
-  questionId: z.string().uuid(),
+  attemptId: z.string().min(1),   // ✅ تم التعديل
+  questionId: z.string().min(1),  // ✅ تم التعديل
   answer: z.string(),
   timeSpent: z.number().min(0),
 });
@@ -82,7 +82,7 @@ router.post(
 router.post(
   '/complete/:attemptId',
   authenticate,
-  validateParams(z.object({ attemptId: z.string().uuid() })),
+  validateParams(z.object({ attemptId: z.string().min(1) })),  // ✅ تم التعديل
   asyncHandler(async (req: Request, res: Response) => {
     const result = await quizService.completeQuiz(req.params.attemptId);
     
@@ -101,7 +101,7 @@ router.get(
   '/history',
   authenticate,
   validateQuery(z.object({
-    lessonId: z.string().uuid().optional(),
+    lessonId: z.string().optional(),  // ✅ تم التعديل - أزلت .uuid()
   })),
   asyncHandler(async (req: Request, res: Response) => {
     const { lessonId } = req.query as any;
@@ -125,7 +125,7 @@ router.get(
 router.get(
   '/statistics/:lessonId',
   authenticate,
-  validateParams(z.object({ lessonId: z.string().uuid() })),
+  validateParams(z.object({ lessonId: z.string().min(1) })),  // ✅ تم التعديل
   asyncHandler(async (req: Request, res: Response) => {
     const stats = await quizService.getQuizStatistics(req.params.lessonId);
     
@@ -144,7 +144,7 @@ router.post(
   '/generate',
   authenticate,
   validateBody(z.object({
-    lessonId: z.string().uuid(),
+    lessonId: z.string().min(1),  // ✅ تم التعديل
     count: z.number().min(1).max(20).default(5),
     difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']).optional(),
   })),
@@ -191,7 +191,7 @@ router.get(
   '/analytics',
   authenticate,
   validateQuery(z.object({
-    subjectId: z.string().uuid().optional(),
+    subjectId: z.string().optional(),  // ✅ تم التعديل - أزلت .uuid()
   })),
   asyncHandler(async (req: Request, res: Response) => {
     const { subjectId } = req.query as any;
@@ -216,7 +216,7 @@ router.get(
   '/leaderboard',
   authenticate,
   validateQuery(z.object({
-    subjectId: z.string().uuid().optional(),
+    subjectId: z.string().optional(),  // ✅ تم التعديل - أزلت .uuid()
     grade: z.string().transform(Number).optional(),
     limit: z.string().default('10').transform(Number).pipe(z.number()),
   })),

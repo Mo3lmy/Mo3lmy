@@ -1,33 +1,64 @@
+// src/core/quiz/quiz.service.ts
+
 import { z } from 'zod';
 import { prisma } from '../../config/database.config';
 import { ragService } from '../rag/rag.service';
 import { openAIService } from '../../services/ai/openai.service';
 import { NotFoundError, ValidationError } from '../../utils/errors';
+import { Difficulty } from '@prisma/client';
 import type { 
   QuizQuestion, 
   QuizSession, 
   QuizResult, 
   UserAnswer,
   QuestionResult,
-  QuizStatistics 
+  QuizStatistics,
+  QuizPerformance,
+  AnswerSubmissionResult
 } from '../../types/quiz.types';
 import type { Question, QuizAttempt, QuestionType } from '@prisma/client';
 
+/**
+ * Enhanced Quiz Service with Adaptive & Dynamic Features
+ * Version: 3.0 - Smart Quiz Generation
+ */
 export class QuizService {
-  private readonly PASS_THRESHOLD = 60; // 60% to pass
+  private readonly PASS_THRESHOLD = 60;
   private readonly MAX_QUESTIONS_PER_QUIZ = 10;
   
+  // Dynamic quiz settings
+  private readonly QUIZ_SETTINGS = {
+    adaptiveDifficulty: true,
+    mixQuestionTypes: true,
+    useGamification: true,
+    provideHints: true,
+    instantFeedback: true,
+  };
+  
+  // Question type distribution
+  private readonly QUESTION_TYPE_MIX = {
+    MCQ: 40,
+    TRUE_FALSE: 20,
+    FILL_BLANK: 20,
+    SHORT_ANSWER: 10,
+    ESSAY: 10,
+  };
+  
+  // Performance tracking (in-memory)
+  private userPerformance: Map<string, QuizPerformance> = new Map();
+
   /**
-   * Generate quiz questions for a lesson
+   * Generate adaptive quiz questions
    */
   async generateQuizQuestions(
     lessonId: string,
     count: number = 5,
-    difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
+    difficulty?: 'EASY' | 'MEDIUM' | 'HARD',
+    userId?: string
   ): Promise<Question[]> {
-    console.log(`📝 Generating ${count} quiz questions for lesson ${lessonId}`);
+    console.log(`📝 Generating ${count} adaptive questions`);
     
-    // Check if lesson exists
+    // Check lesson exists
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
       include: { content: true },
@@ -37,107 +68,228 @@ export class QuizService {
       throw new NotFoundError('Lesson or content');
     }
     
-    // Check for existing questions
-    const existingQuestions = await prisma.question.findMany({
+    // Get user performance for adaptive difficulty
+    const userLevel = userId ? this.getUserLevel(userId) : null;
+    const adaptedDifficulty = this.adaptDifficulty(difficulty, userLevel);
+    
+    // Check existing questions
+    let existingQuestions = await prisma.question.findMany({
       where: { 
         lessonId,
-        ...(difficulty && { difficulty }),
+        ...(adaptedDifficulty && { difficulty: adaptedDifficulty as Difficulty }),
       },
+      take: Math.floor(count / 2),
     });
     
-    // If we have enough questions, return them
-    if (existingQuestions.length >= count) {
-      return existingQuestions.slice(0, count);
-    }
+    // Shuffle for variety
+    existingQuestions = this.shuffleArray(existingQuestions);
     
-    // Generate new questions using AI
-    const generatedQuestions = await this.generateAIQuestions(
-      lesson,
-      count - existingQuestions.length,
-      difficulty
-    );
-    
-    // Save generated questions
-    const savedQuestions = await Promise.all(
-      generatedQuestions.map(async (q, index) => {
-        return await prisma.question.create({
-          data: {
-            lessonId,
-            type: q.type as QuestionType,
-            question: q.question,
-            options: q.options ? JSON.stringify(q.options) : null,
-            correctAnswer: q.correctAnswer.toString(),
-            explanation: q.explanation,
-            points: q.points,
-            difficulty: q.difficulty || difficulty || 'MEDIUM',
-            order: existingQuestions.length + index + 1,
-          },
-        });
-      })
-    );
-    
-    return [...existingQuestions, ...savedQuestions];
-  }
-  
-  /**
-   * Generate questions using AI
-   */
-  private async generateAIQuestions(
-    lesson: any,
-    count: number,
-    difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
-  ): Promise<QuizQuestion[]> {
-    // If no OpenAI key, generate mock questions
-    if (!process.env.OPENAI_API_KEY) {
-      return this.generateMockQuestions(lesson, count, difficulty);
-    }
-    
-    try {
-      // Use RAG service to generate questions
-      const questions = await ragService.generateQuizQuestions(lesson.id, count);
+    // Generate new dynamic questions
+    const newCount = count - existingQuestions.length;
+    if (newCount > 0) {
+      const generatedQuestions = await this.generateDynamicQuestions(
+        lesson,
+        newCount,
+        adaptedDifficulty,
+        userId
+      );
       
-      return questions.map((q, index) => ({
-        id: `gen-${index}`,
-        type: 'MCQ' as const,
-        question: q.question,
-        options: q.options,
-        correctAnswer: q.correctAnswer,
-        explanation: q.explanation,
-        points: difficulty === 'HARD' ? 3 : difficulty === 'MEDIUM' ? 2 : 1,
-        difficulty: difficulty || 'MEDIUM',
-      }));
+      // Save generated questions
+      const savedQuestions = await this.saveGeneratedQuestions(
+        lessonId,
+        generatedQuestions,
+        existingQuestions.length
+      );
+      
+      return [...existingQuestions, ...savedQuestions];
+    }
+    
+    return existingQuestions;
+  }
+  
+  /**
+   * Generate dynamic questions with variety
+   */
+  private async generateDynamicQuestions(
+    lesson: any,
+    count: number,
+    difficulty: 'EASY' | 'MEDIUM' | 'HARD',
+    userId?: string
+  ): Promise<QuizQuestion[]> {
+    try {
+      const questions = await ragService.generateQuizQuestions(
+        lesson.id, 
+        count,
+        userId
+      );
+      
+      // Enhance with variety and features
+      return questions.map((q, index) => this.enhanceQuestion(q, index, difficulty));
+      
     } catch (error) {
-      console.error('AI question generation failed:', error);
-      return this.generateMockQuestions(lesson, count, difficulty);
+      console.error('Dynamic generation failed:', error);
+      return this.generateVariedMockQuestions(lesson, count, difficulty);
     }
   }
   
   /**
-   * Generate mock questions for testing
+   * Enhance question with additional features
    */
-  private generateMockQuestions(
+  private enhanceQuestion(
+    question: any,
+    index: number,
+    difficulty: 'EASY' | 'MEDIUM' | 'HARD'
+  ): QuizQuestion {
+    // Ensure variety in question types
+    const type = this.selectQuestionType(index) as QuizQuestion['type'];
+    
+    // Transform based on type
+    let enhanced = { ...question };
+    
+    switch (type) {
+      case 'TRUE_FALSE':
+        enhanced = this.convertToTrueFalse(question);
+        break;
+      case 'FILL_BLANK':
+        enhanced = this.convertToFillBlank(question);
+        break;
+      case 'PROBLEM':
+        enhanced = this.convertToProblem(question);
+        break;
+    }
+    
+    // Add gamification elements
+    enhanced.points = this.calculatePoints(difficulty, type);
+    enhanced.timeBonus = difficulty === 'HARD' ? 10 : 5;
+    enhanced.hint = enhanced.hint || this.generateHint(enhanced.question);
+    
+    // Add metadata
+    enhanced.tags = enhanced.tags || this.extractTags(enhanced.question);
+    enhanced.difficulty = difficulty;
+    enhanced.type = type;
+    
+    return enhanced;
+  }
+  
+  /**
+   * Convert MCQ to True/False
+   */
+  private convertToTrueFalse(question: any): any {
+    if (question.type === 'TRUE_FALSE') return question;
+    
+    const statement = question.options?.[0] 
+      ? `${question.question.replace('؟', '')}: ${question.options[0]}`
+      : question.question;
+    
+    const isTrue = Math.random() > 0.5;
+    
+    return {
+      ...question,
+      type: 'TRUE_FALSE',
+      question: isTrue ? statement : statement.replace(question.options[0], question.options[1] || 'خطأ'),
+      options: ['صح', 'خطأ'],
+      correctAnswer: isTrue ? 'صح' : 'خطأ',
+      explanation: question.explanation || 'تحقق من المعلومة في الدرس'
+    };
+  }
+  
+  /**
+   * Convert to Fill in the Blank
+   */
+  private convertToFillBlank(question: any): any {
+    if (question.type === 'FILL_BLANK') return question;
+    
+    const answer = question.correctAnswer || question.options?.[0] || 'الإجابة';
+    const blank = '_____';
+    
+    let blankQuestion = question.question;
+    if (blankQuestion.includes(answer)) {
+      blankQuestion = blankQuestion.replace(answer, blank);
+    } else {
+      blankQuestion = `${question.question.replace('؟', '')} هو ${blank}`;
+    }
+    
+    return {
+      ...question,
+      type: 'FILL_BLANK',
+      question: blankQuestion,
+      correctAnswer: answer,
+      options: undefined,
+      hint: `${answer.length} أحرف`
+    };
+  }
+  
+  /**
+   * Convert to Problem
+   */
+  private convertToProblem(question: any): any {
+    if (question.type === 'PROBLEM') return question;
+    
+    return {
+      ...question,
+      type: 'PROBLEM',
+      question: `مسألة: ${question.question}`,
+      requiresSteps: true,
+      points: (question.points || 2) * 2,
+      hint: 'ابدأ بتحديد المعطيات والمطلوب'
+    };
+  }
+  
+  /**
+   * Select question type for variety
+   */
+  private selectQuestionType(index: number): string {
+    const types = Object.keys(this.QUESTION_TYPE_MIX);
+    const weights = Object.values(this.QUESTION_TYPE_MIX);
+    
+    // Rotate through types for variety
+    if (this.QUIZ_SETTINGS.mixQuestionTypes) {
+      return types[index % types.length];
+    }
+    
+    // Random weighted selection
+    const random = Math.random() * 100;
+    let cumulative = 0;
+    
+    for (let i = 0; i < types.length; i++) {
+      cumulative += weights[i];
+      if (random <= cumulative) {
+        return types[i];
+      }
+    }
+    
+    return 'MCQ';
+  }
+  
+  /**
+   * Generate varied mock questions
+   */
+  private generateVariedMockQuestions(
     lesson: any,
     count: number,
-    difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
+    difficulty: 'EASY' | 'MEDIUM' | 'HARD'
   ): QuizQuestion[] {
     const questions: QuizQuestion[] = [];
+    const types: QuizQuestion['type'][] = ['MCQ', 'TRUE_FALSE', 'FILL_BLANK', 'SHORT_ANSWER'];
     
     for (let i = 0; i < count; i++) {
+      const type = types[i % types.length];
+      
       questions.push({
         id: `mock-${i}`,
-        type: 'MCQ',
-        question: `سؤال تجريبي ${i + 1} عن ${lesson.title}؟`,
-        options: [
-          'الإجابة الأولى',
-          'الإجابة الثانية',
-          'الإجابة الثالثة',
-          'الإجابة الرابعة',
-        ],
-        correctAnswer: 0, // First option is correct
-        explanation: 'هذا سؤال تجريبي للاختبار',
-        points: difficulty === 'HARD' ? 3 : difficulty === 'MEDIUM' ? 2 : 1,
-        difficulty: difficulty || 'MEDIUM',
-        hint: 'اختر الإجابة الأولى',
+        type,
+        question: this.getMockQuestionByType(type, i, lesson.title),
+        options: type === 'MCQ' ? ['خيار أ', 'خيار ب', 'خيار ج', 'خيار د'] :
+                 type === 'TRUE_FALSE' ? ['صح', 'خطأ'] : undefined,
+        correctAnswer: type === 'MCQ' ? 'خيار أ' : 
+                      type === 'TRUE_FALSE' ? 'صح' : 
+                      'الإجابة النموذجية',
+        explanation: 'هذا شرح للإجابة',
+        points: this.calculatePoints(difficulty, type),
+        difficulty,
+        hint: 'راجع الدرس',
+        tags: [lesson.title, type],
+        timeLimit: 60,
       });
     }
     
@@ -145,76 +297,93 @@ export class QuizService {
   }
   
   /**
-   * Start a quiz attempt
+   * Get mock question by type
+   */
+  private getMockQuestionByType(type: string, index: number, lessonTitle: string): string {
+    switch (type) {
+      case 'TRUE_FALSE':
+        return `صح أم خطأ: ${lessonTitle} يحتوي على ${index + 3} مفاهيم أساسية`;
+      case 'FILL_BLANK':
+        return `أكمل: ${lessonTitle} يتحدث عن _____ و _____`;
+      case 'SHORT_ANSWER':
+        return `اذكر ثلاثة أمثلة من ${lessonTitle}`;
+      default:
+        return `سؤال ${index + 1} عن ${lessonTitle}؟`;
+    }
+  }
+  
+  /**
+   * Start adaptive quiz session
    */
   async startQuizAttempt(
     userId: string,
     lessonId: string,
-    questionCount?: number
+    questionCount?: number,
+    mode?: 'practice' | 'test' | 'challenge'
   ): Promise<QuizSession> {
-    console.log(`🎮 Starting quiz for user ${userId} on lesson ${lessonId}`);
+    console.log(`🎮 Starting ${mode || 'practice'} quiz for ${userId}`);
     
-    // Get questions for the lesson
-    const questions = await prisma.question.findMany({
-      where: { lessonId },
-      take: questionCount || this.MAX_QUESTIONS_PER_QUIZ,
-      orderBy: { order: 'asc' },
-    });
+    // Get adaptive questions
+    const requestedCount = questionCount || this.MAX_QUESTIONS_PER_QUIZ;
+    const questions = await this.generateQuizQuestions(
+      lessonId,
+      requestedCount,
+      undefined,
+      userId
+    );
     
-    if (questions.length === 0) {
-      // Generate questions if none exist
-      await this.generateQuizQuestions(lessonId, 5);
-      
-      const newQuestions = await prisma.question.findMany({
-        where: { lessonId },
-        take: questionCount || this.MAX_QUESTIONS_PER_QUIZ,
-      });
-      
-      questions.push(...newQuestions);
-    }
+    // Order questions by difficulty (easy to hard)
+    const orderedQuestions = this.orderQuestionsByDifficulty(questions);
     
-    // Create quiz attempt
+    // Create attempt
     const attempt = await prisma.quizAttempt.create({
       data: {
         userId,
         lessonId,
-        totalQuestions: questions.length,
+        totalQuestions: orderedQuestions.length,
         correctAnswers: 0,
       },
     });
     
-    // Convert to quiz session
+    // Enhanced session with features
     const session: QuizSession = {
       id: attempt.id,
       userId,
       lessonId,
-      questions: questions.map(q => ({
+      mode: mode || 'practice',
+      questions: orderedQuestions.map(q => ({
         id: q.id,
-        type: q.type as any,
+        type: q.type as QuizQuestion['type'],
         question: q.question,
         options: q.options ? JSON.parse(q.options) : undefined,
         correctAnswer: q.correctAnswer,
         explanation: q.explanation || undefined,
         points: q.points,
-        difficulty: q.difficulty,
+        difficulty: q.difficulty as 'EASY' | 'MEDIUM' | 'HARD',
+        hint: q.hints ? JSON.parse(q.hints)[0] : undefined,
+        timeLimit: this.getTimeLimit(q.difficulty as string, q.type as string),
       })),
       answers: [],
       startedAt: attempt.createdAt,
-      timeLimit: questions.length * 60, // 60 seconds per question
+      timeLimit: orderedQuestions.length * 60,
+      // Gamification
+      lives: mode === 'challenge' ? 3 : undefined,
+      streakCount: 0,
+      bonusPoints: 0,
     };
     
     return session;
   }
   
   /**
-   * Submit answer for a question
+   * Submit answer with instant feedback
    */
   async submitAnswer(
     attemptId: string,
     questionId: string,
     answer: string,
     timeSpent: number
-  ): Promise<boolean> {
+  ): Promise<AnswerSubmissionResult> {
     // Get question
     const question = await prisma.question.findUnique({
       where: { id: questionId },
@@ -224,8 +393,36 @@ export class QuizService {
       throw new NotFoundError('Question');
     }
     
-    // Check if answer is correct
+    // Get attempt for streak tracking
+    const attempt = await prisma.quizAttempt.findUnique({
+      where: { id: attemptId },
+      include: { answers: true }
+    });
+    
+    // Check answer
     const isCorrect = this.checkAnswer(question, answer);
+    
+    // Calculate points with bonuses
+    let pointsEarned = 0;
+    let streakBonus = 0;
+    
+    if (isCorrect) {
+      pointsEarned = question.points;
+      
+      // Time bonus
+      if (timeSpent < 30 && question.difficulty === 'HARD') {
+        pointsEarned += 5;
+      } else if (timeSpent < 20) {
+        pointsEarned += 2;
+      }
+      
+      // Streak bonus
+      const currentStreak = this.calculateStreak(attempt?.answers || []);
+      if (currentStreak >= 3) {
+        streakBonus = Math.min(currentStreak * 2, 10);
+        pointsEarned += streakBonus;
+      }
+    }
     
     // Save answer
     await prisma.quizAttemptAnswer.create({
@@ -238,23 +435,63 @@ export class QuizService {
       },
     });
     
-    // Update attempt if correct
+    // Update attempt
     if (isCorrect) {
       await prisma.quizAttempt.update({
         where: { id: attemptId },
         data: {
-          correctAnswers: {
-            increment: 1,
-          },
+          correctAnswers: { increment: 1 },
         },
       });
     }
     
-    return isCorrect;
+    // Update user performance
+    if (attempt?.userId) {
+      this.updateUserPerformance(attempt.userId, isCorrect, timeSpent);
+      ragService.updateUserPerformance(attempt.userId, isCorrect);
+    }
+    
+    // Generate personalized explanation if wrong
+    let explanation = question.explanation || '';
+    if (!isCorrect && attempt?.userId) {
+      explanation = await this.getPersonalizedExplanation(
+        question,
+        answer,
+        attempt.userId
+      );
+    }
+    
+    return {
+      isCorrect,
+      explanation,
+      pointsEarned,
+      streakBonus,
+      hint: !isCorrect ? this.generateHint(question.question) : undefined
+    };
   }
   
   /**
-   * Check if answer is correct
+   * Get personalized explanation for wrong answer
+   */
+  private async getPersonalizedExplanation(
+    question: Question,
+    userAnswer: string,
+    userId: string
+  ): Promise<string> {
+    try {
+      return await ragService.explainWrongAnswer(
+        question.question,
+        userAnswer,
+        question.correctAnswer,
+        userId
+      );
+    } catch (error) {
+      return question.explanation || 'حاول مرة أخرى مع التركيز على المعطيات.';
+    }
+  }
+  
+  /**
+   * Check answer with fuzzy matching
    */
   private checkAnswer(question: Question, userAnswer: string): boolean {
     const correct = question.correctAnswer.toLowerCase().trim();
@@ -262,19 +499,22 @@ export class QuizService {
     
     switch (question.type) {
       case 'TRUE_FALSE':
-        return correct === user;
+        const trueAnswers = ['صح', 'صحيح', 'نعم', 'true', '1'];
+        const falseAnswers = ['خطأ', 'خاطئ', 'لا', 'false', '0'];
+        
+        if (trueAnswers.includes(user)) return trueAnswers.includes(correct);
+        if (falseAnswers.includes(user)) return falseAnswers.includes(correct);
+        return false;
         
       case 'MCQ':
-        // Handle both index and text answers
         if (!isNaN(Number(user))) {
           return correct === user;
         }
-        return correct === user;
+        return this.fuzzyMatch(correct, user, 0.9);
         
       case 'FILL_BLANK':
       case 'SHORT_ANSWER':
-        // More lenient comparison for text answers
-        return this.fuzzyMatch(correct, user);
+        return this.fuzzyMatch(correct, user, 0.8);
         
       default:
         return correct === user;
@@ -282,35 +522,40 @@ export class QuizService {
   }
   
   /**
-   * Fuzzy string matching for text answers
+   * Enhanced fuzzy matching
    */
-  private fuzzyMatch(correct: string, user: string): boolean {
-    // Remove extra spaces and punctuation
-    const cleanCorrect = correct.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-    const cleanUser = user.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+  private fuzzyMatch(correct: string, user: string, threshold: number = 0.8): boolean {
+    const normalize = (str: string) => str
+      .replace(/[ًٌٍَُِّْ]/g, '')
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     
-    // Exact match after cleaning
+    const cleanCorrect = normalize(correct);
+    const cleanUser = normalize(user);
+    
     if (cleanCorrect === cleanUser) return true;
     
-    // Check if user answer contains all key words
     const correctWords = cleanCorrect.split(' ');
     const userWords = cleanUser.split(' ');
     
     const matchedWords = correctWords.filter(word => 
-      userWords.some(userWord => userWord.includes(word) || word.includes(userWord))
+      userWords.some(userWord => 
+        userWord === word || 
+        (word.length > 3 && (userWord.includes(word) || word.includes(userWord)))
+      )
     );
     
-    // If 80% of words match, consider it correct
-    return matchedWords.length >= correctWords.length * 0.8;
+    return matchedWords.length >= correctWords.length * threshold;
   }
   
   /**
-   * Complete quiz and calculate results
+   * Complete quiz with enhanced analysis
    */
   async completeQuiz(attemptId: string): Promise<QuizResult> {
-    console.log(`🏁 Completing quiz attempt ${attemptId}`);
+    console.log(`🏁 Completing quiz ${attemptId}`);
     
-    // Get attempt with answers
+    // Get attempt with all data
     const attempt = await prisma.quizAttempt.findUnique({
       where: { id: attemptId },
       include: {
@@ -319,6 +564,7 @@ export class QuizService {
             question: true,
           },
         },
+        user: true,
       },
     });
     
@@ -326,23 +572,21 @@ export class QuizService {
       throw new NotFoundError('Quiz attempt');
     }
     
-    // Calculate score
+    // Calculate scores
     const totalPoints = attempt.answers.reduce(
-      (sum, a) => sum + a.question.points,
-      0
+      (sum, a) => sum + a.question.points, 0
     );
     const earnedPoints = attempt.answers.reduce(
-      (sum, a) => sum + (a.isCorrect ? a.question.points : 0),
-      0
+      (sum, a) => sum + (a.isCorrect ? a.question.points : 0), 0
     );
     const percentage = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0;
     const passed = percentage >= this.PASS_THRESHOLD;
     
-    // Calculate time spent
+    // Time analysis
     const timeSpent = attempt.answers.reduce(
-      (sum, a) => sum + (a.timeSpent || 0),
-      0
+      (sum, a) => sum + (a.timeSpent || 0), 0
     );
+    const avgTimePerQuestion = Math.round(timeSpent / attempt.answers.length);
     
     // Update attempt
     await prisma.quizAttempt.update({
@@ -354,7 +598,7 @@ export class QuizService {
       },
     });
     
-    // Prepare question results
+    // Question results
     const questionResults: QuestionResult[] = attempt.answers.map(a => ({
       questionId: a.questionId,
       question: a.question.question,
@@ -364,16 +608,27 @@ export class QuizService {
       points: a.isCorrect ? a.question.points : 0,
       explanation: a.question.explanation || undefined,
       timeSpent: a.timeSpent || 0,
+      difficulty: a.question.difficulty as 'EASY' | 'MEDIUM' | 'HARD',
+      type: a.question.type as QuestionResult['type'],
     }));
     
-    // Analyze strengths and weaknesses
-    const { strengths, weaknesses } = this.analyzePerformance(questionResults);
+    // Enhanced performance analysis
+    const analysis = this.analyzeEnhancedPerformance(questionResults, avgTimePerQuestion);
     
-    // Generate recommendations
-    const recommendations = await this.generateRecommendations(
+    // Generate personalized recommendations
+    const recommendations = await this.generatePersonalizedRecommendations(
       attempt.userId,
       attempt.lessonId,
-      weaknesses
+      analysis,
+      percentage
+    );
+    
+    // Calculate achievements
+    const achievements = this.checkAchievements(
+      attempt.userId,
+      percentage,
+      attempt.answers.length,
+      timeSpent
     );
     
     // Update progress
@@ -388,100 +643,367 @@ export class QuizService {
       percentage: Math.round(percentage),
       passed,
       timeSpent,
+      avgTimePerQuestion,
       correctAnswers: attempt.correctAnswers,
       totalQuestions: attempt.totalQuestions,
       questionResults,
-      strengths,
-      weaknesses,
+      ...analysis,
       recommendations,
+      achievements,
+      nextSteps: this.getNextSteps(passed, percentage),
     };
   }
   
   /**
-   * Analyze quiz performance
+   * Enhanced performance analysis
    */
-  private analyzePerformance(results: QuestionResult[]): {
+  private analyzeEnhancedPerformance(
+    results: QuestionResult[],
+    avgTime: number
+  ): {
     strengths: string[];
     weaknesses: string[];
+    insights: string[];
   } {
     const strengths: string[] = [];
     const weaknesses: string[] = [];
+    const insights: string[] = [];
     
-    // Group by difficulty
+    // By difficulty
     const byDifficulty = {
-      easy: results.filter(r => r.question.includes('سهل')),
-      medium: results.filter(r => r.question.includes('متوسط')),
-      hard: results.filter(r => r.question.includes('صعب')),
+      EASY: results.filter(r => r.difficulty === 'EASY'),
+      MEDIUM: results.filter(r => r.difficulty === 'MEDIUM'),
+      HARD: results.filter(r => r.difficulty === 'HARD'),
     };
     
-    // Analyze easy questions
-    const easyCorrect = byDifficulty.easy.filter(r => r.isCorrect).length;
-    if (easyCorrect === byDifficulty.easy.length && byDifficulty.easy.length > 0) {
-      strengths.push('إتقان المفاهيم الأساسية');
-    } else if (easyCorrect < byDifficulty.easy.length * 0.5) {
-      weaknesses.push('المفاهيم الأساسية تحتاج مراجعة');
-    }
+    // Analyze each difficulty
+    Object.entries(byDifficulty).forEach(([level, questions]) => {
+      if (questions.length > 0) {
+        const correct = questions.filter(q => q.isCorrect).length;
+        const rate = (correct / questions.length) * 100;
+        
+        if (rate >= 80) {
+          strengths.push(`إتقان الأسئلة ${level === 'EASY' ? 'السهلة' : level === 'MEDIUM' ? 'المتوسطة' : 'الصعبة'}`);
+        } else if (rate < 50) {
+          weaknesses.push(`تحتاج تحسين في الأسئلة ${level === 'EASY' ? 'السهلة' : level === 'MEDIUM' ? 'المتوسطة' : 'الصعبة'}`);
+        }
+      }
+    });
     
-    // Analyze time management
-    const avgTime = results.reduce((sum, r) => sum + r.timeSpent, 0) / results.length;
+    // By question type
+    const byType = {
+      MCQ: results.filter(r => r.type === 'MCQ'),
+      TRUE_FALSE: results.filter(r => r.type === 'TRUE_FALSE'),
+      FILL_BLANK: results.filter(r => r.type === 'FILL_BLANK'),
+    };
+    
+    Object.entries(byType).forEach(([type, questions]) => {
+      if (questions.length > 0) {
+        const correct = questions.filter(q => q.isCorrect).length;
+        const rate = (correct / questions.length) * 100;
+        
+        if (rate >= 90) {
+          insights.push(`أداء ممتاز في أسئلة ${this.getTypeNameArabic(type)}`);
+        } else if (rate < 40) {
+          insights.push(`تحتاج مراجعة أسئلة ${this.getTypeNameArabic(type)}`);
+        }
+      }
+    });
+    
+    // Time management
     if (avgTime < 30) {
-      strengths.push('سرعة في الإجابة');
+      strengths.push('سرعة ممتازة في الحل');
+      insights.push('⚡ تجيب بسرعة - تأكد من القراءة الجيدة');
     } else if (avgTime > 90) {
-      weaknesses.push('البطء في الإجابة - تحتاج لمزيد من التدريب');
+      weaknesses.push('تحتاج تحسين السرعة');
+      insights.push('⏱️ خذ وقتك ولكن حاول الإسراع قليلاً');
     }
     
-    // Overall performance
-    const correctCount = results.filter(r => r.isCorrect).length;
-    const accuracy = (correctCount / results.length) * 100;
-    
-    if (accuracy >= 90) {
-      strengths.push('أداء ممتاز بشكل عام');
-    } else if (accuracy >= 70) {
-      strengths.push('أداء جيد');
-    } else if (accuracy < 50) {
-      weaknesses.push('الأداء العام يحتاج تحسين');
+    // Pattern detection
+    const lastThree = results.slice(-3);
+    if (lastThree.every(r => !r.isCorrect)) {
+      insights.push('📉 آخر 3 أسئلة خاطئة - ربما تحتاج راحة');
+    } else if (lastThree.every(r => r.isCorrect)) {
+      insights.push('📈 أنهيت بقوة! آخر 3 أسئلة صحيحة');
     }
     
-    return { strengths, weaknesses };
+    return { strengths, weaknesses, insights };
   }
   
   /**
-   * Generate learning recommendations
+   * Generate personalized recommendations
    */
-  private async generateRecommendations(
+  private async generatePersonalizedRecommendations(
     userId: string,
     lessonId: string,
-    weaknesses: string[]
+    analysis: any,
+    percentage: number
   ): Promise<string[]> {
     const recommendations: string[] = [];
     
-    if (weaknesses.length === 0) {
-      recommendations.push('أحسنت! يمكنك الانتقال للدرس التالي');
-      return recommendations;
+    // Based on score
+    if (percentage >= 90) {
+      recommendations.push('🌟 أداء رائع! جاهز للمستوى التالي');
+      recommendations.push('جرب التحديات الصعبة لتطوير مهاراتك أكثر');
+    } else if (percentage >= 70) {
+      recommendations.push('أداء جيد! راجع النقاط التي أخطأت فيها');
+      recommendations.push('حل المزيد من التمارين المتوسطة');
+    } else if (percentage >= 50) {
+      recommendations.push('تحتاج مراجعة الدرس مرة أخرى');
+      recommendations.push('ركز على الأمثلة والتطبيقات');
+      recommendations.push('اطلب شرح إضافي من المساعد الذكي');
+    } else {
+      recommendations.push('لا تيأس! التعلم يحتاج وقت');
+      recommendations.push('ابدأ بمراجعة الأساسيات');
+      recommendations.push('شاهد فيديوهات الشرح');
+      recommendations.push('حل تمارين سهلة أولاً');
     }
     
-    // Basic recommendations based on weaknesses
-    if (weaknesses.includes('المفاهيم الأساسية تحتاج مراجعة')) {
-      recommendations.push('راجع الدرس مرة أخرى مع التركيز على الأمثلة');
-      recommendations.push('حاول حل المزيد من التمارين البسيطة');
+    // Based on weaknesses
+    if (analysis.weaknesses.includes('تحتاج تحسين السرعة')) {
+      recommendations.push('⏱️ تدرب على حل الأسئلة بوقت محدد');
     }
     
-    if (weaknesses.includes('البطء في الإجابة')) {
-      recommendations.push('تدرب على حل الأسئلة بوقت محدد');
-      recommendations.push('راجع القوانين والمفاهيم الأساسية لتصبح أسرع');
-    }
+    // Based on insights
+    analysis.insights.forEach((insight: string) => {
+      if (insight.includes('راحة')) {
+        recommendations.push('خذ استراحة 10 دقائق ثم عد للمحاولة');
+      }
+    });
     
-    if (weaknesses.includes('الأداء العام يحتاج تحسين')) {
-      recommendations.push('أعد مشاهدة فيديو الشرح');
-      recommendations.push('اطلب المساعدة من المعلم الذكي');
-      recommendations.push('حل الاختبار مرة أخرى بعد المراجعة');
-    }
-    
-    return recommendations;
+    return recommendations.slice(0, 5);
   }
   
   /**
-   * Update user progress
+   * Check achievements
+   */
+  private checkAchievements(
+    userId: string,
+    percentage: number,
+    questionsCount: number,
+    timeSpent: number
+  ): string[] {
+    const achievements: string[] = [];
+    
+    if (percentage === 100) {
+      achievements.push('🏆 الكمال - درجة كاملة!');
+    }
+    if (percentage >= 90 && questionsCount >= 10) {
+      achievements.push('⭐ نجم الاختبارات');
+    }
+    if (timeSpent < questionsCount * 30) {
+      achievements.push('⚡ البرق - سريع جداً');
+    }
+    if (percentage >= 60 && percentage < 70) {
+      achievements.push('💪 على الحافة - نجحت بالضبط');
+    }
+    
+    const userPerf = this.getUserPerformance(userId);
+    if (userPerf.streakCount >= 5) {
+      achievements.push(`🔥 سلسلة ${userPerf.streakCount} اختبارات ناجحة`);
+    }
+    
+    return achievements;
+  }
+  
+  /**
+   * Get next steps
+   */
+  private getNextSteps(passed: boolean, percentage: number): string[] {
+    if (passed) {
+      if (percentage >= 90) {
+        return [
+          'انتقل للدرس التالي',
+          'جرب مستوى أصعب',
+          'ساعد زملاءك في الفهم'
+        ];
+      } else {
+        return [
+          'راجع الأخطاء',
+          'انتقل للدرس التالي',
+          'حل تمارين إضافية'
+        ];
+      }
+    } else {
+      return [
+        'راجع الدرس',
+        'اطلب مساعدة المعلم الذكي',
+        'أعد المحاولة بعد المراجعة',
+        'شاهد فيديوهات الشرح'
+      ];
+    }
+  }
+  
+  // Helper methods
+  
+  private getUserLevel(userId: string): any {
+    const perf = this.getUserPerformance(userId);
+    const successRate = perf.totalAttempts > 0 
+      ? perf.correctAnswers / perf.totalAttempts 
+      : 0.5;
+    
+    return {
+      level: successRate > 0.8 ? 'advanced' : successRate > 0.5 ? 'intermediate' : 'beginner',
+      performance: perf
+    };
+  }
+  
+  private adaptDifficulty(requested?: 'EASY' | 'MEDIUM' | 'HARD', userLevel?: any): 'EASY' | 'MEDIUM' | 'HARD' {
+    if (!this.QUIZ_SETTINGS.adaptiveDifficulty || !userLevel) {
+      return requested || 'MEDIUM';
+    }
+    
+    if (userLevel.level === 'advanced') {
+      return userLevel.performance.lastDifficulty === 'HARD' ? 'HARD' : 'MEDIUM';
+    } else if (userLevel.level === 'beginner') {
+      return 'EASY';
+    }
+    
+    return requested || 'MEDIUM';
+  }
+  
+  private getUserPerformance(userId: string): QuizPerformance {
+    if (!this.userPerformance.has(userId)) {
+      this.userPerformance.set(userId, {
+        userId,
+        totalAttempts: 0,
+        correctAnswers: 0,
+        averageTime: 0,
+        streakCount: 0,
+        lastDifficulty: 'MEDIUM',
+        level: 'intermediate'
+      });
+    }
+    return this.userPerformance.get(userId)!;
+  }
+  
+  private updateUserPerformance(userId: string, correct: boolean, time: number): void {
+    const perf = this.getUserPerformance(userId);
+    perf.totalAttempts++;
+    if (correct) {
+      perf.correctAnswers++;
+      perf.streakCount++;
+    } else {
+      perf.streakCount = 0;
+    }
+    perf.averageTime = (perf.averageTime * (perf.totalAttempts - 1) + time) / perf.totalAttempts;
+    
+    // Update level
+    const successRate = perf.correctAnswers / perf.totalAttempts;
+    perf.level = successRate > 0.8 ? 'advanced' : successRate > 0.5 ? 'intermediate' : 'beginner';
+  }
+  
+  private calculateStreak(answers: any[]): number {
+    let streak = 0;
+    for (let i = answers.length - 1; i >= 0; i--) {
+      if (answers[i].isCorrect) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+  
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+  
+  private orderQuestionsByDifficulty(questions: any[]): any[] {
+    const order = { EASY: 1, MEDIUM: 2, HARD: 3 };
+    return questions.sort((a, b) => 
+      (order[a.difficulty as keyof typeof order] || 2) - 
+      (order[b.difficulty as keyof typeof order] || 2)
+    );
+  }
+  
+  private calculatePoints(difficulty: string, type: string): number {
+    let base = difficulty === 'EASY' ? 1 : difficulty === 'HARD' ? 3 : 2;
+    if (type === 'PROBLEM' || type === 'ESSAY') base *= 2;
+    if (type === 'SHORT_ANSWER') base *= 1.5;
+    return Math.round(base);
+  }
+  
+  private getTimeLimit(difficulty: string, type: string): number {
+    let base = 60; // seconds
+    if (difficulty === 'HARD') base += 30;
+    if (type === 'PROBLEM' || type === 'ESSAY') base += 60;
+    if (type === 'SHORT_ANSWER') base += 30;
+    return base;
+  }
+  
+  private generateHint(question: string): string {
+    const hints = [
+      'راجع الدرس مرة أخرى',
+      'فكر في المعطيات',
+      'ابحث عن الكلمات المفتاحية',
+      'تذكر القاعدة الأساسية',
+      'حاول التبسيط أولاً'
+    ];
+    return hints[Math.floor(Math.random() * hints.length)];
+  }
+  
+  private extractTags(question: string): string[] {
+    const tags: string[] = [];
+    
+    // Extract math terms
+    if (question.includes('معادلة')) tags.push('معادلات');
+    if (question.includes('كسر') || question.includes('كسور')) tags.push('كسور');
+    if (question.includes('جمع')) tags.push('جمع');
+    if (question.includes('طرح')) tags.push('طرح');
+    if (question.includes('ضرب')) tags.push('ضرب');
+    if (question.includes('قسمة')) tags.push('قسمة');
+    
+    return tags.slice(0, 3);
+  }
+  
+  private getTypeNameArabic(type: string): string {
+    const names: Record<string, string> = {
+      MCQ: 'الاختيار من متعدد',
+      TRUE_FALSE: 'صح أو خطأ',
+      FILL_BLANK: 'أكمل الفراغات',
+      SHORT_ANSWER: 'الإجابة القصيرة',
+      PROBLEM: 'المسائل',
+      ESSAY: 'المقالية'
+    };
+    return names[type] || type;
+  }
+  
+  private async saveGeneratedQuestions(
+    lessonId: string,
+    questions: QuizQuestion[],
+    startIndex: number
+  ): Promise<Question[]> {
+    return await Promise.all(
+      questions.map(async (q, index) => {
+        return await prisma.question.create({
+          data: {
+            lessonId,
+            type: (q.type || 'MCQ') as QuestionType,
+            question: q.question,
+            options: q.options ? JSON.stringify(q.options) : null,
+            correctAnswer: q.correctAnswer.toString(),
+            explanation: q.explanation,
+            points: q.points || 1,
+            difficulty: (q.difficulty || 'MEDIUM') as Difficulty,
+            order: startIndex + index + 1,
+            hints: q.hint ? JSON.stringify([q.hint]) : null,
+            tags: q.tags ? JSON.stringify(q.tags) : null,
+            learningObjective: q.learningObjective,
+            stepByStepSolution: q.stepByStepSolution ? JSON.stringify(q.stepByStepSolution) : null,
+          },
+        });
+      })
+    );
+  }
+  
+  /**
+   * Update progress
    */
   private async updateProgress(
     userId: string,
@@ -498,9 +1020,9 @@ export class QuizService {
       },
       update: {
         quizCompleted: passed,
-        completionRate: Math.max(score, 50), // Minimum 50% for attempting
+        completionRate: Math.max(score, 50),
         status: passed ? 'COMPLETED' : 'IN_PROGRESS',
-        completedAt: passed ? new Date() : null,
+        completedAt: passed ? new Date() : undefined,
       },
       create: {
         userId,
@@ -508,13 +1030,13 @@ export class QuizService {
         quizCompleted: passed,
         completionRate: score,
         status: passed ? 'COMPLETED' : 'IN_PROGRESS',
-        completedAt: passed ? new Date() : null,
+        completedAt: passed ? new Date() : undefined,
       },
     });
   }
   
   /**
-   * Get quiz statistics for a lesson
+   * Get quiz statistics
    */
   async getQuizStatistics(lessonId: string): Promise<QuizStatistics> {
     const attempts = await prisma.quizAttempt.findMany({
@@ -540,7 +1062,6 @@ export class QuizService {
       };
     }
     
-    // Calculate statistics
     const totalAttempts = attempts.length;
     const scores = attempts.map(a => a.score || 0);
     const averageScore = scores.reduce((a, b) => a + b, 0) / totalAttempts;
@@ -550,7 +1071,7 @@ export class QuizService {
     const times = attempts.map(a => a.timeSpent || 0);
     const averageTimeSpent = times.reduce((a, b) => a + b, 0) / totalAttempts;
     
-    // Analyze questions
+    // Question analysis
     const questionStats = new Map<string, { correct: number; total: number }>();
     
     attempts.forEach(attempt => {
@@ -562,7 +1083,6 @@ export class QuizService {
       });
     });
     
-    // Find difficult and easy questions
     const questionDifficulty = Array.from(questionStats.entries())
       .map(([id, stats]) => ({
         id,
@@ -585,12 +1105,12 @@ export class QuizService {
       averageTimeSpent: Math.round(averageTimeSpent),
       mostDifficultQuestions,
       easiestQuestions,
-      commonMistakes: [], // Would need more complex analysis
+      commonMistakes: [],
     };
   }
   
   /**
-   * Get user's quiz history
+   * Get user quiz history
    */
   async getUserQuizHistory(
     userId: string,
@@ -609,5 +1129,5 @@ export class QuizService {
   }
 }
 
-// Export singleton instance
+// Export singleton
 export const quizService = new QuizService();

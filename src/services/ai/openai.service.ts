@@ -1,5 +1,5 @@
 // 📍 المكان: src/services/ai/openai.service.ts
-// النسخة المُصلحة بالكامل مع معالجة أفضل لـ API key والأخطاء
+// ✨ النسخة المحسنة مع Multi-Model Strategy و Cost Optimization
 
 import OpenAI from 'openai';
 import { encoding_for_model } from 'tiktoken';
@@ -29,6 +29,16 @@ export interface EmbeddingResponse {
   tokens: number;
 }
 
+// ============= 🆕 SMART MODEL SELECTION =============
+export interface TaskAnalysis {
+  type: 'simple_qa' | 'explanation' | 'math' | 'creative' | 'arabic' | 'quiz' | 'unknown';
+  complexity: number; // 1-10
+  expectedLength: number; // expected response length
+  requiresReasoning: boolean;
+  requiresCreativity: boolean;
+  language: 'ar' | 'en' | 'mixed';
+}
+
 export interface CompletionOptions {
   temperature?: number;
   maxTokens?: number;
@@ -43,7 +53,10 @@ export interface CompletionOptions {
   cacheKey?: string;
   cacheTTL?: number;
   prompt?: string;
-  model?: string; // إضافة خيار اختيار الموديل
+  model?: string;
+  // 🆕 Smart selection
+  autoSelectModel?: boolean;
+  taskType?: TaskAnalysis['type'];
 }
 
 export interface TemplateOptions extends CompletionOptions {
@@ -71,6 +84,46 @@ const AI_CONFIG = {
   USE_MOCK: process.env.MOCK_MODE === 'true' || !process.env.OPENAI_API_KEY,
 };
 
+// ============= 🆕 MODEL CONFIGURATIONS =============
+const MODEL_CONFIGS = {
+  'gpt-3.5-turbo': {
+    name: 'gpt-3.5-turbo',
+    costPer1kInput: 0.0005,
+    costPer1kOutput: 0.0015,
+    maxTokens: 16385,
+    bestFor: ['simple_qa', 'translation', 'summary'],
+    speed: 'fast',
+    quality: 'good'
+  },
+  'gpt-4o-mini': {
+    name: 'gpt-4o-mini',
+    costPer1kInput: 0.00015,
+    costPer1kOutput: 0.0006,
+    maxTokens: 128000,
+    bestFor: ['general', 'balanced'],
+    speed: 'fast',
+    quality: 'very_good'
+  },
+  'gpt-4o': {
+    name: 'gpt-4o',
+    costPer1kInput: 0.005,
+    costPer1kOutput: 0.015,
+    maxTokens: 128000,
+    bestFor: ['complex', 'analysis', 'creative'],
+    speed: 'medium',
+    quality: 'excellent'
+  },
+  'gpt-4-turbo': {
+    name: 'gpt-4-turbo',
+    costPer1kInput: 0.01,
+    costPer1kOutput: 0.03,
+    maxTokens: 128000,
+    bestFor: ['arabic', 'explanation', 'teaching'],
+    speed: 'medium',
+    quality: 'excellent'
+  }
+};
+
 // ============= ENHANCED SERVICE CLASS =============
 
 export class OpenAIService {
@@ -84,18 +137,27 @@ export class OpenAIService {
   private isInitialized: boolean = false;
   private useMockMode: boolean = false;
   
+  // 🆕 Performance tracking
+  private modelUsageStats: Map<string, {
+    count: number;
+    totalCost: number;
+    avgResponseTime: number;
+    successRate: number;
+  }> = new Map();
+  
   constructor() {
     this.initializeService();
     
-    // Initialize caches
+    // Initialize caches with better config
     this.responseCache = new LRUCache<string, any>({
-      max: 100,
+      max: 200, // Increased
       ttl: AI_CONFIG.CACHE_TTL * 1000,
+      updateAgeOnGet: true, // Keep fresh items in cache
     });
     
     this.embeddingCache = new LRUCache<string, number[]>({
-      max: 500,
-      ttl: 24 * 60 * 60 * 1000,
+      max: 1000, // Increased
+      ttl: 7 * 24 * 60 * 60 * 1000, // 1 week
     });
   }
   
@@ -105,7 +167,6 @@ export class OpenAIService {
   private initializeService(): void {
     const apiKey = config.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     
-    // تحقق من صحة API key
     if (!apiKey) {
       console.warn('⚠️ OpenAI API key not configured - using MOCK mode');
       this.useMockMode = true;
@@ -113,38 +174,33 @@ export class OpenAIService {
       return;
     }
     
-    // تحقق من أن الـ key يبدو صحيح
     if (!apiKey.startsWith('sk-') || apiKey.length < 40) {
       console.warn('⚠️ OpenAI API key appears invalid - using MOCK mode');
-      console.warn('   Key format should be: sk-... (40+ characters)');
       this.useMockMode = true;
       this.isInitialized = false;
       return;
     }
     
-    // تحقق إذا كان مجبور على Mock mode
     if (AI_CONFIG.USE_MOCK) {
-      console.log('📝 MOCK_MODE enabled in environment - using mock responses');
+      console.log('📝 MOCK_MODE enabled in environment');
       this.useMockMode = true;
       this.isInitialized = false;
       return;
     }
     
     try {
-      // Initialize OpenAI client
       this.client = new OpenAI({
         apiKey: apiKey,
         maxRetries: 3,
-        timeout: 30000, // 30 seconds timeout
+        timeout: 30000,
       });
       
       this.isInitialized = true;
       this.useMockMode = false;
       
-      console.log('✅ OpenAI client initialized successfully');
-      console.log(`   📊 Model: ${AI_CONFIG.MODEL}`);
-      console.log(`   🎯 Temperature: ${AI_CONFIG.TEMPERATURE}`);
-      console.log(`   📝 Max tokens: ${AI_CONFIG.MAX_TOKENS}`);
+      console.log('✅ OpenAI client initialized');
+      console.log(`   📊 Default Model: ${AI_CONFIG.MODEL}`);
+      console.log(`   💰 Monthly Limit: $${AI_CONFIG.MONTHLY_LIMIT}`);
       
     } catch (error: any) {
       console.error('❌ Failed to initialize OpenAI client:', error.message);
@@ -152,7 +208,6 @@ export class OpenAIService {
       this.isInitialized = false;
     }
     
-    // Initialize tokenizer
     try {
       this.encoder = encoding_for_model('gpt-3.5-turbo');
     } catch {
@@ -161,52 +216,108 @@ export class OpenAIService {
   }
   
   /**
-   * Simple completion for direct prompt usage
+   * 🆕 Analyze task to select best model
    */
-  async createCompletion(options: {
-    prompt: string;
-    temperature?: number;
-    maxTokens?: number;
-    model?: string;
-  }): Promise<string> {
-    // إذا في Mock mode، استخدم mock response
-    if (this.useMockMode || !this.isInitialized) {
-      console.log('📝 Using mock response (OpenAI not available)');
-      return this.getMockResponse(options.prompt);
+  private analyzeTask(messages: ChatMessage[]): TaskAnalysis {
+    const lastMessage = messages[messages.length - 1].content.toLowerCase();
+    const fullContext = messages.map(m => m.content).join(' ').toLowerCase();
+    
+    // Detect language
+    const arabicRatio = (fullContext.match(/[\u0600-\u06FF]/g) || []).length / fullContext.length;
+    const language = arabicRatio > 0.3 ? 'ar' : arabicRatio > 0 ? 'mixed' : 'en';
+    
+    // Detect task type
+    let type: TaskAnalysis['type'] = 'unknown';
+    let complexity = 5;
+    let requiresReasoning = false;
+    let requiresCreativity = false;
+    
+    // Simple Q&A patterns
+    if (lastMessage.includes('ما هو') || lastMessage.includes('what is') || 
+        lastMessage.includes('متى') || lastMessage.includes('when')) {
+      type = 'simple_qa';
+      complexity = 2;
+    }
+    // Math patterns
+    else if (lastMessage.includes('حل') || lastMessage.includes('معادلة') || 
+             lastMessage.includes('solve') || lastMessage.includes('calculate')) {
+      type = 'math';
+      complexity = 7;
+      requiresReasoning = true;
+    }
+    // Explanation patterns
+    else if (lastMessage.includes('اشرح') || lastMessage.includes('explain') ||
+             lastMessage.includes('كيف') || lastMessage.includes('how')) {
+      type = 'explanation';
+      complexity = 6;
+    }
+    // Creative patterns
+    else if (lastMessage.includes('قصة') || lastMessage.includes('story') ||
+             lastMessage.includes('اكتب') || lastMessage.includes('write')) {
+      type = 'creative';
+      complexity = 7;
+      requiresCreativity = true;
+    }
+    // Quiz patterns
+    else if (lastMessage.includes('اختبار') || lastMessage.includes('quiz') ||
+             lastMessage.includes('سؤال') || lastMessage.includes('question')) {
+      type = 'quiz';
+      complexity = 5;
+    }
+    // Arabic content
+    else if (language === 'ar' && complexity > 3) {
+      type = 'arabic';
+      complexity = 6;
     }
     
-    try {
-      // تحويل البرومبت لرسالة
-      const messages: ChatMessage[] = [
-        { role: 'user', content: options.prompt }
-      ];
-      
-      // استدعاء دالة chat الموجودة
-      const response = await this.chat(messages, {
-        temperature: options.temperature,
-        maxTokens: options.maxTokens,
-        model: options.model
-      });
-      
-      return response;
-      
-    } catch (error: any) {
-      console.error('❌ createCompletion failed:', error.message);
-      
-      // معالجة أخطاء محددة
-      if (error.message?.includes('401') || error.message?.includes('Incorrect API key')) {
-        console.error('🔑 API key is invalid - switching to MOCK mode');
-        this.useMockMode = true;
-        this.isInitialized = false;
-      }
-      
-      // Fallback to mock
-      return this.getMockResponse(options.prompt);
+    // Estimate expected length
+    const expectedLength = complexity < 3 ? 200 : complexity < 6 ? 500 : 1000;
+    
+    return {
+      type,
+      complexity,
+      expectedLength,
+      requiresReasoning,
+      requiresCreativity,
+      language
+    };
+  }
+  
+  /**
+   * 🆕 Select optimal model based on task
+   */
+  private selectModel(task: TaskAnalysis, preferredModel?: string): string {
+    // If model explicitly specified, use it
+    if (preferredModel && preferredModel in MODEL_CONFIGS) {
+      return preferredModel;
+    }
+    
+    // Budget check
+    const budgetRemaining = AI_CONFIG.MONTHLY_LIMIT - this.totalCost;
+    const isLowBudget = budgetRemaining < 2;
+    
+    // Smart selection based on task
+    if (task.type === 'simple_qa' || isLowBudget) {
+      return 'gpt-3.5-turbo'; // Fast & cheap
+    } else if (task.type === 'math' && task.requiresReasoning) {
+      return 'gpt-4o'; // Best for reasoning
+    } else if (task.type === 'arabic' || task.language === 'ar') {
+      return 'gpt-4-turbo'; // Best for Arabic
+    } else if (task.type === 'creative' && task.requiresCreativity) {
+      return 'gpt-4-turbo'; // Creative writing
+    } else if (task.type === 'explanation') {
+      return 'gpt-4o-mini'; // Balanced
+    } else if (task.complexity < 4) {
+      return 'gpt-3.5-turbo'; // Simple tasks
+    } else if (task.complexity > 7) {
+      return 'gpt-4o'; // Complex tasks
+    } else {
+      return 'gpt-4o-mini'; // Default balanced
     }
   }
   
   /**
-   * Chat completion with improved error handling
+   * Chat completion with smart model selection
    */
   async chat(
     messages: ChatMessage[],
@@ -222,27 +333,44 @@ export class OpenAIService {
     }
     this.lastRequestTime = new Date();
     
-    // If in mock mode, return mock response
+    // Mock mode
     if (this.useMockMode || !this.isInitialized || !this.client) {
       const lastMessage = messages[messages.length - 1];
-      const mockResponse = this.getMockResponse(lastMessage.content);
-      console.log(`📝 Mock response: ${mockResponse.substring(0, 50)}...`);
-      return mockResponse;
+      return this.getMockResponse(lastMessage.content);
     }
     
+    // 🆕 Smart model selection
+    let selectedModel = options.model || AI_CONFIG.MODEL;
+    if (options.autoSelectModel !== false) {
+      const task = this.analyzeTask(messages);
+      selectedModel = this.selectModel(task, options.model);
+      
+      if (selectedModel !== (options.model || AI_CONFIG.MODEL)) {
+        console.log(`🧠 Smart selection: ${selectedModel} for ${task.type} task`);
+      }
+    }
+    
+    const startTime = Date.now();
+    
     try {
-      // حساب التوكنز
       const inputTokens = messages.reduce((sum, msg) => 
         sum + this.countTokens(msg.content), 0
       );
       
-      console.log(`🤖 Calling OpenAI API (${inputTokens} input tokens)...`);
+      // Adjust max tokens based on model
+      const modelConfig = MODEL_CONFIGS[selectedModel as keyof typeof MODEL_CONFIGS];
+      const maxTokens = Math.min(
+        options.maxTokens ?? AI_CONFIG.MAX_TOKENS,
+        modelConfig?.maxTokens ?? 4000
+      );
+      
+      console.log(`🤖 Using ${selectedModel} (${inputTokens} tokens)...`);
       
       const response = await this.client.chat.completions.create({
-        model: options.model || AI_CONFIG.MODEL,
+        model: selectedModel,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
         temperature: options.temperature ?? AI_CONFIG.TEMPERATURE,
-        max_tokens: options.maxTokens ?? AI_CONFIG.MAX_TOKENS,
+        max_tokens: maxTokens,
         top_p: options.topP ?? 1,
         frequency_penalty: options.frequencyPenalty ?? 0,
         presence_penalty: options.presencePenalty ?? 0,
@@ -251,51 +379,70 @@ export class OpenAIService {
       
       const content = response.choices[0]?.message?.content || '';
       const outputTokens = this.countTokens(content);
+      const responseTime = Date.now() - startTime;
       
-      // حساب التكلفة
-      const cost = this.calculateCost(
-        options.model || AI_CONFIG.MODEL, 
-        inputTokens, 
-        outputTokens
-      );
+      // Calculate cost
+      const cost = this.calculateCost(selectedModel, inputTokens, outputTokens);
       
-      console.log(`✅ OpenAI response received (${outputTokens} tokens, $${cost.toFixed(4)})`);
+      // 🆕 Track model performance
+      this.trackModelUsage(selectedModel, cost, responseTime, true);
+      
+      console.log(`✅ Response: ${outputTokens} tokens, ${responseTime}ms, $${cost.toFixed(4)}`);
       
       return content;
       
     } catch (error: any) {
-      console.error('❌ Chat completion failed:', error.message);
+      const responseTime = Date.now() - startTime;
+      this.trackModelUsage(selectedModel, 0, responseTime, false);
       
-      // معالجة أنواع مختلفة من الأخطاء
-      if (error.status === 401 || error.message?.includes('401')) {
-        console.error('🔑 Invalid API key - switching to MOCK mode');
+      console.error('❌ Chat failed:', error.message);
+      
+      // Smart retry with cheaper model
+      if (error.status === 429 && selectedModel !== 'gpt-3.5-turbo') {
+        console.log('⏳ Rate limited, trying cheaper model...');
+        return this.chat(messages, { ...options, model: 'gpt-3.5-turbo' });
+      }
+      
+      // Other error handling
+      if (error.status === 401) {
         this.useMockMode = true;
         this.isInitialized = false;
         this.client = null;
         return this.getMockResponse(messages[messages.length - 1].content);
       }
       
-      if (error.status === 429 || error.message?.includes('rate_limit')) {
-        console.log('⏳ Rate limited, waiting 5 seconds...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        // Retry once
-        return this.chat(messages, options);
-      }
-      
-      if (error.status === 503 || error.message?.includes('Service unavailable')) {
-        console.log('⚠️ OpenAI service unavailable - using mock');
-        return this.getMockResponse(messages[messages.length - 1].content);
-      }
-      
       if (error.message?.includes('context_length_exceeded')) {
         console.log('📏 Context too long, truncating...');
-        const truncatedMessages = this.truncateMessages(messages, AI_CONFIG.MAX_TOKENS);
+        const truncatedMessages = this.truncateMessages(messages, 2000);
         return this.chat(truncatedMessages, options);
       }
       
-      // Fallback to mock for any other error
       return this.getMockResponse(messages[messages.length - 1].content);
     }
+  }
+  
+  /**
+   * 🆕 Track model usage statistics
+   */
+  private trackModelUsage(
+    model: string, 
+    cost: number, 
+    responseTime: number, 
+    success: boolean
+  ): void {
+    const stats = this.modelUsageStats.get(model) || {
+      count: 0,
+      totalCost: 0,
+      avgResponseTime: 0,
+      successRate: 0
+    };
+    
+    stats.count++;
+    stats.totalCost += cost;
+    stats.avgResponseTime = (stats.avgResponseTime * (stats.count - 1) + responseTime) / stats.count;
+    stats.successRate = (stats.successRate * (stats.count - 1) + (success ? 100 : 0)) / stats.count;
+    
+    this.modelUsageStats.set(model, stats);
   }
   
   /**
@@ -330,7 +477,7 @@ export class OpenAIService {
     if (options.useCache !== false && !this.useMockMode) {
       const cached = this.responseCache.get(cacheKey);
       if (cached) {
-        console.log('📦 Returning cached response');
+        console.log('📦 Cache hit!');
         return cached;
       }
     }
@@ -345,7 +492,7 @@ export class OpenAIService {
   }
   
   /**
-   * Chat with retry logic
+   * Chat with smart retry logic
    */
   private async chatWithRetry(
     messages: ChatMessage[],
@@ -356,15 +503,21 @@ export class OpenAIService {
       return await this.chat(messages, options);
     } catch (error: any) {
       if (attempt >= AI_CONFIG.RETRY_COUNT) {
-        // Final attempt - use mock
-        console.log('📝 All retries failed - using mock response');
+        console.log('📝 All retries failed - using mock');
         return this.getMockResponse(messages[messages.length - 1].content);
       }
       
       console.warn(`⚠️ Attempt ${attempt} failed, retrying...`);
       
+      // Exponential backoff
       const delay = AI_CONFIG.RETRY_DELAY * Math.pow(2, attempt - 1);
       await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Try cheaper model on retry
+      if (attempt > 1 && options.model !== 'gpt-3.5-turbo') {
+        options.model = 'gpt-3.5-turbo';
+        console.log('💡 Switching to cheaper model for retry');
+      }
       
       return this.chatWithRetry(messages, options, attempt + 1);
     }
@@ -410,8 +563,11 @@ export class OpenAIService {
     }
     
     try {
+      // Use smarter model for function calls
+      const model = options.model || 'gpt-4o-mini';
+      
       const response = await this.client.chat.completions.create({
-        model: options.model || AI_CONFIG.MODEL,
+        model,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
         functions,
         function_call: options.function_call || 'auto',
@@ -446,18 +602,16 @@ export class OpenAIService {
   }
   
   /**
-   * تنظيف JSON من markdown blocks
+   * Clean JSON from markdown
    */
   private cleanJsonResponse(text: string): string {
     let cleaned = text;
     
-    // إزالة markdown code blocks
     cleaned = cleaned.replace(/^```json\s*\n?/i, '');
     cleaned = cleaned.replace(/^```\s*\n?/i, '');
     cleaned = cleaned.replace(/\n?```\s*$/i, '');
     cleaned = cleaned.replace(/```[a-z]*\n?/gi, '');
     
-    // استخراج JSON object أو array
     const jsonMatch = cleaned.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) {
       cleaned = jsonMatch[1];
@@ -467,7 +621,7 @@ export class OpenAIService {
   }
   
   /**
-   * Chat completion expecting JSON response
+   * Chat expecting JSON response
    */
   async chatJSON<T = any>(
     messages: ChatMessage[],
@@ -475,27 +629,27 @@ export class OpenAIService {
   ): Promise<T> {
     const enhancedMessages = [...messages];
     if (enhancedMessages[0]?.role === 'system') {
-      enhancedMessages[0].content += '\n\nIMPORTANT: Respond ONLY with valid JSON. No text before or after the JSON.';
+      enhancedMessages[0].content += '\n\nIMPORTANT: Respond ONLY with valid JSON. No text before or after.';
     } else {
       enhancedMessages.unshift({
         role: 'system',
-        content: 'Respond ONLY with valid JSON. No text before or after the JSON.'
+        content: 'Respond ONLY with valid JSON. No text before or after.'
       });
     }
     
+    // Use lower temperature for JSON
     const response = await this.chat(enhancedMessages, {
       ...options,
       temperature: options.temperature ?? 0.3,
+      model: options.model || 'gpt-4o-mini', // Better for structured output
     });
     
     try {
       const cleaned = this.cleanJsonResponse(response);
       return JSON.parse(cleaned);
     } catch (error) {
-      console.error('❌ JSON parsing failed:', error);
-      console.log('Raw response (first 500 chars):', response.substring(0, 500));
+      console.error('❌ JSON parsing failed');
       
-      // Try to extract JSON from the response
       const jsonRegex = /\{[\s\S]*\}|\[[\s\S]*\]/;
       const match = response.match(jsonRegex);
       if (match) {
@@ -506,23 +660,18 @@ export class OpenAIService {
         }
       }
       
-      // Return empty object for mock mode
-      if (this.useMockMode) {
-        return {} as T;
-      }
-      
       return {} as T;
     }
   }
   
   /**
-   * Generate text embedding with caching
+   * Generate embedding with caching
    */
   async generateEmbedding(text: string, useCache: boolean = true): Promise<EmbeddingResponse> {
     if (useCache) {
       const cached = this.embeddingCache.get(text);
       if (cached) {
-        console.log('📦 Returning cached embedding');
+        console.log('📦 Cached embedding');
         return {
           embedding: cached,
           tokens: Math.ceil(text.length / 4)
@@ -531,7 +680,6 @@ export class OpenAIService {
     }
     
     if (this.useMockMode || !this.client) {
-      // Mock embedding for testing
       const mockEmbedding = Array(1536).fill(0).map(() => Math.random() - 0.5);
       return {
         embedding: mockEmbedding,
@@ -553,16 +701,14 @@ export class OpenAIService {
       }
       
       const cost = this.calculateCost(AI_CONFIG.EMBEDDING_MODEL, tokens, 0);
-      console.log(`💰 Embedding cost: $${cost.toFixed(4)}`);
       
       return {
         embedding,
         tokens,
       };
     } catch (error: any) {
-      console.error('❌ Embedding generation failed:', error.message);
+      console.error('❌ Embedding failed:', error.message);
       
-      // Return mock embedding on error
       const mockEmbedding = Array(1536).fill(0).map(() => Math.random() - 0.5);
       return {
         embedding: mockEmbedding,
@@ -572,7 +718,7 @@ export class OpenAIService {
   }
   
   /**
-   * Generate embeddings for multiple texts with batching
+   * Batch generate embeddings
    */
   async generateEmbeddings(
     texts: string[],
@@ -582,7 +728,7 @@ export class OpenAIService {
     const uncachedTexts: string[] = [];
     const uncachedIndices: number[] = [];
     
-    // Check cache first
+    // Check cache
     if (useCache) {
       for (let i = 0; i < texts.length; i++) {
         const cached = this.embeddingCache.get(texts[i]);
@@ -598,7 +744,7 @@ export class OpenAIService {
       }
       
       if (uncachedTexts.length === 0) {
-        console.log(`📦 All ${texts.length} embeddings from cache`);
+        console.log(`📦 All ${texts.length} embeddings cached`);
         return results;
       }
     } else {
@@ -606,7 +752,7 @@ export class OpenAIService {
       uncachedIndices.push(...texts.map((_, i) => i));
     }
     
-    // Batch process uncached texts
+    // Batch process
     const batchSize = 100;
     
     for (let i = 0; i < uncachedTexts.length; i += batchSize) {
@@ -614,7 +760,6 @@ export class OpenAIService {
       const batchIndices = uncachedIndices.slice(i, i + batchSize);
       
       if (this.useMockMode || !this.client) {
-        // Mock embeddings for testing
         batch.forEach((text, idx) => {
           const embedding = Array(1536).fill(0).map(() => Math.random() - 0.5);
           results[batchIndices[idx]] = {
@@ -646,9 +791,8 @@ export class OpenAIService {
         });
         
       } catch (error: any) {
-        console.error('❌ Batch embedding failed:', error.message);
+        console.error('❌ Batch embedding failed');
         
-        // Mock embeddings on error
         batch.forEach((text, idx) => {
           const embedding = Array(1536).fill(0).map(() => Math.random() - 0.5);
           results[batchIndices[idx]] = {
@@ -658,7 +802,6 @@ export class OpenAIService {
         });
       }
       
-      // Rate limiting between batches
       if (i + batchSize < uncachedTexts.length) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -668,7 +811,7 @@ export class OpenAIService {
   }
   
   /**
-   * Stream chat completion
+   * Stream chat
    */
   async *chatStream(
     messages: ChatMessage[],
@@ -680,8 +823,12 @@ export class OpenAIService {
     }
     
     try {
+      // Smart model selection for streaming
+      const task = this.analyzeTask(messages);
+      const model = options.model || this.selectModel(task);
+      
       const stream = await this.client.chat.completions.create({
-        model: options.model || AI_CONFIG.MODEL,
+        model,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
         temperature: options.temperature ?? AI_CONFIG.TEMPERATURE,
         max_tokens: options.maxTokens ?? AI_CONFIG.MAX_TOKENS,
@@ -700,54 +847,40 @@ export class OpenAIService {
         sum + this.countTokens(msg.content), 0
       );
       const outputTokens = this.countTokens(fullResponse);
-      const cost = this.calculateCost(
-        options.model || AI_CONFIG.MODEL, 
-        inputTokens, 
-        outputTokens
-      );
-      console.log(`💰 Stream cost: $${cost.toFixed(4)}`);
+      const cost = this.calculateCost(model, inputTokens, outputTokens);
       
     } catch (error: any) {
-      console.error('❌ Chat stream failed:', error.message);
+      console.error('❌ Stream failed');
       yield this.getMockResponse(messages[messages.length - 1].content);
     }
   }
   
   /**
-   * Calculate cost for API usage
+   * Calculate cost with model configs
    */
   private calculateCost(model: string, inputTokens: number, outputTokens: number): number {
-    const prices: Record<string, { input: number; output: number }> = {
-      'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-      'gpt-4o': { input: 0.005, output: 0.015 },
-      'gpt-4-turbo': { input: 0.01, output: 0.03 },
-      'gpt-4': { input: 0.03, output: 0.06 },
-      'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 },
-      'text-embedding-3-small': { input: 0.00002, output: 0 },
-      'text-embedding-3-large': { input: 0.00013, output: 0 },
-    };
+    const modelConfig = MODEL_CONFIGS[model as keyof typeof MODEL_CONFIGS];
+    const costPer1kInput = modelConfig?.costPer1kInput || 0.001;
+    const costPer1kOutput = modelConfig?.costPer1kOutput || 0.002;
     
-    const modelPrices = prices[model] || prices['gpt-4o-mini'];
-    const cost = (inputTokens * modelPrices.input + outputTokens * modelPrices.output) / 1000;
+    const cost = (inputTokens * costPer1kInput + outputTokens * costPer1kOutput) / 1000;
     
     this.totalCost += cost;
     
-    if (this.totalCost > AI_CONFIG.MONTHLY_LIMIT) {
-      console.warn(`⚠️ Monthly limit exceeded: $${this.totalCost.toFixed(2)} / $${AI_CONFIG.MONTHLY_LIMIT}`);
+    if (this.totalCost > AI_CONFIG.MONTHLY_LIMIT * 0.8) {
+      console.warn(`⚠️ Approaching limit: $${this.totalCost.toFixed(2)}/$${AI_CONFIG.MONTHLY_LIMIT}`);
     }
     
     return cost;
   }
   
   /**
-   * Count tokens in text
+   * Count tokens
    */
   countTokens(text: string): number {
     if (!text) return 0;
     
     if (!this.encoder) {
-      // تقدير تقريبي إذا لم يتوفر encoder
-      // GPT models: ~4 characters per token for English, ~2-3 for Arabic
       const arabicRatio = (text.match(/[\u0600-\u06FF]/g) || []).length / text.length;
       const charsPerToken = arabicRatio > 0.5 ? 2.5 : 4;
       return Math.ceil(text.length / charsPerToken);
@@ -757,25 +890,24 @@ export class OpenAIService {
       const tokens = this.encoder.encode(text);
       return tokens.length;
     } catch {
-      // Fallback estimation
       return Math.ceil(text.length / 3);
     }
   }
   
   /**
-   * Truncate messages to fit within token limit
+   * Truncate messages smartly
    */
   private truncateMessages(messages: ChatMessage[], maxTokens: number): ChatMessage[] {
     const truncated: ChatMessage[] = [];
     let totalTokens = 0;
     
-    // Always keep system message if present
+    // Keep system message
     if (messages[0]?.role === 'system') {
       truncated.push(messages[0]);
       totalTokens += this.countTokens(messages[0].content);
     }
     
-    // Add messages from newest to oldest until we hit the limit
+    // Add recent messages
     for (let i = messages.length - 1; i >= (truncated.length > 0 ? 1 : 0); i--) {
       const msg = messages[i];
       const tokens = this.countTokens(msg.content);
@@ -792,7 +924,7 @@ export class OpenAIService {
   }
   
   /**
-   * Generate cache key from messages
+   * Generate cache key
    */
   private generateCacheKey(messages: ChatMessage[]): string {
     const content = messages.map(m => `${m.role}:${m.content}`).join('|');
@@ -806,51 +938,33 @@ export class OpenAIService {
   }
   
   /**
-   * Get enhanced mock response for testing
+   * Enhanced mock responses
    */
   private getMockResponse(message: string): string {
     const lowerMessage = message.toLowerCase();
     
-    // Educational responses
     const educationalResponses: Record<string, string> = {
-      'welcome': 'مرحباً بك في درس اليوم! أنا مساعدك التعليمي الذكي. سنتعلم معاً خطوة بخطوة بطريقة ممتعة وسهلة. هل أنت مستعد للبدء؟ 🌟',
-      'complete': 'أحسنت! لقد أكملت الدرس بنجاح! 🎉 أنت طالب رائع ومجتهد. لقد تعلمت اليوم أشياء جديدة ومفيدة. استمر في التقدم!',
-      'math': 'الرياضيات لغة الكون! سنتعلم اليوم كيف نحل المعادلات خطوة بخطوة. كل معادلة هي لغز ممتع ننتظر حله!',
-      'equation': 'لحل المعادلة، نتبع خطوات محددة: 1) نحدد المجهول 2) نجمع الحدود المتشابهة 3) نعزل المجهول 4) نتحقق من الحل',
-      'example': 'مثال: إذا كان 2x + 5 = 15، نطرح 5 من الطرفين: 2x = 10، ثم نقسم على 2: x = 5. التحقق: 2(5) + 5 = 15 ✓',
-      'help': 'أنا هنا لمساعدتك! يمكنك أن تسأل عن: شرح المفاهيم، حل التمارين، أمثلة إضافية، أو أي شيء متعلق بالدرس.',
-      'explain': 'دعني أشرح لك بطريقة بسيطة: كل مفهوم جديد نتعلمه يبني على ما سبق. مثل بناء البيت، نبدأ بالأساس ثم نبني طابقاً تلو الآخر.',
-      'quiz': 'حان وقت الاختبار! سأطرح عليك بعض الأسئلة لنرى ما تعلمته. لا تقلق، الهدف هو التعلم وليس الدرجات فقط.',
-      'excellent': 'ممتاز! إجابة صحيحة 100%! أنت تفهم المفهوم جيداً. هل تريد تحدياً أصعب؟',
-      'tryagain': 'لا بأس، المحاولة جزء من التعلم! دعنا نحاول مرة أخرى. تذكر القاعدة التي تعلمناها.',
+      'welcome': 'مرحباً بك! أنا مساعدك التعليمي الذكي. سنتعلم معاً بطريقة ممتعة وسهلة! 🌟',
+      'complete': 'أحسنت! لقد أكملت الدرس بنجاح! 🎉 أنت طالب رائع ومجتهد!',
+      'math': 'الرياضيات لغة الكون! سنتعلم اليوم كيف نحل المعادلات خطوة بخطوة.',
+      'equation': 'لحل المعادلة: 1) نحدد المجهول 2) نجمع الحدود المتشابهة 3) نعزل المجهول',
+      'example': 'مثال: إذا كان 2x + 5 = 15، نطرح 5: 2x = 10، نقسم على 2: x = 5 ✓',
+      'help': 'أنا هنا لمساعدتك! اسأل عن أي شيء في الدرس.',
+      'explain': 'دعني أشرح لك: كل مفهوم جديد يبني على ما سبق.',
+      'quiz': 'وقت الاختبار! سأطرح عليك أسئلة لنرى ما تعلمته.',
+      'excellent': 'ممتاز! إجابة صحيحة 100%!',
+      'tryagain': 'لا بأس، المحاولة جزء من التعلم! حاول مرة أخرى.',
     };
     
-    // Math-specific responses
     if (lowerMessage.includes('معادل') || lowerMessage.includes('حل')) {
       return educationalResponses.equation;
     }
     
-    if (lowerMessage.includes('مثال') || lowerMessage.includes('مسألة')) {
+    if (lowerMessage.includes('مثال')) {
       return educationalResponses.example;
     }
     
-    if (lowerMessage.includes('رحب') || lowerMessage.includes('welcome')) {
-      return educationalResponses.welcome;
-    }
-    
-    if (lowerMessage.includes('أكمل') || lowerMessage.includes('complete')) {
-      return educationalResponses.complete;
-    }
-    
-    if (lowerMessage.includes('رياض') || lowerMessage.includes('math')) {
-      return educationalResponses.math;
-    }
-    
-    if (lowerMessage.includes('ساعد') || lowerMessage.includes('help')) {
-      return educationalResponses.help;
-    }
-    
-    if (lowerMessage.includes('شرح') || lowerMessage.includes('explain')) {
+    if (lowerMessage.includes('شرح')) {
       return educationalResponses.explain;
     }
     
@@ -858,8 +972,7 @@ export class OpenAIService {
       return educationalResponses.quiz;
     }
     
-    // Default educational response
-    return 'أنا مساعدك التعليمي الذكي. أنا هنا لمساعدتك في فهم الدروس وحل التمارين. كيف يمكنني مساعدتك اليوم؟ 📚';
+    return 'أنا مساعدك التعليمي. كيف يمكنني مساعدتك؟ 📚';
   }
   
   /**
@@ -872,45 +985,69 @@ export class OpenAIService {
   }
   
   /**
-   * Get service status
-   */
-  getStatus(): {
-    initialized: boolean;
-    mode: 'production' | 'mock';
-    model: string;
-    totalCost: string;
-    requestCount: number;
-  } {
-    return {
-      initialized: this.isInitialized,
-      mode: this.useMockMode ? 'mock' : 'production',
-      model: AI_CONFIG.MODEL,
-      totalCost: `$${this.totalCost.toFixed(2)}`,
-      requestCount: this.requestCount
-    };
-  }
-  
-  /**
-   * Get usage statistics
+   * 🆕 Get detailed usage statistics
    */
   getUsageStats() {
+    const modelStats = Array.from(this.modelUsageStats.entries()).map(([model, stats]) => ({
+      model,
+      ...stats,
+      avgCostPerRequest: stats.count > 0 ? stats.totalCost / stats.count : 0
+    }));
+    
     const cacheStats = {
       responseCacheSize: this.responseCache.size,
+      responseCacheHitRate: this.responseCache.size > 0 ? 
+        `${((this.responseCache.size / (this.requestCount || 1)) * 100).toFixed(1)}%` : '0%',
       embeddingCacheSize: this.embeddingCache.size,
+    };
+    
+    const costBreakdown = {
+      total: `$${this.totalCost.toFixed(2)}`,
+      limit: `$${AI_CONFIG.MONTHLY_LIMIT}`,
+      remaining: `$${(AI_CONFIG.MONTHLY_LIMIT - this.totalCost).toFixed(2)}`,
+      percentUsed: `${((this.totalCost / AI_CONFIG.MONTHLY_LIMIT) * 100).toFixed(1)}%`,
+      projectedMonthly: `$${(this.totalCost * 30).toFixed(2)}`, // Rough projection
     };
     
     return {
       status: this.isInitialized ? 'active' : 'mock',
       mode: this.useMockMode ? 'mock' : 'production',
-      totalCost: `$${this.totalCost.toFixed(2)}`,
-      monthlyLimit: `$${AI_CONFIG.MONTHLY_LIMIT}`,
-      remainingBudget: `$${(AI_CONFIG.MONTHLY_LIMIT - this.totalCost).toFixed(2)}`,
-      percentUsed: `${((this.totalCost / AI_CONFIG.MONTHLY_LIMIT) * 100).toFixed(1)}%`,
-      model: AI_CONFIG.MODEL,
+      defaultModel: AI_CONFIG.MODEL,
       requestCount: this.requestCount,
       lastRequestTime: this.lastRequestTime.toISOString(),
+      modelStats,
       cacheStats,
+      costBreakdown,
+      recommendations: this.getOptimizationRecommendations()
     };
+  }
+  
+  /**
+   * 🆕 Get optimization recommendations
+   */
+  private getOptimizationRecommendations(): string[] {
+    const recommendations: string[] = [];
+    
+    // Cost recommendations
+    if (this.totalCost > AI_CONFIG.MONTHLY_LIMIT * 0.5) {
+      recommendations.push('Consider using gpt-3.5-turbo more for simple tasks');
+    }
+    
+    // Cache recommendations
+    if (this.responseCache.size < 50 && this.requestCount > 100) {
+      recommendations.push('Enable response caching to reduce API calls');
+    }
+    
+    // Model usage recommendations
+    const modelStats = Array.from(this.modelUsageStats.entries());
+    const expensiveModelUsage = modelStats.filter(([m]) => 
+      m.includes('gpt-4')).reduce((sum, [, stats]) => sum + stats.count, 0);
+    
+    if (expensiveModelUsage > this.requestCount * 0.7) {
+      recommendations.push('Using expensive models too often - enable auto model selection');
+    }
+    
+    return recommendations;
   }
   
   /**
@@ -919,11 +1056,12 @@ export class OpenAIService {
   resetMonthlyUsage(): void {
     this.totalCost = 0;
     this.requestCount = 0;
+    this.modelUsageStats.clear();
     console.log('📊 Monthly usage reset');
   }
   
   /**
-   * Force mock mode (for testing)
+   * Force mock mode
    */
   forceMockMode(enabled: boolean): void {
     this.useMockMode = enabled;
@@ -931,12 +1069,12 @@ export class OpenAIService {
   }
   
   /**
-   * Check if service is ready
+   * Check if ready
    */
   isReady(): boolean {
     return this.isInitialized || this.useMockMode;
   }
 }
 
-// Export singleton instance
+// Export singleton
 export const openAIService = new OpenAIService();

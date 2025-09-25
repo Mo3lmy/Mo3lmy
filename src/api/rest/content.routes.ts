@@ -9,9 +9,9 @@ import asyncHandler from 'express-async-handler';
 
 const router = Router();
 
-// Validation schemas
+// Validation schemas - EDITED: Changed from uuid() to string().min(1)
 const uuidSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),  // ✅ تم التعديل: يقبل أي ID غير فارغ
 });
 
 const paginationSchema = z.object({
@@ -174,7 +174,7 @@ router.post(
   authenticate,
   authorize('ADMIN', 'TEACHER'),
   validateBody(z.object({
-    subjectId: z.string().uuid(),
+    subjectId: z.string().min(1),  // ✅ تم التعديل: بدلاً من uuid()
     title: z.string().min(3).max(200),
     titleEn: z.string().min(3).max(200),
     description: z.string().optional(),
@@ -198,7 +198,7 @@ router.post(
   authenticate,
   authorize('ADMIN', 'TEACHER'),
   validateBody(z.object({
-    unitId: z.string().uuid(),
+    unitId: z.string().min(1),  // ✅ تم التعديل: بدلاً من uuid()
     title: z.string().min(3).max(200),
     titleEn: z.string().min(3).max(200),
     description: z.string().optional(),

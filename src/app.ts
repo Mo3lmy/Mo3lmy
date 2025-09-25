@@ -137,6 +137,13 @@ app.use('/api/v1/content', contentRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/quiz', quizRoutes);
 
+
+// ============= TEST ROUTES ============= 
+// أضف هذه الأسطر الثلاثة
+import testRoutes from './api/test-routes';
+app.use('/api', testRoutes);
+
+
 // ============= API DOCUMENTATION =============
 app.get('/api', (req: Request, res: Response) => {
   res.json({
