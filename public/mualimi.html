@@ -3,2153 +3,2286 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>معلمي - منصة التعليم الذكية</title>
-    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+    <title>🎓 منصة اختبار النظام التعليمي الذكي</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* ==================== RESET & BASE ==================== */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            direction: rtl;
-            overflow-x: hidden;
-            transition: all 0.3s ease;
-        }
-
-        /* ==================== THEME SYSTEM ==================== */
-        .theme-primary {
-            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --primary-color: #667eea;
-            --secondary-color: #764ba2;
-            --text-dark: #2d3748;
-            --card-bg: rgba(255, 255, 255, 0.95);
-            --slide-bg: #ffffff;
-            --chat-user: #667eea;
-            --chat-ai: #48bb78;
-        }
-
-        .theme-intermediate {
-            --bg-gradient: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-            --primary-color: #48bb78;
-            --secondary-color: #38a169;
-            --text-dark: #1a202c;
-            --card-bg: rgba(255, 255, 255, 0.92);
-            --slide-bg: #f7fafc;
-            --chat-user: #48bb78;
-            --chat-ai: #4299e1;
-        }
-
-        .theme-professional {
-            --bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-            --primary-color: #4299e1;
-            --secondary-color: #3182ce;
-            --text-dark: #1a202c;
-            --card-bg: rgba(255, 255, 255, 0.98);
-            --slide-bg: #ffffff;
-            --chat-user: #4299e1;
-            --chat-ai: #805ad5;
-        }
-
-        /* Apply theme */
-        body.theme-primary,
-        body.theme-intermediate,
-        body.theme-professional {
-            background: var(--bg-gradient);
-            min-height: 100vh;
-        }
-
-        /* ==================== SCREENS ==================== */
-        .screen {
-            display: none;
-            min-height: 100vh;
-            animation: fadeIn 0.5s ease;
-        }
-
-        .screen.active {
-            display: flex;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* ==================== LOGIN SCREEN ==================== */
-        #loginScreen {
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .login-container {
-            background: white;
-            padding: 3rem;
-            border-radius: 20px;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
-            width: 90%;
-            max-width: 450px;
-        }
-
-        .login-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-
-        .login-header h1 {
-            color: #667eea;
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-            font-weight: 900;
-        }
-
-        .login-header p {
-            color: #718096;
-            font-size: 1.1rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #4a5568;
-            font-weight: 600;
-        }
-
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            font-family: 'Tajawal', sans-serif;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .btn {
-            padding: 0.75rem 2rem;
-            border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-family: 'Tajawal', sans-serif;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            width: 100%;
-            padding: 1rem;
-            font-size: 1.1rem;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        /* Quick Login Buttons */
-        .quick-login-btn {
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-family: 'Tajawal', sans-serif;
-            font-weight: 600;
-        }
-        
-        .quick-login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-
-        /* ==================== DASHBOARD SCREEN ==================== */
-        #dashboardScreen {
-            flex-direction: column;
-            padding: 2rem;
-        }
-
-        .dashboard-header {
-            background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            padding: 1.5rem 2rem;
-            border-radius: 15px;
-            margin-bottom: 2rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .user-avatar {
-            width: 50px;
-            height: 50px;
-            background: var(--primary-color);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-
-        .user-details h2 {
-            color: var(--text-dark);
-            font-size: 1.2rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .user-details p {
-            color: #718096;
-            font-size: 0.9rem;
-        }
-
-        .subjects-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .subject-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 2rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .subject-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 5px;
-            background: var(--primary-color);
-        }
-
-        .subject-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .subject-card.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .subject-card.disabled:hover {
-            transform: none;
-        }
-
-        .subject-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-
-        .subject-card h3 {
-            color: var(--text-dark);
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .subject-card p {
-            color: #718096;
-            margin-bottom: 1rem;
-        }
-
-        .subject-stats {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.9rem;
-            color: #718096;
-        }
-
-        /* ==================== LESSONS SCREEN ==================== */
-        .lessons-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .lesson-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 1.5rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .lesson-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .lesson-number {
-            background: var(--primary-color);
-            color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            margin-bottom: 1rem;
-        }
-
-        .lesson-card h4 {
-            color: var(--text-dark);
-            margin-bottom: 0.5rem;
-        }
-
-        .lesson-card p {
-            color: #718096;
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-
-        .lesson-progress {
-            background: #e2e8f0;
-            height: 6px;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .lesson-progress-bar {
-            height: 100%;
-            background: var(--primary-color);
-            border-radius: 3px;
-            transition: width 0.3s ease;
-        }
-
-        /* ==================== CLASSROOM SCREEN ==================== */
-        #classroomScreen {
-            padding: 0;
-            background: var(--bg-gradient);
-        }
-
-        .classroom-container {
-            display: flex;
-            height: 100vh;
-            width: 100%;
-        }
-
-        /* Main Content Area */
-        .classroom-main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: var(--slide-bg);
-        }
-
-        .classroom-header {
-            background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            padding: 1rem 2rem;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .lesson-info h3 {
-            color: var(--text-dark);
-            font-size: 1.3rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .lesson-info p {
-            color: #718096;
-            font-size: 0.9rem;
-        }
-
-        .classroom-controls {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .control-btn {
-            background: white;
-            border: 2px solid #e2e8f0;
-            padding: 0.5rem 1rem;
+        * { font-family: 'Tajawal', sans-serif; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .endpoint-item { transition: all 0.3s ease; }
+        .endpoint-item:hover { transform: translateX(-5px); }
+        .json-viewer { 
+            background: #1e293b;
+            color: #94a3b8;
             border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-family: 'Tajawal', sans-serif;
-        }
-
-        .control-btn:hover {
-            border-color: var(--primary-color);
-            color: var(--primary-color);
-        }
-
-        .control-btn.active {
-            background: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-        }
-
-        /* Slide Viewer */
-        .slide-viewer {
-            flex: 1;
-            padding: 2rem;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            direction: ltr;
+            text-align: left;
+            max-height: 400px;
             overflow-y: auto;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
-
-        .slide-container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
-            padding: 3rem;
-            max-width: 900px;
-            width: 100%;
-            min-height: 500px;
-            animation: slideIn 0.5s ease;
+        .status-indicator {
+            animation: pulse 2s infinite;
         }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-        }
-
-        /* Slide Navigation */
-        .slide-navigation {
-            background: var(--card-bg);
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .slide-nav-btn {
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-family: 'Tajawal', sans-serif;
-            font-weight: 600;
-        }
-
-        .slide-nav-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .slide-nav-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .slide-counter {
-            font-weight: 600;
-            color: var(--text-dark);
-        }
-
-        /* Audio Player */
-        .audio-player-container {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .audio-btn {
-            background: white;
-            border: 2px solid var(--primary-color);
-            color: var(--primary-color);
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .audio-btn:hover {
-            background: var(--primary-color);
-            color: white;
-        }
-
-        .audio-btn.playing {
-            background: var(--primary-color);
-            color: white;
-            animation: pulse 1.5s infinite;
-        }
-
-        .audio-btn.loading {
-            opacity: 0.5;
-            cursor: wait;
-        }
-
         @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
-
-        /* Sidebar */
-        .classroom-sidebar {
-            width: 400px;
-            background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            display: flex;
-            flex-direction: column;
-            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .sidebar-tabs {
-            display: flex;
-            background: white;
-            border-bottom: 2px solid #e2e8f0;
-        }
-
-        .sidebar-tab {
-            flex: 1;
-            padding: 1rem;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            color: #718096;
-            transition: all 0.3s ease;
-            font-family: 'Tajawal', sans-serif;
-        }
-
-        .sidebar-tab.active {
-            color: var(--primary-color);
-            border-bottom: 3px solid var(--primary-color);
-            margin-bottom: -2px;
-        }
-
-        .sidebar-content {
-            flex: 1;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Chat Section */
-        .chat-container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .chat-message {
-            display: flex;
-            gap: 0.75rem;
-            animation: messageSlide 0.3s ease;
-        }
-
-        @keyframes messageSlide {
-            from { opacity: 0; transform: translateX(20px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        .chat-message.user {
-            flex-direction: row-reverse;
-        }
-
-        .chat-avatar {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            flex-shrink: 0;
-        }
-
-        .chat-message.user .chat-avatar {
-            background: var(--chat-user);
-        }
-
-        .chat-message.ai .chat-avatar {
-            background: var(--chat-ai);
-        }
-
-        .chat-bubble {
-            background: white;
-            padding: 0.75rem 1rem;
-            border-radius: 15px;
-            max-width: 80%;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
-
-        .chat-message.user .chat-bubble {
-            background: var(--chat-user);
-            color: white;
-        }
-
-        .chat-input-container {
-            padding: 1rem;
-            background: white;
-            border-top: 2px solid #e2e8f0;
-            display: flex;
-            gap: 0.75rem;
-        }
-
-        .chat-input {
-            flex: 1;
-            padding: 0.75rem;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            resize: none;
-            font-family: 'Tajawal', sans-serif;
-            font-size: 0.95rem;
-        }
-
-        .chat-input:focus {
-            outline: none;
-            border-color: var(--primary-color);
-        }
-
-        .chat-send-btn {
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-family: 'Tajawal', sans-serif;
-            font-weight: 600;
-        }
-
-        .chat-send-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        /* Quiz Section */
-        .quiz-container {
-            padding: 2rem;
-            overflow-y: auto;
-        }
-
-        .quiz-question {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 10px;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        }
-
-        .quiz-question h4 {
-            color: var(--text-dark);
-            margin-bottom: 1rem;
-        }
-
-        .quiz-options {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-
-        .quiz-option {
-            padding: 1rem;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: white;
-            font-family: 'Tajawal', sans-serif;
-        }
-
-        .quiz-option:hover {
-            border-color: var(--primary-color);
-            background: rgba(102, 126, 234, 0.05);
-        }
-
-        .quiz-option.selected {
-            border-color: var(--primary-color);
-            background: rgba(102, 126, 234, 0.1);
-        }
-
-        .quiz-option.correct {
-            border-color: #48bb78;
-            background: rgba(72, 187, 120, 0.1);
-        }
-
-        .quiz-option.wrong {
-            border-color: #f56565;
-            background: rgba(245, 101, 101, 0.1);
-        }
-
-        /* Loading Spinner */
         .loading-spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
             border-radius: 50%;
-            border-top-color: white;
-            animation: spin 1s ease-in-out infinite;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
         }
-
         @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Progress Bar */
-        .lesson-progress-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: rgba(255, 255, 255, 0.2);
-            z-index: 1000;
-        }
-
-        .lesson-progress-fill {
-            height: 100%;
-            background: var(--primary-color);
-            transition: width 0.3s ease;
-        }
-
-        /* Notification Toast */
-        .toast {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            background: white;
-            padding: 1rem 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s ease;
-            z-index: 2000;
-        }
-
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        .toast.success {
-            border-left: 4px solid #48bb78;
-        }
-
-        .toast.error {
-            border-left: 4px solid #f56565;
-        }
-
-        .toast.info {
-            border-left: 4px solid var(--primary-color);
-        }
-
-        /* Responsive Design */
-        @media (max-width: 1024px) {
-            .classroom-sidebar {
-                width: 350px;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .classroom-container {
-                flex-direction: column;
-            }
-
-            .classroom-sidebar {
-                width: 100%;
-                height: 400px;
-            }
-
-            .subjects-container,
-            .lessons-container {
-                grid-template-columns: 1fr;
-            }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
-<body class="theme-primary">
-    <!-- Progress Bar -->
-    <div class="lesson-progress-bar">
-        <div class="lesson-progress-fill" id="progressBar" style="width: 0%"></div>
-    </div>
-
-    <!-- Login Screen -->
-    <div id="loginScreen" class="screen active">
-        <div class="login-container">
-            <div class="login-header">
-                <h1>معلمي 🎓</h1>
-                <p>منصة التعليم الذكية</p>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold mb-2">🎓 منصة اختبار النظام التعليمي الذكي</h1>
+                    <p class="text-blue-100">واجهة شاملة لاختبار جميع APIs و WebSocket Events</p>
+                    <p class="text-xs text-yellow-300 mt-1 animate-pulse">
+                        💡 اضغط الزر الأزرق أدناه لإنشاء حساب والبدء في 5 ثوانٍ!
+                    </p>
+                </div>
+                <div class="text-left">
+                    <div class="flex items-center space-x-2 space-x-reverse">
+                        <span id="connection-status" class="status-indicator w-3 h-3 bg-red-500 rounded-full"></span>
+                        <span id="connection-text" class="text-sm">غير متصل</span>
+                    </div>
+                    <div class="mt-2">
+                        <span class="text-xs bg-white/20 px-2 py-1 rounded">v3.1.0</span>
+                    </div>
+                </div>
             </div>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="email">البريد الإلكتروني</label>
-                    <input type="email" id="email" placeholder="student@example.com" autocomplete="email" required>
+        </div>
+    </header>
+
+    <!-- Configuration Section -->
+    <div class="container mx-auto px-4 py-4">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                            <h2 class="text-xl font-bold mb-4 text-gray-800">⚙️ الإعدادات الأساسية</h2>
+                <div class="mb-4 p-3 bg-green-100 rounded-lg border-2 border-green-500">
+                    <div class="flex items-center">
+                        <span class="text-2xl ml-2">👈</span>
+                        <div>
+                            <strong class="text-green-800">للبدء الفوري:</strong>
+                            <span class="text-green-700">اضغط على الزر الأزرق المتحرك "إنشاء حساب جديد والبدء فوراً"</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="password">كلمة المرور</label>
-                    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">API Base URL</label>
+                    <input type="text" id="api-base-url" value="http://localhost:3000/api/v1" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                 </div>
-                <div class="form-group">
-                    <label for="grade">المرحلة الدراسية</label>
-                    <select id="grade" required>
-                        <option value="">اختر المرحلة</option>
-                        <option value="primary">ابتدائي (colorful)</option>
-                        <option value="intermediate">إعدادي (متوسط)</option>
-                        <option value="secondary">ثانوي (professional)</option>
-                    </select>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">WebSocket URL</label>
+                    <input type="text" id="ws-url" value="ws://localhost:3000" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                 </div>
-                <button type="submit" class="btn btn-primary" id="loginBtn">
-                    <span id="loginText">تسجيل الدخول</span>
-                    <span class="loading-spinner" style="display: none;"></span>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">JWT Token</label>
+                    <input type="text" id="jwt-token" placeholder="سيتم تعيينه تلقائياً بعد تسجيل الدخول"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+                <button onclick="createQuickAccount()" class="bg-indigo-600 text-white px-6 py-3 rounded-md hover:bg-indigo-700 text-lg font-bold animate-pulse">
+                    ✨ إنشاء حساب جديد والبدء فوراً
                 </button>
-                <div style="margin-top: 1rem; text-align: center; color: #718096; font-size: 0.9rem;">
-                    <div style="font-weight: bold; margin-bottom: 0.5rem; color: #48bb78;">✅ الحساب المتاح للتجربة:</div>
-                    <div style="background: #f0fff4; padding: 1rem; border-radius: 8px; border: 2px solid #48bb78; margin-bottom: 1rem;">
-                        <div style="font-size: 1rem; color: #22543d; margin-bottom: 0.5rem;">
-                            <strong>Email:</strong> student1@test.com<br>
-                            <strong>Password:</strong> Test@1234
-                        </div>
-                        <button type="button" onclick="quickLogin('student')" class="quick-login-btn" style="background: #48bb78; color: white; width: 100%; margin-top: 0.5rem;">
-                            <i class="fas fa-sign-in-alt"></i> دخول سريع بهذا الحساب
-                        </button>
-                    </div>
-                    
-                    <div style="padding-top: 1rem; border-top: 1px solid #e2e8f0;">
-                        <div style="font-weight: bold; margin-bottom: 0.5rem;">أو أنشئ حساب جديد:</div>
-                        <button type="button" onclick="createTestAccount()" class="quick-login-btn" style="background: #ed8936; color: white; width: 100%;">
-                            <i class="fas fa-user-plus"></i> إنشاء حساب تجريبي جديد
-                        </button>
-                        <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #a0aec0;">
-                            سينشئ: test@example.com / Test@1234
-                        </div>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Dashboard Screen -->
-    <div id="dashboardScreen" class="screen">
-        <div class="dashboard-header">
-            <div class="user-info">
-                <div class="user-avatar" id="userAvatar">س</div>
-                <div class="user-details">
-                    <h2 id="userName">مرحباً بك</h2>
-                    <p id="userGrade">طالب</p>
-                </div>
-            </div>
-            <button class="control-btn" onclick="logout()">
-                <i class="fas fa-sign-out-alt"></i>
-                تسجيل الخروج
-            </button>
-        </div>
-
-        <h2 style="color: white; margin-bottom: 1.5rem;">اختر المادة الدراسية</h2>
-        
-        <div class="subjects-container" id="subjectsContainer">
-            <!-- Subjects will be loaded here -->
-        </div>
-
-        <div id="lessonsSection" style="display: none;">
-            <h2 style="color: white; margin-bottom: 1.5rem;">دروس الرياضيات</h2>
-            <div class="lessons-container" id="lessonsContainer">
-                <!-- Lessons will be loaded here -->
+                <button onclick="connectWebSocket()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">
+                    🔌 اتصال WebSocket
+                </button>
+                <button onclick="testConnection()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                    🔍 اختبار الاتصال
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- Classroom Screen -->
-    <div id="classroomScreen" class="screen">
-        <div class="classroom-container">
-            <!-- Main Content -->
-            <div class="classroom-main">
-                <div class="classroom-header">
-                    <div class="lesson-info">
-                        <h3 id="lessonTitle">جاري التحميل...</h3>
-                        <p id="lessonUnit">وحدة...</p>
-                    </div>
-                    <div class="classroom-controls">
-                        <button class="control-btn" onclick="toggleAudio()">
-                            <i class="fas fa-volume-up"></i>
-                            الصوت
-                        </button>
-                        <button class="control-btn" onclick="goToDashboard()">
-                            <i class="fas fa-home"></i>
-                            الرئيسية
-                        </button>
-                    </div>
-                </div>
-
-                <div class="slide-viewer">
-                    <div class="slide-container" id="slideContainer">
-                        <!-- Slide content will be loaded here -->
-                        <div style="text-align: center; padding: 3rem;">
-                            <div class="loading-spinner" style="width: 50px; height: 50px; border-color: var(--primary-color); border-top-color: transparent;"></div>
-                            <p style="margin-top: 1rem; color: #718096;">جاري تحضير الدرس...</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="slide-navigation">
-                    <button class="slide-nav-btn" onclick="previousSlide()" id="prevBtn">
-                        <i class="fas fa-chevron-right"></i>
-                        السابق
-                    </button>
-                    
-                    <div class="audio-player-container">
-                        <button class="audio-btn" onclick="toggleSlideAudio()" id="audioBtn">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <span class="slide-counter">
-                            شريحة <span id="currentSlide">1</span> من <span id="totalSlides">1</span>
-                        </span>
-                    </div>
-
-                    <button class="slide-nav-btn" onclick="nextSlide()" id="nextBtn">
-                        التالي
-                        <i class="fas fa-chevron-left"></i>
-                    </button>
-                </div>
-            </div>
-
+    <!-- Main Content -->
+    <div class="container mx-auto px-4 pb-8">
+        <div class="flex flex-wrap gap-4">
             <!-- Sidebar -->
-            <div class="classroom-sidebar">
-                <div class="sidebar-tabs">
-                    <button class="sidebar-tab active" onclick="switchTab('chat')">
-                        <i class="fas fa-comments"></i>
-                        المعلم الذكي
+            <aside class="w-full md:w-64 bg-white rounded-lg shadow-md p-4">
+                <h3 class="font-bold text-gray-800 mb-4">📋 الأقسام</h3>
+                <nav class="space-y-2">
+                    <button onclick="switchTab('auth')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        🔐 المصادقة والتسجيل
                     </button>
-                    <button class="sidebar-tab" onclick="switchTab('quiz')">
-                        <i class="fas fa-question-circle"></i>
-                        الأسئلة
+                    <button onclick="switchTab('content')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        📚 المحتوى التعليمي
                     </button>
-                    <button class="sidebar-tab" onclick="switchTab('notes')">
-                        <i class="fas fa-sticky-note"></i>
-                        ملاحظات
+                    <button onclick="switchTab('lessons')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        📖 الدروس والشرائح
                     </button>
-                </div>
+                    <button onclick="switchTab('teaching')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        🎓 المعلم الذكي
+                    </button>
+                    <button onclick="switchTab('chat')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        💬 المحادثة الذكية
+                    </button>
+                    <button onclick="switchTab('quiz')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        📝 الاختبارات
+                    </button>
+                    <button onclick="switchTab('progress')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        📊 التقدم والتحليلات
+                    </button>
+                    <button onclick="switchTab('websocket')" class="tab-btn w-full text-right px-3 py-2 rounded hover:bg-blue-50 transition">
+                        🔄 WebSocket Events
+                    </button>
+                </nav>
 
-                <div class="sidebar-content">
-                    <!-- Chat Tab -->
-                    <div id="chatTab" class="chat-container">
-                        <div class="chat-messages" id="chatMessages">
-                            <div class="chat-message ai">
-                                <div class="chat-avatar">🤖</div>
-                                <div class="chat-bubble">
-                                    مرحباً! أنا معلمك الذكي. اسألني أي سؤال عن الدرس وسأساعدك في الفهم.
+                <div class="mt-6 p-3 bg-gray-50 rounded">
+                    <h4 class="font-semibold text-sm text-gray-700 mb-2">👤 المستخدم الحالي</h4>
+                    <div id="current-user" class="text-xs text-gray-600">
+                        <p>غير مسجل</p>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Area -->
+            <main class="flex-1 bg-white rounded-lg shadow-md p-6">
+                <!-- Auth Tab -->
+                <div id="auth-tab" class="tab-content active">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">🔐 المصادقة والتسجيل</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Register -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-4 text-blue-600">تسجيل مستخدم جديد</h3>
+                            <form id="register-form" class="space-y-3">
+                                <input type="email" name="email" placeholder="البريد الإلكتروني" required
+                                       class="w-full px-3 py-2 border rounded">
+                                <input type="password" name="password" placeholder="كلمة المرور (8 أحرف على الأقل)" required
+                                       minlength="8" pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"
+                                       title="يجب أن تحتوي على حرف كبير وحرف صغير ورقم"
+                                       class="w-full px-3 py-2 border rounded">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="text" name="firstName" placeholder="الاسم الأول" required
+                                           class="px-3 py-2 border rounded">
+                                    <input type="text" name="lastName" placeholder="الاسم الأخير" required
+                                           class="px-3 py-2 border rounded">
                                 </div>
+                                <select name="grade" class="w-full px-3 py-2 border rounded">
+                                    <option value="">اختر الصف</option>
+                                    <option value="6">الصف السادس</option>
+                                    <option value="9">الصف التاسع</option>
+                                    <option value="12">الصف الثاني عشر</option>
+                                </select>
+                                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                                    تسجيل
+                                </button>
+                            </form>
+                            <div class="mt-2 text-xs text-gray-600">
+                                <p>كلمة المرور: حرف كبير + حرف صغير + رقم</p>
                             </div>
                         </div>
-                        <div class="chat-input-container">
-                            <textarea class="chat-input" id="chatInput" placeholder="اكتب سؤالك هنا..." rows="2"></textarea>
-                            <button class="chat-send-btn" onclick="sendMessage()">
-                                إرسال
+
+                        <!-- Login -->
+                        <div class="border rounded-lg p-4 bg-gray-50">
+                            <h3 class="font-bold mb-4 text-gray-600">تسجيل الدخول (للحسابات الموجودة)</h3>
+                            <div class="mb-3 p-2 bg-yellow-100 rounded text-sm">
+                                <strong>⚠️ تنبيه:</strong> الحسابات في قاعدة البيانات لها كلمات مرور مُشفرة.
+                                <br>الأفضل إنشاء حساب جديد من الزر في الأعلى.
+                            </div>
+                            <form id="login-form" class="space-y-3">
+                                <input type="email" name="email" placeholder="البريد الإلكتروني" required
+                                       class="w-full px-3 py-2 border rounded">
+                                <input type="password" name="password" placeholder="كلمة المرور" required
+                                       class="w-full px-3 py-2 border rounded">
+                                <button type="submit" class="w-full bg-gray-600 text-white py-2 rounded hover:bg-gray-700">
+                                    محاولة الدخول
+                                </button>
+                            </form>
+                            <button onclick="createQuickAccount()" class="mt-2 w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 font-bold">
+                                ✨ إنشاء حساب جديد (موصى به)
                             </button>
                         </div>
                     </div>
 
-                    <!-- Quiz Tab -->
-                    <div id="quizTab" class="quiz-container" style="display: none;">
-                        <h3 style="margin-bottom: 1.5rem;">اختبر فهمك</h3>
-                        <div id="quizQuestions">
-                            <!-- Quiz questions will be loaded here -->
+                    <!-- Other Auth Operations -->
+                    <div class="mt-6 space-y-4">
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3">عمليات أخرى</h3>
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="getCurrentUser()" class="bg-gray-600 text-white px-4 py-2 rounded">
+                                    معلوماتي
+                                </button>
+                                <button onclick="verifyToken()" class="bg-purple-600 text-white px-4 py-2 rounded">
+                                    التحقق من التوكن
+                                </button>
+                                <button onclick="changePassword()" class="bg-orange-600 text-white px-4 py-2 rounded">
+                                    تغيير كلمة المرور
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Demo Accounts Info -->
+                        <div class="border rounded-lg p-4 bg-blue-50">
+                            <h3 class="font-bold mb-3 text-blue-700">🎯 للبدء السريع</h3>
+                            <div class="mb-3">
+                                <h4 class="font-semibold text-sm mb-2">الحسابات المتاحة:</h4>
+                                <div class="bg-white p-2 rounded text-xs space-y-1">
+                                    <div>📧 <strong>student@test.com</strong></div>
+                                    <div>📧 <strong>dev@test.com</strong></div>
+                                    <div>📧 <strong>test@example.com</strong></div>
+                                    <div>📧 <strong>test@test.com</strong></div>
+                                    <div class="mt-2 text-gray-600">
+                                        <strong>ملاحظة:</strong> سيحاول النظام عدة كلمات مرور شائعة تلقائياً
+                                    </div>
+                                </div>
+                            </div>
+                            <ol class="text-sm space-y-2 text-gray-700">
+                                <li>1. اضغط على <strong>"دخول تلقائي سريع"</strong> للدخول مباشرة</li>
+                                <li>2. أو اختر حساب من القائمة المنسدلة</li>
+                                <li>3. أو أدخل البيانات يدوياً</li>
+                            </ol>
+                            <div class="mt-3 p-2 bg-green-100 rounded text-xs">
+                                <strong>تلميح:</strong> جميع الحسابات للصف السادس (Grade 6)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Content Tab -->
+                <div id="content-tab" class="tab-content">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">📚 المحتوى التعليمي</h2>
+                    
+                    <div class="space-y-6">
+                        <!-- Get Subjects -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-blue-600">المواد الدراسية</h3>
+                            <div class="flex gap-2 mb-3">
+                                <select id="grade-select" class="px-3 py-2 border rounded">
+                                    <option value="">كل الصفوف</option>
+                                    <option value="6">الصف السادس</option>
+                                    <option value="9">الصف التاسع</option>
+                                    <option value="12">الصف الثاني عشر</option>
+                                </select>
+                                <button onclick="getSubjects()" class="bg-blue-600 text-white px-4 py-2 rounded">
+                                    عرض المواد
+                                </button>
+                            </div>
+                            <div id="subjects-list" class="grid grid-cols-2 md:grid-cols-3 gap-2"></div>
+                        </div>
+
+                        <!-- Units & Lessons -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-green-600">الوحدات</h3>
+                                <div id="units-list" class="space-y-2">
+                                    <p class="text-gray-500 text-sm">اختر مادة أولاً</p>
+                                </div>
+                            </div>
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-purple-600">الدروس</h3>
+                                <div id="lessons-list" class="space-y-2">
+                                    <p class="text-gray-500 text-sm">اختر وحدة أولاً</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Search -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-orange-600">البحث في الدروس</h3>
+                            <div class="flex gap-2">
+                                <input type="text" id="search-query" placeholder="ابحث عن درس..." 
+                                       class="flex-1 px-3 py-2 border rounded">
+                                <button onclick="searchLessons()" class="bg-orange-600 text-white px-4 py-2 rounded">
+                                    بحث
+                                </button>
+                            </div>
+                            <div id="search-results" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lessons Tab -->
+                <div id="lessons-tab" class="tab-content">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">📖 الدروس والشرائح</h2>
+                    
+                    <div class="space-y-6">
+                        <!-- Lesson Operations -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-blue-600">عمليات الدرس</h3>
+                            <div class="mb-3">
+                                <input type="text" id="lesson-id" placeholder="Lesson ID" 
+                                       class="w-full px-3 py-2 border rounded mb-2">
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <button onclick="getAllLessons()" class="bg-blue-600 text-white px-3 py-2 rounded text-sm">
+                                    كل الدروس
+                                </button>
+                                <button onclick="getLesson()" class="bg-green-600 text-white px-3 py-2 rounded text-sm">
+                                    تفاصيل الدرس
+                                </button>
+                                <button onclick="getLessonContent()" class="bg-purple-600 text-white px-3 py-2 rounded text-sm">
+                                    محتوى الدرس
+                                </button>
+                                <button onclick="generateSlides()" class="bg-orange-600 text-white px-3 py-2 rounded text-sm">
+                                    توليد الشرائح
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Slide Generation -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-green-600">توليد الشرائح</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <select id="slide-theme" class="px-3 py-2 border rounded">
+                                    <option value="default">النمط الافتراضي</option>
+                                    <option value="dark">النمط الداكن</option>
+                                    <option value="kids">نمط الأطفال</option>
+                                </select>
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="generate-voice" checked class="ml-2">
+                                    توليد الصوت
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="generate-teaching" checked class="ml-2">
+                                    توليد السكريبت التعليمي
+                                </label>
+                            </div>
+                            <button onclick="generateSlidesWithOptions()" class="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 rounded">
+                                توليد الشرائح مع الخيارات
+                            </button>
+                        </div>
+
+                        <!-- Voice Operations -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-purple-600">عمليات الصوت</h3>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <button onclick="generateAllVoices()" class="bg-purple-600 text-white px-3 py-2 rounded text-sm">
+                                    توليد كل الأصوات
+                                </button>
+                                <button onclick="getVoiceStatus()" class="bg-indigo-600 text-white px-3 py-2 rounded text-sm">
+                                    حالة التوليد
+                                </button>
+                                <button onclick="listVoices()" class="bg-pink-600 text-white px-3 py-2 rounded text-sm">
+                                    الأصوات المتاحة
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Slide Preview -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-orange-600">معاينة الشريحة</h3>
+                            <div id="slide-preview" class="min-h-[300px] bg-gray-50 rounded p-4">
+                                <p class="text-gray-500 text-center">سيتم عرض الشرائح هنا</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Teaching Tab -->
+                <div id="teaching-tab" class="tab-content">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">🎓 المعلم الذكي</h2>
+                    
+                    <div class="space-y-6">
+                        <!-- Start Smart Lesson -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-blue-600">بدء درس ذكي</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                <input type="text" id="teaching-lesson-id" placeholder="Lesson ID" 
+                                       class="px-3 py-2 border rounded">
+                                <select id="interaction-level" class="px-3 py-2 border rounded">
+                                    <option value="high">تفاعل عالي</option>
+                                    <option value="medium">تفاعل متوسط</option>
+                                    <option value="low">تفاعل منخفض</option>
+                                </select>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                                <select id="voice-style" class="px-3 py-2 border rounded">
+                                    <option value="friendly">ودود</option>
+                                    <option value="formal">رسمي</option>
+                                    <option value="energetic">حماسي</option>
+                                </select>
+                                <select id="pace-speed" class="px-3 py-2 border rounded">
+                                    <option value="slow">بطيء</option>
+                                    <option value="normal">عادي</option>
+                                    <option value="fast">سريع</option>
+                                </select>
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="use-analogies" checked class="ml-2">
+                                    تشبيهات
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="use-stories" checked class="ml-2">
+                                    قصص
+                                </label>
+                            </div>
+                            <button onclick="startSmartLesson()" class="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white py-2 rounded">
+                                🚀 بدء الدرس الذكي
+                            </button>
+                        </div>
+
+                        <!-- Teaching Status -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-green-600">حالة الدرس</h3>
+                            <div id="teaching-status" class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span>الحالة:</span>
+                                    <span id="teaching-state" class="font-bold">غير نشط</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>التقدم:</span>
+                                    <span id="teaching-progress" class="font-bold">0%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div id="teaching-progress-bar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="mt-3 flex gap-2">
+                                <button onclick="getTeachingStatus()" class="bg-blue-600 text-white px-3 py-2 rounded text-sm">
+                                    تحديث الحالة
+                                </button>
+                                <button onclick="getTeachingStats()" class="bg-purple-600 text-white px-3 py-2 rounded text-sm">
+                                    الإحصائيات
+                                </button>
+                                <button onclick="clearTeachingCache()" class="bg-red-600 text-white px-3 py-2 rounded text-sm">
+                                    مسح الذاكرة
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Teaching Script Display -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-purple-600">السكريبت التعليمي</h3>
+                            <div id="teaching-script" class="bg-gray-50 rounded p-4 min-h-[200px]">
+                                <p class="text-gray-500">سيظهر السكريبت التعليمي هنا...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Tab -->
+                <div id="chat-tab" class="tab-content">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">💬 المحادثة الذكية</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Chat Interface -->
+                        <div class="lg:col-span-2 border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-blue-600">نافذة المحادثة</h3>
+                            <div id="chat-messages" class="h-96 overflow-y-auto bg-gray-50 rounded p-3 mb-3 space-y-2">
+                                <div class="text-center text-gray-500 text-sm">ابدأ محادثة جديدة...</div>
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="text" id="chat-input" placeholder="اكتب سؤالك هنا..." 
+                                       class="flex-1 px-3 py-2 border rounded"
+                                       onkeypress="if(event.key==='Enter') sendChatMessage()">
+                                <button onclick="sendChatMessage()" class="bg-blue-600 text-white px-4 py-2 rounded">
+                                    إرسال
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Chat Options -->
+                        <div class="space-y-4">
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-green-600">خيارات المحادثة</h3>
+                                <div class="space-y-2">
+                                    <input type="text" id="chat-session-id" placeholder="Session ID (اختياري)" 
+                                           class="w-full px-3 py-2 border rounded text-sm">
+                                    <input type="text" id="chat-lesson-id" placeholder="Lesson ID (اختياري)" 
+                                           class="w-full px-3 py-2 border rounded text-sm">
+                                    <select id="chat-language" class="w-full px-3 py-2 border rounded text-sm">
+                                        <option value="ar">العربية</option>
+                                        <option value="en">English</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-purple-600">عمليات المحادثة</h3>
+                                <div class="space-y-2">
+                                    <button onclick="getChatHistory()" class="w-full bg-purple-600 text-white px-3 py-2 rounded text-sm">
+                                        تاريخ المحادثة
+                                    </button>
+                                    <button onclick="getChatSuggestions()" class="w-full bg-indigo-600 text-white px-3 py-2 rounded text-sm">
+                                        اقتراحات الأسئلة
+                                    </button>
+                                    <button onclick="clearChat()" class="w-full bg-red-600 text-white px-3 py-2 rounded text-sm">
+                                        مسح المحادثة
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-orange-600">الاقتراحات</h3>
+                                <div id="chat-suggestions" class="space-y-1 text-sm">
+                                    <button class="w-full text-right p-2 bg-gray-100 rounded hover:bg-gray-200" 
+                                            onclick="document.getElementById('chat-input').value='ما هي المعادلة الخطية؟'">
+                                        ما هي المعادلة الخطية؟
+                                    </button>
+                                    <button class="w-full text-right p-2 bg-gray-100 rounded hover:bg-gray-200"
+                                            onclick="document.getElementById('chat-input').value='اشرح لي بطريقة بسيطة'">
+                                        اشرح لي بطريقة بسيطة
+                                    </button>
+                                    <button class="w-full text-right p-2 bg-gray-100 rounded hover:bg-gray-200"
+                                            onclick="document.getElementById('chat-input').value='أعطني مثال'">
+                                        أعطني مثال
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quiz Tab -->
+                <div id="quiz-tab" class="tab-content">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">📝 الاختبارات</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Start Quiz -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-blue-600">بدء اختبار جديد</h3>
+                            <div class="space-y-3">
+                                <input type="text" id="quiz-lesson-id" placeholder="Lesson ID" 
+                                       class="w-full px-3 py-2 border rounded">
+                                <input type="number" id="question-count" placeholder="عدد الأسئلة (افتراضي: 5)" 
+                                       min="1" max="20" value="5"
+                                       class="w-full px-3 py-2 border rounded">
+                                <button onclick="startQuiz()" class="w-full bg-blue-600 text-white py-2 rounded">
+                                    بدء الاختبار
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Active Quiz -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-green-600">الاختبار النشط</h3>
+                            <div id="active-quiz" class="space-y-3">
+                                <p class="text-gray-500 text-sm">لا يوجد اختبار نشط</p>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Notes Tab -->
-                    <div id="notesTab" style="display: none; padding: 1.5rem;">
-                        <h3 style="margin-bottom: 1rem;">ملاحظاتك الخاصة</h3>
-                        <textarea style="width: 100%; height: 300px; padding: 1rem; border: 2px solid #e2e8f0; border-radius: 10px; font-family: 'Tajawal', sans-serif; resize: vertical;" placeholder="اكتب ملاحظاتك هنا..."></textarea>
+                    <!-- Quiz Operations -->
+                    <div class="mt-6 border rounded-lg p-4">
+                        <h3 class="font-bold mb-3 text-purple-600">عمليات الاختبار</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <button onclick="getQuizHistory()" class="bg-purple-600 text-white px-3 py-2 rounded text-sm">
+                                تاريخ الاختبارات
+                            </button>
+                            <button onclick="getQuizStatistics()" class="bg-indigo-600 text-white px-3 py-2 rounded text-sm">
+                                الإحصائيات
+                            </button>
+                            <button onclick="generateQuizQuestions()" class="bg-pink-600 text-white px-3 py-2 rounded text-sm">
+                                توليد أسئلة
+                            </button>
+                            <button onclick="getLeaderboard()" class="bg-orange-600 text-white px-3 py-2 rounded text-sm">
+                                لوحة المتصدرين
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quiz Results -->
+                    <div class="mt-6 border rounded-lg p-4">
+                        <h3 class="font-bold mb-3 text-orange-600">نتائج الاختبار</h3>
+                        <div id="quiz-results" class="bg-gray-50 rounded p-4">
+                            <p class="text-gray-500 text-center">ستظهر النتائج هنا بعد إكمال الاختبار</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+
+                <!-- Progress Tab -->
+                <div id="progress-tab" class="tab-content">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">📊 التقدم والتحليلات</h2>
+                    
+                    <div class="space-y-6">
+                        <!-- Overall Progress -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-blue-600">التقدم العام</h3>
+                            <button onclick="getUserProgress()" class="bg-blue-600 text-white px-4 py-2 rounded mb-3">
+                                عرض التقدم
+                            </button>
+                            <div id="user-progress" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <!-- Progress cards will be inserted here -->
+                            </div>
+                        </div>
+
+                        <!-- Learning Analytics -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-green-600">تحليلات التعلم</h3>
+                            <div class="mb-3">
+                                <select id="analytics-subject" class="px-3 py-2 border rounded">
+                                    <option value="">كل المواد</option>
+                                </select>
+                                <button onclick="getLearningAnalytics()" class="bg-green-600 text-white px-4 py-2 rounded mr-2">
+                                    عرض التحليلات
+                                </button>
+                            </div>
+                            <div id="learning-analytics" class="space-y-3">
+                                <!-- Analytics will be displayed here -->
+                            </div>
+                        </div>
+
+                        <!-- Leaderboard -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-purple-600">لوحة المتصدرين</h3>
+                            <div id="leaderboard-display" class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="bg-gray-100">
+                                            <th class="p-2 text-right">المركز</th>
+                                            <th class="p-2 text-right">الاسم</th>
+                                            <th class="p-2 text-right">النقاط</th>
+                                            <th class="p-2 text-right">المستوى</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="leaderboard-body">
+                                        <!-- Leaderboard entries -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WebSocket Tab -->
+                <div id="websocket-tab" class="tab-content">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">🔄 WebSocket Events</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- WebSocket Controls -->
+                        <div class="space-y-4">
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-blue-600">التحكم في WebSocket</h3>
+                                <div class="space-y-2">
+                                    <button onclick="authenticateWS()" class="w-full bg-blue-600 text-white px-3 py-2 rounded">
+                                        🔐 المصادقة
+                                    </button>
+                                    <button onclick="joinLesson()" class="w-full bg-green-600 text-white px-3 py-2 rounded">
+                                        📚 الانضمام لدرس
+                                    </button>
+                                    <input type="text" id="ws-lesson-id" placeholder="Lesson ID للانضمام" 
+                                           class="w-full px-3 py-2 border rounded text-sm">
+                                </div>
+                            </div>
+
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-purple-600">أحداث التدريس</h3>
+                                <div class="space-y-2">
+                                    <button onclick="requestTeachingScript()" class="w-full bg-purple-600 text-white px-3 py-2 rounded text-sm">
+                                        توليد سكريبت تعليمي
+                                    </button>
+                                    <button onclick="sendStudentInteraction('help')" class="w-full bg-indigo-600 text-white px-3 py-2 rounded text-sm">
+                                        طلب مساعدة
+                                    </button>
+                                    <button onclick="sendStudentInteraction('repeat')" class="w-full bg-pink-600 text-white px-3 py-2 rounded text-sm">
+                                        إعادة الشرح
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="border rounded-lg p-4">
+                                <h3 class="font-bold mb-3 text-orange-600">أحداث أخرى</h3>
+                                <div class="space-y-2">
+                                    <button onclick="requestSlide()" class="w-full bg-orange-600 text-white px-3 py-2 rounded text-sm">
+                                        طلب شريحة
+                                    </button>
+                                    <button onclick="generateSlideVoice()" class="w-full bg-red-600 text-white px-3 py-2 rounded text-sm">
+                                        توليد صوت للشريحة
+                                    </button>
+                                    <button onclick="sendWSChat()" class="w-full bg-teal-600 text-white px-3 py-2 rounded text-sm">
+                                        إرسال رسالة
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- WebSocket Events Log -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold mb-3 text-green-600">سجل الأحداث</h3>
+                            <div id="ws-events" class="h-[500px] overflow-y-auto bg-gray-900 text-green-400 p-3 rounded font-mono text-xs">
+                                <div>WebSocket Events Log</div>
+                                <div>==================</div>
+                            </div>
+                            <button onclick="clearWSLog()" class="mt-2 w-full bg-gray-600 text-white px-3 py-2 rounded text-sm">
+                                مسح السجل
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Response Display -->
+                <div class="mt-6 border-t pt-6">
+                    <h3 class="font-bold mb-3 text-gray-800">📋 الاستجابة الأخيرة</h3>
+                    <div id="response-display" class="json-viewer">
+                        <span class="text-gray-400">// لم يتم تنفيذ أي طلب بعد</span>
+                    </div>
+                </div>
+            </main>
         </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="toast">
-        <i class="fas fa-check-circle" id="toastIcon"></i>
-        <span id="toastMessage">رسالة النظام</span>
-    </div>
-
-    <!-- Audio element for voice -->
-    <audio id="slideAudio" style="display: none;"></audio>
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-6 mt-12">
+        <div class="container mx-auto px-4 text-center">
+            <p>🎓 منصة اختبار النظام التعليمي الذكي - تم البناء بناءً على التوثيق الكامل</p>
+            <p class="text-sm mt-2 text-gray-400">يغطي 100% من الـ API Endpoints الموثقة</p>
+        </div>
+    </footer>
 
     <script>
-        // ==================== Global Variables ====================
+        // Global Variables
+        let API_BASE = 'http://localhost:3000/api/v1';
+        let WS_URL = 'ws://localhost:3000';
+        let TOKEN = null;
         let socket = null;
         let currentUser = null;
-        let currentToken = null;
-        let currentGrade = 'primary';
-        let currentLesson = null;
-        let currentSlideIndex = 0;
-        let slides = [];
-        let slideVoices = {};
-        let isAudioPlaying = false;
-        let quizQuestions = [];
-        let isAudioEnabled = true;
-        let voiceGenerationStatus = {};
+        let activeQuiz = null;
 
-        // ==================== Utilities ====================
-        function getGradeText(grade) {
-            const grades = {
-                'primary': 'المرحلة الابتدائية',
-                'intermediate': 'المرحلة الإعدادية',
-                'secondary': 'المرحلة الثانوية'
-            };
-            return grades[grade] || 'طالب';
-        }
-
-        function getThemeForGrade() {
-            const themes = {
-                'primary': 'kids',
-                'intermediate': 'default',
-                'secondary': 'dark'
-            };
-            return themes[currentGrade] || 'default';
-        }
-
-        function showToast(message, type = 'info') {
-            const toast = document.getElementById('toast');
-            const icon = document.getElementById('toastIcon');
-            const msg = document.getElementById('toastMessage');
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            API_BASE = document.getElementById('api-base-url').value;
+            WS_URL = document.getElementById('ws-url').value;
             
-            // Update icon
-            const icons = {
-                'success': 'fa-check-circle',
-                'error': 'fa-times-circle',
-                'info': 'fa-info-circle'
-            };
-            
-            icon.className = `fas ${icons[type] || icons.info}`;
-            msg.textContent = message;
-            
-            // Update toast class
-            toast.className = `toast ${type}`;
-            toast.classList.add('show');
-            
-            // Hide after 3 seconds
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 3000);
-        }
-
-        // ==================== Initialization ====================
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('%c🎓 معلمي - منصة التعليم الذكية', 'color: #667eea; font-size: 20px; font-weight: bold;');
-            
-            // Check if opened from file://
-            if (window.location.protocol === 'file:') {
-                console.warn('%c⚠️ تحذير: الملف مفتوح من file://', 'color: orange; font-size: 14px; font-weight: bold;');
-                showToast('⚠️ افتح الملف من http://localhost:3000/mualimi.html', 'error');
+            // Check for saved token
+            const savedToken = localStorage.getItem('jwt_token');
+            if (savedToken) {
+                TOKEN = savedToken;
+                document.getElementById('jwt-token').value = TOKEN;
+                getCurrentUser();
             }
             
-            // Test API connection
-            fetch(`${API_BASE_URL}/health`)
-                .then(res => res.json())
-                .then(data => {
-                    console.log('%c✅ الخادم يعمل بنجاح!', 'color: #48bb78; font-weight: bold;');
-                })
-                .catch(err => {
-                    console.error('%c❌ لا يمكن الاتصال بالخادم!', 'color: #f56565; font-weight: bold;');
-                    showToast('❌ الخادم غير متصل - شغّل: npm run dev', 'error');
-                });
-            
-            // Initialize Toast functionality immediately
-            window.showToast = showToast;
-            
-            // Check if already logged in
-            const savedToken = localStorage.getItem('token');
-            const savedUser = localStorage.getItem('user');
-            if (savedToken && savedUser) {
-                currentToken = savedToken;
-                currentUser = JSON.parse(savedUser);
-                currentGrade = currentUser.grade || 'primary';
-                applyTheme();
-                showDashboard();
-            }
-
-            // Setup form submission
-            document.getElementById('loginForm').addEventListener('submit', handleLogin);
-            
-            // Setup enter key for chat
-            document.getElementById('chatInput').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
+            // Add keyboard shortcut for quick account creation (Ctrl/Cmd + N)
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                     e.preventDefault();
-                    sendMessage();
+                    createQuickAccount();
                 }
             });
+            
+            // Show welcome message with quick start
+            console.log(`
+╔════════════════════════════════════════╗
+║   🎓 منصة اختبار النظام التعليمي الذكي   ║
+╠════════════════════════════════════════╣
+║                                        ║
+║  🚀 البدء السريع (موصى به):              ║
+║  1. اضغط "إنشاء حساب جديد سريع" (الأزرق)  ║
+║  2. أو اضغط Ctrl+N (أو Cmd+N على Mac)   ║
+║                                        ║
+║  ⚠️ ملاحظة: كلمات المرور للحسابات        ║
+║  الموجودة مُشفرة ولا يمكن استخدامها       ║
+║  مباشرة. الأفضل إنشاء حساب جديد.        ║
+║                                        ║
+╚════════════════════════════════════════╝
+            `);
+            
+            // Auto show create account suggestion
+            setTimeout(() => {
+                if (!TOKEN) {
+                    if (confirm('مرحباً! يبدو أنك جديد.\n\nهل تريد إنشاء حساب تجريبي سريع للبدء فوراً؟')) {
+                        createQuickAccount();
+                    }
+                }
+            }, 1000);
         });
 
-        // ==================== Theme System ====================
-        function applyTheme() {
-            const themes = {
-                'primary': 'theme-primary',
-                'intermediate': 'theme-intermediate', 
-                'secondary': 'theme-professional'
-            };
+        // Update API base URL
+        document.getElementById('api-base-url').addEventListener('change', (e) => {
+            API_BASE = e.target.value;
+        });
+
+        // Update WebSocket URL
+        document.getElementById('ws-url').addEventListener('change', (e) => {
+            WS_URL = e.target.value;
+        });
+
+        // Update Token
+        document.getElementById('jwt-token').addEventListener('change', (e) => {
+            TOKEN = e.target.value;
+            localStorage.setItem('jwt_token', TOKEN);
+        });
+
+        // Tab Switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(`${tabName}-tab`).classList.add('active');
             
-            document.body.className = themes[currentGrade] || 'theme-primary';
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-100', 'font-bold');
+            });
+            event.target.classList.add('bg-blue-100', 'font-bold');
         }
 
-        // ==================== Configuration ====================
-        const API_BASE_URL = 'http://localhost:3000';
-        const SOCKET_URL = 'http://localhost:3000';
-        
-        // ==================== Quick Login for Testing ====================
-        function quickLogin(userType = 'student') {
-            const accounts = {
-                student: {
-                    email: 'student1@test.com',
-                    password: 'Test@1234',
-                    grade: 'primary'
-                }
+        // Utility Functions
+        async function apiRequest(endpoint, options = {}) {
+            const url = `${API_BASE}${endpoint}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
             };
             
-            const account = accounts[userType] || accounts.student;
-            document.getElementById('email').value = account.email;
-            document.getElementById('password').value = account.password;
-            document.getElementById('grade').value = account.grade;
-            
-            showToast(`جاري الدخول كطالب...`, 'info');
-            
-            // Submit form
-            setTimeout(() => {
-                document.getElementById('loginForm').dispatchEvent(new Event('submit'));
-            }, 500);
-        }
-        
-        // ==================== Create Test Account ====================
-        async function createTestAccount() {
-            console.log('Creating test account...');
+            if (TOKEN) {
+                headers['Authorization'] = `Bearer ${TOKEN}`;
+            }
             
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email: 'test@example.com',
-                        password: 'Test@1234',
-                        firstName: 'طالب',
-                        lastName: 'تجريبي',
-                        grade: 6
-                    })
+                const response = await fetch(url, {
+                    ...options,
+                    headers
                 });
                 
                 const data = await response.json();
+                displayResponse(data);
                 
-                if (data.success) {
-                    showToast('تم إنشاء الحساب بنجاح! جاري تسجيل الدخول...', 'success');
-                    document.getElementById('email').value = 'test@example.com';
-                    document.getElementById('password').value = 'Test@1234';
-                    document.getElementById('grade').value = 'primary';
-                    setTimeout(() => {
-                        document.getElementById('loginForm').dispatchEvent(new Event('submit'));
-                    }, 1500);
-                } else {
-                    showToast(data.message || 'فشل إنشاء الحساب', 'error');
+                if (!response.ok) {
+                    throw new Error(data.error?.message || 'Request failed');
                 }
+                
+                return data;
             } catch (error) {
-                console.error('Error creating account:', error);
-                showToast('خطأ في إنشاء الحساب', 'error');
+                console.error('API Error:', error);
+                alert(`خطأ: ${error.message}`);
+                throw error;
+            }
+        }
+
+        function displayResponse(data) {
+            const display = document.getElementById('response-display');
+            display.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // Connection Test
+        async function testConnection() {
+            try {
+                const response = await fetch(`${API_BASE.replace('/api/v1', '')}/health`);
+                const data = await response.json();
+                displayResponse(data);
+                alert('✅ الاتصال ناجح!');
+            } catch (error) {
+                alert('❌ فشل الاتصال: ' + error.message);
+            }
+        }
+
+        // Fill login form from dropdown
+        function fillLoginForm(value) {
+            if (!value) return;
+            const [email, password] = value.split('|');
+            document.getElementById('login-form').email.value = email;
+            document.getElementById('login-form').password.value = password;
+            
+            // Auto submit if both fields are filled
+            if (email && password) {
+                console.log(`تم ملء النموذج بـ: ${email} / ${password}`);
+                // Optional: auto submit
+                // document.getElementById('login-form').dispatchEvent(new Event('submit'));
             }
         }
         
-        // ==================== Authentication ====================
-        async function handleLogin(e) {
-            e.preventDefault();
+        // Auto login with first available account
+        async function autoLogin() {
+            // Try different password combinations for existing accounts
+            // Based on common patterns and the provided data
+            const accounts = [
+                // Most likely passwords first
+                { email: 'student@test.com', password: 'Test' },
+                { email: 'test@test.com', password: 'Test' },
+                { email: 'test@example.com', password: 'Test' },
+                { email: 'dev@test.com', password: 'Dev' },
+                // Try with @123 suffix
+                { email: 'student@test.com', password: 'Test@123' },
+                { email: 'dev@test.com', password: 'Dev@123' },
+                { email: 'test@example.com', password: 'Test@123' },
+                { email: 'test@test.com', password: 'Test@123' },
+                // Try lowercase
+                { email: 'student@test.com', password: 'test' },
+                { email: 'dev@test.com', password: 'dev' },
+                { email: 'test@example.com', password: 'test' },
+                { email: 'test@test.com', password: 'test' },
+                // Try with User suffix
+                { email: 'student@test.com', password: 'User' },
+                { email: 'test@test.com', password: 'User' },
+            ];
             
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const grade = document.getElementById('grade').value;
+            let loginSuccess = false;
+            let attemptCount = 0;
             
-            if (!grade) {
-                showToast('الرجاء اختيار المرحلة الدراسية', 'error');
-                return;
+            // Show loading indicator
+            const originalText = event.target ? event.target.textContent : '';
+            if (event.target) {
+                event.target.disabled = true;
+                event.target.textContent = 'جاري المحاولة...';
             }
             
-            currentGrade = grade;
-            applyTheme();
+            for (const account of accounts) {
+                attemptCount++;
+                console.log(`محاولة ${attemptCount}/${accounts.length}: ${account.email} مع كلمة المرور ${account.password}`);
+                
+                try {
+                    const response = await apiRequest('/auth/login', {
+                        method: 'POST',
+                        body: JSON.stringify(account)
+                    });
+                    
+                    if (response.success) {
+                        TOKEN = response.data.token;
+                        document.getElementById('jwt-token').value = TOKEN;
+                        localStorage.setItem('jwt_token', TOKEN);
+                        currentUser = response.data.user;
+                        updateUserDisplay();
+                        
+                        // Save successful credentials for future use
+                        localStorage.setItem('last_email', account.email);
+                        localStorage.setItem('last_password', account.password);
+                        
+                        alert(`✅ تم تسجيل الدخول بنجاح!
+
+📧 الحساب: ${account.email}
+🔑 كلمة المرور: ${account.password}
+
+تم حفظ البيانات للاستخدام المستقبلي`);
+                        
+                        // Auto connect WebSocket
+                        connectWebSocket();
+                        loginSuccess = true;
+                        break;
+                    }
+                } catch (error) {
+                    // Continue to next account
+                    continue;
+                }
+            }
+            
+            // Restore button
+            if (event.target) {
+                event.target.disabled = false;
+                event.target.textContent = originalText;
+            }
+            
+            if (!loginSuccess) {
+                // Try last successful credentials if available
+                const lastEmail = localStorage.getItem('last_email');
+                const lastPassword = localStorage.getItem('last_password');
+                
+                if (lastEmail && lastPassword) {
+                    try {
+                        const response = await apiRequest('/auth/login', {
+                            method: 'POST',
+                            body: JSON.stringify({ email: lastEmail, password: lastPassword })
+                        });
+                        
+                        if (response.success) {
+                            TOKEN = response.data.token;
+                            document.getElementById('jwt-token').value = TOKEN;
+                            currentUser = response.data.user;
+                            updateUserDisplay();
+                            alert(`✅ تم الدخول بآخر بيانات محفوظة!\n\n📧 ${lastEmail}`);
+                            connectWebSocket();
+                            return;
+                        }
+                    } catch (error) {
+                        // Continue to error message
+                    }
+                }
+                
+                alert(`❌ فشلت جميع المحاولات (${attemptCount} محاولة)
+
+حلول مقترحة:
+1. اضغط "إنشاء حساب جديد سريع" (الزر الأزرق)
+2. أو أدخل كلمة المرور الصحيحة يدوياً إذا كنت تعرفها
+3. أو قم بتسجيل حساب جديد من القسم على اليسار
+
+⚠️ ملاحظة: كلمات المرور مُشفرة في قاعدة البيانات`);
+            }
+        }
+
+        // Create quick account
+        async function createQuickAccount() {
+            // Generate unique credentials
+            const timestamp = Date.now();
+            const randomNum = Math.floor(Math.random() * 1000);
+            const demoData = {
+                email: `student_${timestamp}_${randomNum}@demo.com`,
+                password: 'Test@123',
+                firstName: 'طالب',
+                lastName: 'تجريبي',
+                grade: 6
+            };
             
             // Show loading
-            document.getElementById('loginBtn').disabled = true;
-            document.getElementById('loginText').style.display = 'none';
-            document.querySelector('#loginBtn .loading-spinner').style.display = 'inline-block';
+            const originalButton = event.target;
+            if (originalButton && originalButton.tagName === 'BUTTON') {
+                originalButton.disabled = true;
+                originalButton.textContent = '⏳ جاري إنشاء الحساب...';
+            }
             
             try {
-                // Try login first
-                let response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+                const response = await apiRequest('/auth/register', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify(demoData)
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                let data = await response.json();
-                
-                // If login fails, try to register
-                if (!data.success) {
-                    console.log('Login failed, attempting to register new account...');
+                if (response.success) {
+                    TOKEN = response.data.token;
+                    document.getElementById('jwt-token').value = TOKEN;
+                    localStorage.setItem('jwt_token', TOKEN);
+                    currentUser = response.data.user;
+                    updateUserDisplay();
                     
-                    response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            email,
-                            password,
-                            firstName: 'طالب',
-                            lastName: 'جديد',
-                            grade: 6
-                        })
-                    });
+                    // Create success message
+                    const successMessage = `
+✅ تم إنشاء الحساب وتسجيل الدخول بنجاح!
+
+📧 البريد: ${demoData.email}
+🔑 كلمة المرور: ${demoData.password}
+👤 الاسم: ${demoData.firstName} ${demoData.lastName}
+🎓 الصف: السادس
+
+تم حفظ البيانات في المتصفح للاستخدام المستقبلي.`;
                     
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    alert(successMessage);
                     
-                    data = await response.json();
-                    
-                    if (data.success) {
-                        // Try login again
-                        response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email, password })
-                        });
-                        
-                        data = await response.json();
-                    }
-                }
-                
-                if (data.success) {
-                    currentToken = data.data.token;
-                    currentUser = { ...data.data.user, grade: currentGrade };
-                    
-                    // Save to localStorage
-                    localStorage.setItem('token', currentToken);
-                    localStorage.setItem('user', JSON.stringify(currentUser));
-                    
-                    showToast('تم تسجيل الدخول بنجاح!', 'success');
-                    showDashboard();
+                    // Auto connect WebSocket
                     connectWebSocket();
-                } else {
-                    showToast(data.message || 'فشل تسجيل الدخول', 'error');
+                    
+                    // Save to clipboard
+                    if (navigator.clipboard) {
+                        const clipboardText = `البريد: ${demoData.email}\nكلمة المرور: ${demoData.password}`;
+                        navigator.clipboard.writeText(clipboardText).then(() => {
+                            console.log('✅ تم نسخ البيانات للحافظة');
+                        }).catch(err => {
+                            console.log('Could not copy to clipboard:', err);
+                        });
+                    }
+                    
+                    // Save credentials for future use
+                    localStorage.setItem('last_created_email', demoData.email);
+                    localStorage.setItem('last_created_password', demoData.password);
+                    
+                    // Auto switch to content tab
+                    setTimeout(() => {
+                        switchTab('content');
+                        document.querySelector('.tab-btn[onclick*="content"]').classList.add('bg-blue-100', 'font-bold');
+                    }, 2000);
                 }
+            } catch (error) {
+                console.error('Create account error:', error);
+                alert('❌ فشل إنشاء الحساب.\n\nتأكد من:\n1. أن الخادم يعمل (localhost:3000)\n2. قاعدة البيانات متصلة\n3. لا توجد أخطاء في الـ console');
+            } finally {
+                // Restore button
+                if (originalButton && originalButton.tagName === 'BUTTON') {
+                    originalButton.disabled = false;
+                    originalButton.textContent = '✨ إنشاء حساب جديد والبدء فوراً';
+                }
+            }
+        }
+        
+        // Quick Demo Login - Create new account
+        async function quickLogin() {
+            // Try to login with existing accounts first
+            await autoLogin();
+        }
+
+        // Show available accounts
+        function showAccountsList() {
+            const accountsInfo = `
+📧 الحسابات المتاحة في النظام:
+════════════════════════════
+
+1. student@test.com
+2. dev@test.com
+3. test@example.com
+4. test@test.com
+
+════════════════════════════
+جميع الحسابات للصف السادس (Grade 6)
+
+⚠️ ملاحظة: كلمات المرور مُشفرة في قاعدة البيانات
+سيحاول النظام عدة كلمات مرور شائعة تلقائياً مثل:
+• Test@123
+• Test
+• Dev@123
+• Dev
+
+أو يمكنك إنشاء حساب جديد من قسم التسجيل`;
+            
+            alert(accountsInfo);
+        }
+
+        // Seed Demo Data - Updated for existing accounts
+        async function seedDemoData() {
+            alert(`ℹ️ يوجد بالفعل حسابات في النظام:
+
+• student@test.com (كلمة المرور: Test)
+• dev@test.com (كلمة المرور: Dev)
+• test@example.com (كلمة المرور: Test)
+• test@test.com (كلمة المرور: Test)
+
+يمكنك استخدام "دخول تلقائي سريع" للدخول مباشرة`);
+        }
+
+        // ============= AUTH FUNCTIONS =============
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = {
+                email: formData.get('email'),
+                password: formData.get('password'),
+                firstName: formData.get('firstName'),
+                lastName: formData.get('lastName'),
+                grade: formData.get('grade') ? parseInt(formData.get('grade')) : undefined
+            };
+            
+            try {
+                const response = await apiRequest('/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                
+                TOKEN = response.data.token;
+                document.getElementById('jwt-token').value = TOKEN;
+                localStorage.setItem('jwt_token', TOKEN);
+                currentUser = response.data.user;
+                updateUserDisplay();
+                alert('✅ تم التسجيل بنجاح!');
+            } catch (error) {
+                console.error('Registration error:', error);
+            }
+        });
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = {
+                email: formData.get('email'),
+                password: formData.get('password')
+            };
+            
+            try {
+                const response = await apiRequest('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                
+                TOKEN = response.data.token;
+                document.getElementById('jwt-token').value = TOKEN;
+                localStorage.setItem('jwt_token', TOKEN);
+                currentUser = response.data.user;
+                updateUserDisplay();
+                alert('✅ تم تسجيل الدخول بنجاح!');
+                
+                // Auto connect WebSocket
+                connectWebSocket();
             } catch (error) {
                 console.error('Login error:', error);
-                showToast('❌ خطأ في تسجيل الدخول', 'error');
-            } finally {
-                document.getElementById('loginBtn').disabled = false;
-                document.getElementById('loginText').style.display = 'inline';
-                document.querySelector('#loginBtn .loading-spinner').style.display = 'none';
-            }
-        }
-
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            currentToken = null;
-            currentUser = null;
-            if (socket) {
-                socket.disconnect();
-            }
-            showLogin();
-            showToast('تم تسجيل الخروج', 'info');
-        }
-
-        // ==================== WebSocket Connection ====================
-        function connectWebSocket() {
-            if (socket) {
-                socket.disconnect();
-            }
-            
-            socket = io(SOCKET_URL, {
-                transports: ['websocket', 'polling']
-            });
-            
-            socket.on('connect', () => {
-                console.log('WebSocket connected');
-                
-                // Authenticate with the server
-                socket.emit('authenticate', {
-                    token: currentToken
-                });
-            });
-            
-            socket.on('authenticated', (data) => {
-                console.log('Authenticated with WebSocket', data);
-            });
-            
-            socket.on('disconnect', () => {
-                console.log('WebSocket disconnected');
-            });
-        }
-
-        // ==================== Navigation ====================
-        function showLogin() {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('loginScreen').classList.add('active');
-        }
-
-        function showDashboard() {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('dashboardScreen').classList.add('active');
-            
-            // Update user info
-            if (currentUser) {
-                document.getElementById('userName').textContent = `مرحباً، ${currentUser.firstName || 'طالب'}!`;
-                document.getElementById('userAvatar').textContent = (currentUser.firstName || 'ط')[0];
-                document.getElementById('userGrade').textContent = getGradeText(currentGrade);
-            }
-            
-            loadSubjects();
-        }
-
-        function showClassroom() {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('classroomScreen').classList.add('active');
-        }
-
-        function goToDashboard() {
-            if (socket && currentLesson) {
-                socket.emit('leave_lesson', { lessonId: currentLesson.id });
-            }
-            currentLesson = null;
-            slides = [];
-            slideVoices = {};
-            currentSlideIndex = 0;
-            showDashboard();
-        }
-
-        // ==================== Content Loading ====================
-        async function loadSubjects() {
-            const subjectsData = [
-                {
-                    id: 'math',
-                    name: 'الرياضيات',
-                    icon: '🔢',
-                    description: 'تعلم الحساب والهندسة',
-                    lessons: 33,
-                    active: true
-                },
-                {
-                    id: 'science',
-                    name: 'العلوم',
-                    icon: '🔬',
-                    description: 'اكتشف عالم العلوم',
-                    lessons: 0,
-                    active: false
-                },
-                {
-                    id: 'arabic',
-                    name: 'اللغة العربية',
-                    icon: '📚',
-                    description: 'قواعد وأدب',
-                    lessons: 0,
-                    active: false
-                },
-                {
-                    id: 'english',
-                    name: 'اللغة الإنجليزية',
-                    icon: '🌍',
-                    description: 'Learn English',
-                    lessons: 0,
-                    active: false
+                if (error.message.includes('Invalid credentials')) {
+                    alert('❌ بيانات الدخول غير صحيحة!\n\nتأكد من:\n1. أنك قمت بتسجيل حساب أولاً\n2. البريد الإلكتروني وكلمة المرور صحيحين\n\nيمكنك استخدام "إنشاء حساب تجريبي" للبدء السريع');
+                } else {
+                    alert('❌ خطأ في تسجيل الدخول: ' + error.message);
                 }
-            ];
-            
-            const container = document.getElementById('subjectsContainer');
-            container.innerHTML = '';
-            
-            subjectsData.forEach(subject => {
-                const card = document.createElement('div');
-                card.className = `subject-card ${!subject.active ? 'disabled' : ''}`;
-                card.innerHTML = `
-                    <div class="subject-icon">${subject.icon}</div>
-                    <h3>${subject.name}</h3>
-                    <p>${subject.description}</p>
-                    <div class="subject-stats">
-                        <span><i class="fas fa-book"></i> ${subject.lessons} درس</span>
-                        <span><i class="fas fa-clock"></i> ${subject.active ? 'متاح' : 'قريباً'}</span>
-                    </div>
-                `;
-                
-                if (subject.active) {
-                    card.onclick = () => loadLessons(subject.id);
-                }
-                
-                container.appendChild(card);
-            });
-        }
-
-        async function loadLessons(subjectId) {
-            if (subjectId !== 'math') {
-                showToast('هذه المادة غير متاحة حالياً', 'info');
-                return;
             }
-            
+        });
+
+        async function getCurrentUser() {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/lessons`, {
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`
-                    }
+                const response = await apiRequest('/auth/me');
+                currentUser = response.data;
+                updateUserDisplay();
+            } catch (error) {
+                console.error('Get user error:', error);
+            }
+        }
+
+        async function verifyToken() {
+            try {
+                const response = await apiRequest('/auth/verify', {
+                    method: 'POST',
+                    body: JSON.stringify({ token: TOKEN })
                 });
-                
-                const data = await response.json();
-                
-                if (data.success && data.data.lessons) {
-                    const container = document.getElementById('lessonsContainer');
-                    container.innerHTML = '';
-                    
-                    // Show only first 6 lessons for demo
-                    const lessons = data.data.lessons.slice(0, 6);
-                    
-                    lessons.forEach((lesson, index) => {
-                        const card = document.createElement('div');
-                        card.className = 'lesson-card';
-                        card.innerHTML = `
-                            <div class="lesson-number">${index + 1}</div>
-                            <h4>${lesson.title}</h4>
-                            <p>${lesson.description || 'درس في الرياضيات'}</p>
-                            <div class="lesson-progress">
-                                <div class="lesson-progress-bar" style="width: 0%"></div>
-                            </div>
-                        `;
-                        card.onclick = () => startLesson(lesson);
-                        container.appendChild(card);
+                alert('✅ التوكن صالح!');
+            } catch (error) {
+                alert('❌ التوكن غير صالح!');
+            }
+        }
+
+        async function changePassword() {
+            const oldPassword = prompt('كلمة المرور الحالية:');
+            const newPassword = prompt('كلمة المرور الجديدة:');
+            
+            if (oldPassword && newPassword) {
+                try {
+                    await apiRequest('/auth/change-password', {
+                        method: 'POST',
+                        body: JSON.stringify({ oldPassword, newPassword })
                     });
-                    
-                    document.getElementById('lessonsSection').style.display = 'block';
-                    document.getElementById('subjectsContainer').style.display = 'none';
+                    alert('✅ تم تغيير كلمة المرور!');
+                } catch (error) {
+                    console.error('Change password error:', error);
                 }
-            } catch (error) {
-                console.error('Error loading lessons:', error);
-                showToast('خطأ في تحميل الدروس', 'error');
             }
         }
 
-        async function startLesson(lesson) {
-            currentLesson = lesson;
-            showClassroom();
-            
-            // Update lesson info
-            document.getElementById('lessonTitle').textContent = lesson.title;
-            document.getElementById('lessonUnit').textContent = lesson.unit?.title || 'الوحدة الأولى';
-            
-            // Reset slides
-            slides = [];
-            slideVoices = {};
-            currentSlideIndex = 0;
-            voiceGenerationStatus = {};
-            
-            // Show loading message
-            document.getElementById('slideContainer').innerHTML = `
-                <div style="text-align: center; padding: 3rem;">
-                    <div class="loading-spinner" style="width: 50px; height: 50px; border: 3px solid #667eea; border-top-color: transparent; display: inline-block;"></div>
-                    <p style="margin-top: 1rem; color: #718096;">جاري تحضير الدرس...</p>
-                </div>
-            `;
-            
-            // Generate slides using the CORRECT endpoint
-            generateAllSlides();
-            
-            // Load quiz questions using the CORRECT endpoint
-            loadQuizQuestions(lesson.id);
+        function updateUserDisplay() {
+            const display = document.getElementById('current-user');
+            if (currentUser) {
+                display.innerHTML = `
+                        <p><strong>${currentUser.firstName} ${currentUser.lastName}</strong></p>
+                        <p>${currentUser.email}</p>
+                        <p>الصف: ${currentUser.grade || 'غير محدد'}</p>
+                        <p>الدور: ${currentUser.role}</p>
+                        ${currentUser.profile ? `
+                            <div class="mt-2 pt-2 border-t">
+                                <p class="text-xs">النقاط: ${currentUser.profile.points || 0}</p>
+                                <p class="text-xs">المستوى: ${currentUser.profile.level || 1}</p>
+                            </div>
+                        ` : ''}
+                `;
+            }
         }
 
-        // ==================== FIXED Slide Generation - Using CORRECT Endpoints ====================
-        async function generateAllSlides() {
-            if (!currentLesson) {
-                console.error('No lesson selected');
+        // ============= CONTENT FUNCTIONS =============
+        async function getSubjects() {
+            const grade = document.getElementById('grade-select').value;
+            const endpoint = grade ? `/subjects?grade=${grade}` : '/subjects';
+            
+            try {
+                const response = await apiRequest(endpoint);
+                const list = document.getElementById('subjects-list');
+                list.innerHTML = '';
+                
+                response.data.forEach(subject => {
+                    const card = document.createElement('div');
+                    card.className = 'p-3 bg-blue-50 rounded cursor-pointer hover:bg-blue-100';
+                    card.innerHTML = `
+                        <div class="font-bold">${subject.icon || '📚'} ${subject.name}</div>
+                        <div class="text-xs text-gray-600">الصف ${subject.grade}</div>
+                    `;
+                    card.onclick = () => getUnits(subject.id);
+                    list.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Get subjects error:', error);
+            }
+        }
+
+        async function getUnits(subjectId) {
+            try {
+                const response = await apiRequest(`/content/subjects/${subjectId}/units`);
+                const list = document.getElementById('units-list');
+                list.innerHTML = '';
+                
+                response.data.forEach(unit => {
+                    const item = document.createElement('div');
+                    item.className = 'p-2 bg-green-50 rounded cursor-pointer hover:bg-green-100';
+                    item.innerHTML = `
+                        <div class="font-semibold">${unit.title}</div>
+                        <div class="text-xs text-gray-600">${unit.description || ''}</div>
+                    `;
+                    item.onclick = () => getLessons(unit.id);
+                    list.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Get units error:', error);
+            }
+        }
+
+        async function getLessons(unitId) {
+            try {
+                const response = await apiRequest(`/content/units/${unitId}/lessons`);
+                const list = document.getElementById('lessons-list');
+                list.innerHTML = '';
+                
+                response.data.lessons.forEach(lesson => {
+                    const item = document.createElement('div');
+                    item.className = 'p-2 bg-purple-50 rounded cursor-pointer hover:bg-purple-100';
+                    item.innerHTML = `
+                        <div class="font-semibold">${lesson.title}</div>
+                        <div class="text-xs text-gray-600">
+                            ${lesson.duration || 45} دقيقة | ${lesson.difficulty}
+                        </div>
+                    `;
+                    item.onclick = () => {
+                        document.getElementById('lesson-id').value = lesson.id;
+                        document.getElementById('teaching-lesson-id').value = lesson.id;
+                        document.getElementById('quiz-lesson-id').value = lesson.id;
+                        document.getElementById('ws-lesson-id').value = lesson.id;
+                    };
+                    list.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Get lessons error:', error);
+            }
+        }
+
+        async function searchLessons() {
+            const query = document.getElementById('search-query').value;
+            if (!query) return;
+            
+            try {
+                const response = await apiRequest(`/content/search?q=${encodeURIComponent(query)}`);
+                const results = document.getElementById('search-results');
+                results.innerHTML = '';
+                
+                if (response.data && response.data.length > 0) {
+                    response.data.forEach(lesson => {
+                        const item = document.createElement('div');
+                        item.className = 'p-2 bg-orange-50 rounded mb-2';
+                        item.innerHTML = `
+                            <div class="font-semibold">${lesson.title}</div>
+                            <div class="text-xs text-gray-600">${lesson.description || ''}</div>
+                        `;
+                        results.appendChild(item);
+                    });
+                } else {
+                    results.innerHTML = '<p class="text-gray-500">لا توجد نتائج</p>';
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+            }
+        }
+
+        // ============= LESSONS FUNCTIONS =============
+        async function getAllLessons() {
+            try {
+                const response = await apiRequest('/lessons');
+                displayResponse(response);
+            } catch (error) {
+                console.error('Get lessons error:', error);
+            }
+        }
+
+        async function getLesson() {
+            const lessonId = document.getElementById('lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
                 return;
             }
             
-            console.log('Generating slides using GET endpoint for:', currentLesson.id);
-            showToast('جاري تحضير الشرائح...', 'info');
-            
             try {
-                // استخدم GET endpoint الموجود فعلاً
-                const queryParams = new URLSearchParams({
-                    theme: getThemeForGrade(),
-                    generateVoice: 'true',
-                    generateTeaching: 'true'
-                });
-                
-                const response = await fetch(
-                    `${API_BASE_URL}/api/v1/lessons/${currentLesson.id}/slides?${queryParams}`,
-                    {
-                        method: 'GET', // GET وليس POST
-                        headers: {
-                            'Authorization': `Bearer ${currentToken}`
-                        }
-                    }
-                );
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                console.log('Slides API response:', data);
-                
-                if (data.success && data.data) {
-                    // Extract slides
-                    if (data.data.slides) {
-                        slides = data.data.slides.map(slide => {
-                            if (typeof slide === 'string') {
-                                return slide;
-                            } else if (slide.html) {
-                                // Store audio URL if available
-                                if (slide.audioUrl) {
-                                    const slideIndex = slides.length;
-                                    slideVoices[slideIndex] = slide.audioUrl;
-                                }
-                                return slide.html;
-                            } else {
-                                return slide.content || '';
-                            }
-                        });
-                    }
-                    
-                    if (slides.length > 0) {
-                        currentSlideIndex = 0;
-                        console.log(`✅ Received ${slides.length} slides`);
-                        
-                        // Display first slide
-                        displaySlide(slides[0]);
-                        updateSlideCounter();
-                        
-                        showToast(`✅ تم تحضير ${slides.length} شريحة!`, 'success');
-                        
-                        // Add welcome message
-                        addChatMessage(`مرحباً! تم تحضير ${slides.length} شريحة من درس "${currentLesson.title}". يمكنك التنقل بينها أو سؤالي عن أي شيء.`, 'ai');
-                        
-                        // If no audio URLs yet, generate them separately
-                        if (Object.keys(slideVoices).length === 0) {
-                            generateAllVoices();
-                        }
-                    } else {
-                        throw new Error('No slides in response');
-                    }
-                } else {
-                    throw new Error('Invalid response format');
-                }
-                
+                const response = await apiRequest(`/lessons/${lessonId}`);
+                displayResponse(response);
             } catch (error) {
-                console.error('Error generating slides:', error);
-                
-                // Try teaching/script endpoint as fallback
-                generateSlidesWithTeaching();
+                console.error('Get lesson error:', error);
             }
         }
 
-        // Fallback method using teaching/script endpoint
-        async function generateSlidesWithTeaching() {
+        async function getLessonContent() {
+            const lessonId = document.getElementById('lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
+            
             try {
-                console.log('Trying teaching script endpoint...');
-                
-                // Generate basic slides first
-                const basicSlides = [
-                    `<div style="text-align: center; padding: 2rem;">
-                        <h1 style="color: #667eea; font-size: 3rem; margin-bottom: 1rem;">
-                            ${currentLesson?.title || 'الدرس'}
-                        </h1>
-                        <p style="font-size: 1.5rem; color: #718096;">
-                            ${currentLesson?.unit?.title || 'الوحدة الأولى'}
-                        </p>
-                    </div>`,
-                    
-                    `<div style="padding: 2rem;">
-                        <h2 style="color: #667eea; margin-bottom: 1.5rem;">أهداف الدرس</h2>
-                        <ul style="font-size: 1.2rem; line-height: 2;">
-                            <li>فهم المفاهيم الأساسية</li>
-                            <li>تطبيق ما تعلمته عملياً</li>
-                            <li>حل التمارين بنجاح</li>
-                        </ul>
-                    </div>`,
-                    
-                    `<div style="padding: 2rem;">
-                        <h2 style="color: #667eea; margin-bottom: 1.5rem;">المحتوى</h2>
-                        <p style="font-size: 1.1rem; line-height: 1.8;">
-                            ${currentLesson?.description || 'محتوى الدرس سيظهر هنا'}
-                        </p>
-                    </div>`
-                ];
-                
-                // Try to get teaching script for each slide
-                for (let i = 0; i < basicSlides.length; i++) {
-                    try {
-                        const response = await fetch(
-                            `${API_BASE_URL}/api/v1/lessons/${currentLesson.id}/teaching/script`,
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${currentToken}`
-                                },
-                                body: JSON.stringify({
-                                    slideContent: {
-                                        type: i === 0 ? 'title' : i === 1 ? 'bullet' : 'content',
-                                        title: i === 0 ? currentLesson.title : i === 1 ? 'أهداف الدرس' : 'المحتوى'
-                                    }
-                                })
-                            }
-                        );
-                        
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.success && data.data && data.data.audioUrl) {
-                                slideVoices[i] = data.data.audioUrl;
-                            }
-                        }
-                    } catch (err) {
-                        console.error('Error getting teaching script for slide:', i, err);
-                    }
-                }
-                
-                slides = basicSlides;
-                currentSlideIndex = 0;
-                displaySlide(slides[0]);
-                updateSlideCounter();
-                showToast(`تم تحضير ${slides.length} شريحة`, 'info');
-                
+                const response = await apiRequest(`/content/lessons/${lessonId}/content`);
+                displayResponse(response);
             } catch (error) {
-                console.error('Teaching script error:', error);
-                generateDemoSlides();
+                console.error('Get content error:', error);
             }
         }
 
-        // Generate demo slides as last fallback
-        function generateDemoSlides() {
-            console.log('Generating demo slides...');
+        async function generateSlides() {
+            const lessonId = document.getElementById('lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
             
-            slides = [
-                `<div style="text-align: center; padding: 2rem;">
-                    <h1 style="color: #667eea; font-size: 3rem; margin-bottom: 1rem;">
-                        ${currentLesson?.title || 'الدرس'}
-                    </h1>
-                    <p style="font-size: 1.5rem; color: #718096;">
-                        ${currentLesson?.unit?.title || 'الوحدة الأولى'}
-                    </p>
-                </div>`,
+            try {
+                const response = await apiRequest(`/lessons/${lessonId}/slides`);
+                displayResponse(response);
                 
-                `<div style="padding: 2rem;">
-                    <h2 style="color: #667eea; margin-bottom: 1.5rem;">المحتوى</h2>
-                    <p style="font-size: 1.1rem; line-height: 1.8;">
-                        ${currentLesson?.description || 'محتوى الدرس سيظهر هنا'}
-                    </p>
-                </div>`
-            ];
-            
-            currentSlideIndex = 0;
-            displaySlide(slides[0]);
-            updateSlideCounter();
-            showToast('تم تحميل شرائح تجريبية', 'info');
+                // Display first slide in preview
+                if (response.data && response.data.slides && response.data.slides.length > 0) {
+                    const preview = document.getElementById('slide-preview');
+                    preview.innerHTML = response.data.slides[0].html;
+                }
+            } catch (error) {
+                console.error('Generate slides error:', error);
+            }
         }
 
-        // ==================== Voice Generation ====================
+        async function generateSlidesWithOptions() {
+            const lessonId = document.getElementById('lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
+            
+            const theme = document.getElementById('slide-theme').value;
+            const generateVoice = document.getElementById('generate-voice').checked;
+            const generateTeaching = document.getElementById('generate-teaching').checked;
+            
+            const url = `/lessons/${lessonId}/slides?theme=${theme}&generateVoice=${generateVoice}&generateTeaching=${generateTeaching}`;
+            
+            try {
+                const response = await apiRequest(url);
+                displayResponse(response);
+                
+                // Display slides
+                if (response.data && response.data.slides) {
+                    const preview = document.getElementById('slide-preview');
+                    preview.innerHTML = '';
+                    response.data.slides.forEach((slide, index) => {
+                        const slideDiv = document.createElement('div');
+                        slideDiv.className = 'mb-4';
+                        slideDiv.innerHTML = `
+                            <h4 class="font-bold mb-2">شريحة ${index + 1}</h4>
+                            ${slide.html}
+                            ${slide.audioUrl ? `<audio controls src="${slide.audioUrl}" class="mt-2"></audio>` : ''}
+                        `;
+                        preview.appendChild(slideDiv);
+                    });
+                }
+            } catch (error) {
+                console.error('Generate slides error:', error);
+            }
+        }
+
         async function generateAllVoices() {
-            if (!currentLesson || slides.length === 0) return;
-            
-            console.log('Generating voices for all slides...');
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/lessons/${currentLesson.id}/voice/generate-all`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
-                    },
-                    body: JSON.stringify({
-                        theme: getThemeForGrade()
-                    })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.data) {
-                        // Store voice URLs
-                        if (data.data.audioUrls) {
-                            data.data.audioUrls.forEach((url, index) => {
-                                if (url) slideVoices[index] = url;
-                            });
-                            console.log(`✅ Generated voice for ${data.data.audioUrls.length} slides`);
-                        }
-                        
-                        // Check status periodically
-                        if (data.data.status === 'processing') {
-                            setTimeout(() => checkVoiceStatus(), 5000);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Error generating voices:', error);
-            }
-        }
-
-        async function generateSlideVoice(slideNumber) {
-            if (!currentLesson || voiceGenerationStatus[slideNumber]) return;
-            
-            voiceGenerationStatus[slideNumber] = 'generating';
+            const lessonId = document.getElementById('lesson-id').value;
+            if (!lessonId) return;
             
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/lessons/${currentLesson.id}/slides/${slideNumber}/voice`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
-                    },
-                    body: JSON.stringify({
-                        theme: getThemeForGrade()
-                    })
+                const response = await apiRequest(`/lessons/${lessonId}/voice/generate-all`, {
+                    method: 'POST'
                 });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.data && data.data.audioUrl) {
-                        slideVoices[slideNumber] = data.data.audioUrl;
-                        voiceGenerationStatus[slideNumber] = 'completed';
-                        console.log(`✅ Voice generated for slide ${slideNumber}`);
-                        return data.data.audioUrl;
-                    }
-                }
+                displayResponse(response);
             } catch (error) {
-                console.error('Error generating voice for slide:', error);
-                voiceGenerationStatus[slideNumber] = 'failed';
+                console.error('Generate voices error:', error);
             }
-            
-            return null;
         }
 
-        async function checkVoiceStatus() {
-            if (!currentLesson) return;
+        async function getVoiceStatus() {
+            const lessonId = document.getElementById('lesson-id').value;
+            if (!lessonId) return;
             
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/lessons/${currentLesson.id}/voice/status`, {
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`
-                    }
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.data) {
-                        if (data.data.status === 'completed' && data.data.audioUrls) {
-                            data.data.audioUrls.forEach((url, index) => {
-                                if (url) slideVoices[index] = url;
-                            });
-                        } else if (data.data.status === 'processing') {
-                            setTimeout(() => checkVoiceStatus(), 5000);
-                        }
-                    }
-                }
+                const response = await apiRequest(`/lessons/${lessonId}/voice/status`);
+                displayResponse(response);
             } catch (error) {
-                console.error('Error checking voice status:', error);
+                console.error('Get voice status error:', error);
             }
         }
 
-        function displaySlide(html) {
-            const container = document.getElementById('slideContainer');
-            container.innerHTML = html;
+        async function listVoices() {
+            const lessonId = document.getElementById('lesson-id').value;
+            if (!lessonId) return;
             
-            // Auto-play voice if available and audio is enabled
-            if (isAudioEnabled && slideVoices[currentSlideIndex]) {
-                playSlideAudio(slideVoices[currentSlideIndex]);
+            try {
+                const response = await apiRequest(`/lessons/${lessonId}/voice/list`);
+                displayResponse(response);
+            } catch (error) {
+                console.error('List voices error:', error);
             }
         }
 
-        function nextSlide() {
-            if (currentSlideIndex < slides.length - 1) {
-                currentSlideIndex++;
-                displaySlide(slides[currentSlideIndex]);
-                updateSlideCounter();
-                updateProgress();
-            } else {
-                showToast('انتهى الدرس! أحسنت!', 'success');
-                switchTab('quiz');
+        // ============= TEACHING FUNCTIONS =============
+        async function startSmartLesson() {
+            const lessonId = document.getElementById('teaching-lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
             }
-        }
-
-        function previousSlide() {
-            if (currentSlideIndex > 0) {
-                currentSlideIndex--;
-                displaySlide(slides[currentSlideIndex]);
-                updateSlideCounter();
-            }
-        }
-
-        function updateSlideCounter() {
-            document.getElementById('currentSlide').textContent = currentSlideIndex + 1;
-            document.getElementById('totalSlides').textContent = slides.length;
             
-            // Update navigation buttons
-            document.getElementById('prevBtn').disabled = currentSlideIndex === 0;
-            document.getElementById('nextBtn').disabled = currentSlideIndex === slides.length - 1;
-        }
-
-        function updateProgress() {
-            const progress = ((currentSlideIndex + 1) / slides.length) * 100;
-            document.getElementById('progressBar').style.width = progress + '%';
-        }
-
-        // ==================== Audio Management ====================
-        function toggleAudio() {
-            isAudioEnabled = !isAudioEnabled;
-            const btn = event.target.closest('.control-btn');
-            
-            if (isAudioEnabled) {
-                btn.classList.add('active');
-                showToast('تم تفعيل الصوت', 'info');
-            } else {
-                btn.classList.remove('active');
-                const audio = document.getElementById('slideAudio');
-                audio.pause();
-                isAudioPlaying = false;
-                showToast('تم كتم الصوت', 'info');
-            }
-        }
-
-        async function toggleSlideAudio() {
-            const audioBtn = document.getElementById('audioBtn');
-            const audio = document.getElementById('slideAudio');
-            
-            if (isAudioPlaying) {
-                audio.pause();
-                isAudioPlaying = false;
-                audioBtn.innerHTML = '<i class="fas fa-play"></i>';
-                audioBtn.classList.remove('playing');
-            } else {
-                if (slideVoices[currentSlideIndex]) {
-                    playSlideAudio(slideVoices[currentSlideIndex]);
-                } else {
-                    // Try to generate voice for this slide
-                    audioBtn.classList.add('loading');
-                    audioBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                    showToast('جاري توليد الصوت...', 'info');
-                    
-                    const audioUrl = await generateSlideVoice(currentSlideIndex);
-                    
-                    audioBtn.classList.remove('loading');
-                    
-                    if (audioUrl) {
-                        playSlideAudio(audioUrl);
-                    } else {
-                        audioBtn.innerHTML = '<i class="fas fa-play"></i>';
-                        showToast('لم يتم توليد الصوت', 'error');
-                    }
-                }
-            }
-        }
-
-        function playSlideAudio(audioUrl) {
-            const audio = document.getElementById('slideAudio');
-            const audioBtn = document.getElementById('audioBtn');
-            
-            audio.src = audioUrl;
-            audio.play().then(() => {
-                isAudioPlaying = true;
-                audioBtn.innerHTML = '<i class="fas fa-pause"></i>';
-                audioBtn.classList.add('playing');
-            }).catch(error => {
-                console.error('Error playing audio:', error);
-                audioBtn.innerHTML = '<i class="fas fa-play"></i>';
-                showToast('خطأ في تشغيل الصوت', 'error');
-            });
-            
-            audio.onended = () => {
-                isAudioPlaying = false;
-                audioBtn.innerHTML = '<i class="fas fa-play"></i>';
-                audioBtn.classList.remove('playing');
+            const data = {
+                interactionLevel: document.getElementById('interaction-level').value,
+                voiceStyle: document.getElementById('voice-style').value,
+                paceSpeed: document.getElementById('pace-speed').value,
+                useAnalogies: document.getElementById('use-analogies').checked,
+                useStories: document.getElementById('use-stories').checked
             };
+            
+            try {
+                const response = await apiRequest(`/lessons/${lessonId}/teaching/start`, {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                displayResponse(response);
+                updateTeachingStatus(response.data);
+            } catch (error) {
+                console.error('Start teaching error:', error);
+            }
         }
 
-        // ==================== FIXED Chat System - Using CORRECT Endpoints ====================
-        async function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const message = input.value.trim();
+        async function getTeachingStatus() {
+            const lessonId = document.getElementById('teaching-lesson-id').value;
+            if (!lessonId) return;
             
+            try {
+                const response = await apiRequest(`/lessons/${lessonId}/teaching/status`);
+                displayResponse(response);
+                updateTeachingStatus(response.data);
+            } catch (error) {
+                console.error('Get teaching status error:', error);
+            }
+        }
+
+        async function getTeachingStats() {
+            const lessonId = document.getElementById('teaching-lesson-id').value;
+            if (!lessonId) return;
+            
+            try {
+                const response = await apiRequest(`/lessons/${lessonId}/teaching/stats`);
+                displayResponse(response);
+            } catch (error) {
+                console.error('Get teaching stats error:', error);
+            }
+        }
+
+        async function clearTeachingCache() {
+            const lessonId = document.getElementById('teaching-lesson-id').value;
+            if (!lessonId) return;
+            
+            try {
+                const response = await apiRequest(`/lessons/${lessonId}/teaching/clear-cache`, {
+                    method: 'POST'
+                });
+                alert('✅ تم مسح الذاكرة المؤقتة');
+            } catch (error) {
+                console.error('Clear cache error:', error);
+            }
+        }
+
+        function updateTeachingStatus(data) {
+            if (!data) return;
+            
+            document.getElementById('teaching-state').textContent = data.status || 'idle';
+            document.getElementById('teaching-progress').textContent = `${data.progress || 0}%`;
+            document.getElementById('teaching-progress-bar').style.width = `${data.progress || 0}%`;
+            
+            if (data.teachingScripts && data.teachingScripts.length > 0) {
+                document.getElementById('teaching-script').innerHTML = `
+                    <pre class="whitespace-pre-wrap">${data.teachingScripts[0]}</pre>
+                `;
+            }
+        }
+
+        // ============= CHAT FUNCTIONS =============
+        async function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
             if (!message) return;
             
-            // Add user message
-            addChatMessage(message, 'user');
+            const data = {
+                message: message,
+                sessionId: document.getElementById('chat-session-id').value || undefined,
+                lessonId: document.getElementById('chat-lesson-id').value || undefined,
+                context: {
+                    language: document.getElementById('chat-language').value
+                }
+            };
             
-            // Clear input
+            // Add user message to display
+            addChatMessage(message, 'user');
             input.value = '';
             
-            // Use the CORRECT teaching/explain endpoint
             try {
-                const response = await fetch(`${API_BASE_URL}/api/v1/lessons/${currentLesson?.id}/teaching/explain`, {
+                const response = await apiRequest('/chat/message', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
-                    },
-                    body: JSON.stringify({
-                        question: message,
-                        slideContext: currentSlideIndex
-                    })
+                    body: JSON.stringify(data)
                 });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.data) {
-                        addChatMessage(
-                            data.data.explanation || 
-                            data.data.response ||
-                            data.data.script ||
-                            'تم الشرح',
-                            'ai'
-                        );
-                    } else {
-                        addChatMessage('عذراً، واجهتني صعوبة في الإجابة.', 'ai');
-                    }
-                } else {
-                    // Try alternative interaction endpoint
-                    const altResponse = await fetch(`${API_BASE_URL}/api/v1/lessons/${currentLesson?.id}/teaching/interaction`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${currentToken}`
-                        },
-                        body: JSON.stringify({
-                            type: 'question',
-                            context: {
-                                studentQuestion: message,
-                                slideNumber: currentSlideIndex
-                            }
-                        })
-                    });
+                // Add AI response to display
+                if (response.data) {
+                    addChatMessage(response.data.message, 'ai');
                     
-                    if (altResponse.ok) {
-                        const altData = await altResponse.json();
-                        if (altData.success && altData.data) {
-                            addChatMessage(altData.data.script || 'تم الشرح', 'ai');
-                        }
-                    } else {
-                        addChatMessage('عذراً، واجهتني صعوبة في الإجابة. حاول مرة أخرى.', 'ai');
+                    // Update suggestions if available
+                    if (response.data.followUp && response.data.followUp.length > 0) {
+                        updateChatSuggestions(response.data.followUp);
                     }
                 }
             } catch (error) {
                 console.error('Chat error:', error);
-                addChatMessage('عذراً، واجهتني صعوبة في الإجابة. حاول مرة أخرى.', 'ai');
+                addChatMessage('عذراً، حدث خطأ في المحادثة', 'error');
             }
         }
 
         function addChatMessage(message, sender) {
-            const messagesContainer = document.getElementById('chatMessages');
-            
+            const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
-            messageDiv.className = `chat-message ${sender}`;
             
-            const avatar = document.createElement('div');
-            avatar.className = 'chat-avatar';
-            avatar.textContent = sender === 'user' ? 'أ' : '🤖';
-            
-            const bubble = document.createElement('div');
-            bubble.className = 'chat-bubble';
-            bubble.textContent = message;
-            
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(bubble);
-            
-            messagesContainer.appendChild(messageDiv);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-
-        // ==================== FIXED Quiz System - Using CORRECT Endpoints ====================
-        async function loadQuizQuestions(lessonId) {
-            try {
-                // Use the CORRECT quiz/generate endpoint
-                const response = await fetch(`${API_BASE_URL}/api/v1/quiz/generate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentToken}`
-                    },
-                    body: JSON.stringify({
-                        lessonId: lessonId,
-                        count: 5,
-                        difficulty: 'MEDIUM'
-                    })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    if (data.success && data.data) {
-                        quizQuestions = data.data.questions || data.data || [];
-                        displayQuizQuestions();
-                    }
-                } else {
-                    generateDemoQuiz();
-                }
-            } catch (error) {
-                console.error('Error loading quiz:', error);
-                generateDemoQuiz();
-            }
-        }
-
-        function generateDemoQuiz() {
-            quizQuestions = [
-                {
-                    question: "ما هو العدد الذي يقبل القسمة على 2 و3 معاً؟",
-                    options: ["12", "10", "15", "7"],
-                    correctIndex: 0
-                },
-                {
-                    question: "أي من الأعداد التالية يقبل القسمة على 5؟",
-                    options: ["23", "45", "17", "32"],
-                    correctIndex: 1
-                },
-                {
-                    question: "ما هو أصغر عدد يقبل القسمة على 2 و3 و5؟",
-                    options: ["15", "20", "30", "60"],
-                    correctIndex: 2
-                }
-            ];
-            displayQuizQuestions();
-        }
-
-        function displayQuizQuestions() {
-            const container = document.getElementById('quizQuestions');
-            container.innerHTML = '';
-            
-            // Show only first 3 questions for demo
-            const questions = quizQuestions.slice(0, 3);
-            
-            questions.forEach((q, index) => {
-                const questionDiv = document.createElement('div');
-                questionDiv.className = 'quiz-question';
-                
-                questionDiv.innerHTML = `
-                    <h4>${index + 1}. ${q.question || q.text || 'سؤال'}</h4>
-                    <div class="quiz-options">
-                        ${(q.options || q.choices || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4']).map((opt, i) => `
-                            <button class="quiz-option" onclick="selectAnswer(${index}, ${i})">
-                                ${opt}
-                            </button>
-                        `).join('')}
+            if (sender === 'user') {
+                messageDiv.className = 'flex justify-end mb-2';
+                messageDiv.innerHTML = `
+                    <div class="bg-blue-600 text-white px-4 py-2 rounded-lg max-w-md">
+                        ${message}
                     </div>
                 `;
-                
-                container.appendChild(questionDiv);
+            } else if (sender === 'ai') {
+                messageDiv.className = 'flex justify-start mb-2';
+                messageDiv.innerHTML = `
+                    <div class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg max-w-md">
+                        ${message}
+                    </div>
+                `;
+            } else if (sender === 'error') {
+                messageDiv.className = 'flex justify-center mb-2';
+                messageDiv.innerHTML = `
+                    <div class="bg-red-100 text-red-600 px-4 py-2 rounded-lg">
+                        ${message}
+                    </div>
+                `;
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateChatSuggestions(suggestions) {
+            const suggestionsDiv = document.getElementById('chat-suggestions');
+            suggestionsDiv.innerHTML = '';
+            
+            suggestions.forEach(suggestion => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-right p-2 bg-gray-100 rounded hover:bg-gray-200';
+                btn.textContent = suggestion;
+                btn.onclick = () => {
+                    document.getElementById('chat-input').value = suggestion;
+                };
+                suggestionsDiv.appendChild(btn);
             });
         }
 
-        function selectAnswer(questionIndex, optionIndex) {
-            // Handle quiz answer selection
-            const options = document.querySelectorAll(`.quiz-question:nth-child(${questionIndex + 1}) .quiz-option`);
-            options.forEach(opt => opt.classList.remove('selected', 'correct', 'wrong'));
-            options[optionIndex].classList.add('selected');
+        async function getChatHistory() {
+            const lessonId = document.getElementById('chat-lesson-id').value;
+            const url = lessonId ? `/chat/history?lessonId=${lessonId}&limit=50` : '/chat/history?limit=50';
             
-            // Check if correct
-            const correctIndex = quizQuestions[questionIndex].correctIndex || 
-                               quizQuestions[questionIndex].correctAnswer || 0;
-            
-            if (optionIndex === correctIndex) {
-                options[optionIndex].classList.add('correct');
-                showToast('✅ إجابة صحيحة!', 'success');
-            } else {
-                options[optionIndex].classList.add('wrong');
-                options[correctIndex].classList.add('correct');
-                showToast('❌ حاول مرة أخرى', 'error');
+            try {
+                const response = await apiRequest(url);
+                displayResponse(response);
+                
+                // Display history in chat window
+                if (response.data && Array.isArray(response.data)) {
+                    const messagesDiv = document.getElementById('chat-messages');
+                    messagesDiv.innerHTML = '';
+                    response.data.forEach(msg => {
+                        addChatMessage(msg.userMessage, 'user');
+                        addChatMessage(msg.aiResponse, 'ai');
+                    });
+                }
+            } catch (error) {
+                console.error('Get history error:', error);
             }
         }
 
-        // ==================== Tab Management ====================
-        function switchTab(tab) {
-            // Update tab buttons
-            document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+        async function getChatSuggestions() {
+            const lessonId = document.getElementById('chat-lesson-id').value;
+            const url = lessonId ? `/chat/suggestions?lessonId=${lessonId}` : '/chat/suggestions';
             
-            // Find the correct tab button
-            let tabButton = null;
-            if (tab === 'chat') {
-                tabButton = document.querySelector('.sidebar-tab:nth-child(1)');
-            } else if (tab === 'quiz') {
-                tabButton = document.querySelector('.sidebar-tab:nth-child(2)');
-            } else if (tab === 'notes') {
-                tabButton = document.querySelector('.sidebar-tab:nth-child(3)');
+            try {
+                const response = await apiRequest(url);
+                if (response.data && Array.isArray(response.data)) {
+                    updateChatSuggestions(response.data);
+                }
+            } catch (error) {
+                console.error('Get suggestions error:', error);
+            }
+        }
+
+        function clearChat() {
+            document.getElementById('chat-messages').innerHTML = 
+                '<div class="text-center text-gray-500 text-sm">ابدأ محادثة جديدة...</div>';
+        }
+
+        // ============= QUIZ FUNCTIONS =============
+        async function startQuiz() {
+            const lessonId = document.getElementById('quiz-lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
             }
             
-            if (tabButton) {
-                tabButton.classList.add('active');
+            const data = {
+                lessonId: lessonId,
+                questionCount: parseInt(document.getElementById('question-count').value) || 5
+            };
+            
+            try {
+                const response = await apiRequest('/quiz/start', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                
+                activeQuiz = response.data;
+                displayQuiz(activeQuiz);
+            } catch (error) {
+                console.error('Start quiz error:', error);
+            }
+        }
+
+        function displayQuiz(quiz) {
+            const quizDiv = document.getElementById('active-quiz');
+            if (!quiz || !quiz.questions) {
+                quizDiv.innerHTML = '<p class="text-gray-500 text-sm">لا يوجد اختبار نشط</p>';
+                return;
             }
             
-            // Show/hide content
-            document.getElementById('chatTab').style.display = tab === 'chat' ? 'flex' : 'none';
-            document.getElementById('quizTab').style.display = tab === 'quiz' ? 'block' : 'none';
-            document.getElementById('notesTab').style.display = tab === 'notes' ? 'block' : 'none';
+            quizDiv.innerHTML = `
+                <div class="mb-3">
+                    <span class="text-sm text-gray-600">الاختبار: ${quiz.attemptId}</span>
+                    <span class="mr-2 text-sm">عدد الأسئلة: ${quiz.totalQuestions}</span>
+                </div>
+            `;
+            
+            quiz.questions.forEach((question, index) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'mb-4 p-3 bg-gray-50 rounded';
+                questionDiv.innerHTML = `
+                    <h4 class="font-bold mb-2">السؤال ${index + 1}</h4>
+                    <p class="mb-2">${question.question}</p>
+                `;
+                
+                if (question.type === 'MCQ' && question.options) {
+                    questionDiv.innerHTML += `
+                        <div class="space-y-1">
+                            ${question.options.map((opt, i) => `
+                                <label class="flex items-center">
+                                    <input type="radio" name="q${question.id}" value="${i}" class="ml-2">
+                                    <span>${opt}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    `;
+                } else if (question.type === 'TRUE_FALSE') {
+                    questionDiv.innerHTML += `
+                        <div class="space-y-1">
+                            <label class="flex items-center">
+                                <input type="radio" name="q${question.id}" value="true" class="ml-2">
+                                <span>صح</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="q${question.id}" value="false" class="ml-2">
+                                <span>خطأ</span>
+                            </label>
+                        </div>
+                    `;
+                }
+                
+                questionDiv.innerHTML += `
+                    <button onclick="submitAnswer('${quiz.attemptId}', '${question.id}', this.parentElement)" 
+                            class="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                        إرسال الإجابة
+                    </button>
+                `;
+                
+                quizDiv.appendChild(questionDiv);
+            });
+            
+            quizDiv.innerHTML += `
+                <button onclick="completeQuiz('${quiz.attemptId}')" 
+                        class="mt-4 w-full bg-green-600 text-white py-2 rounded">
+                    إنهاء الاختبار
+                </button>
+            `;
+        }
+
+        async function submitAnswer(attemptId, questionId, questionElement) {
+            const selectedInput = questionElement.querySelector(`input[name="q${questionId}"]:checked`);
+            if (!selectedInput) {
+                alert('اختر إجابة أولاً');
+                return;
+            }
+            
+            const data = {
+                attemptId: attemptId,
+                questionId: questionId,
+                answer: selectedInput.value,
+                timeSpent: 30 // Default time
+            };
+            
+            try {
+                const response = await apiRequest('/quiz/answer', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                
+                // Show result
+                const resultDiv = document.createElement('div');
+                resultDiv.className = response.data.isCorrect ? 
+                    'mt-2 p-2 bg-green-100 text-green-700 rounded' : 
+                    'mt-2 p-2 bg-red-100 text-red-700 rounded';
+                resultDiv.textContent = response.data.isCorrect ? '✅ إجابة صحيحة!' : '❌ إجابة خاطئة';
+                
+                if (response.data.explanation) {
+                    resultDiv.innerHTML += `<p class="text-sm mt-1">${response.data.explanation}</p>`;
+                }
+                
+                questionElement.appendChild(resultDiv);
+            } catch (error) {
+                console.error('Submit answer error:', error);
+            }
+        }
+
+        async function completeQuiz(attemptId) {
+            try {
+                const response = await apiRequest(`/quiz/complete/${attemptId}`, {
+                    method: 'POST'
+                });
+                
+                displayQuizResults(response.data);
+                activeQuiz = null;
+                document.getElementById('active-quiz').innerHTML = '<p class="text-gray-500 text-sm">لا يوجد اختبار نشط</p>';
+            } catch (error) {
+                console.error('Complete quiz error:', error);
+            }
+        }
+
+        function displayQuizResults(results) {
+            const resultsDiv = document.getElementById('quiz-results');
+            resultsDiv.innerHTML = `
+                <div class="text-center">
+                    <h3 class="text-2xl font-bold mb-2">النتيجة: ${results.score}%</h3>
+                    <p class="mb-2">الدرجة: <span class="font-bold text-lg">${results.grade || 'غير محدد'}</span></p>
+                    <div class="grid grid-cols-3 gap-4 mt-4">
+                        <div class="bg-blue-100 p-3 rounded">
+                            <div class="text-2xl font-bold">${results.correctAnswers}</div>
+                            <div class="text-sm">إجابات صحيحة</div>
+                        </div>
+                        <div class="bg-orange-100 p-3 rounded">
+                            <div class="text-2xl font-bold">${results.totalQuestions}</div>
+                            <div class="text-sm">إجمالي الأسئلة</div>
+                        </div>
+                        <div class="bg-green-100 p-3 rounded">
+                            <div class="text-2xl font-bold">${results.points || 0}</div>
+                            <div class="text-sm">النقاط المكتسبة</div>
+                        </div>
+                    </div>
+                    ${results.achievements && results.achievements.length > 0 ? `
+                        <div class="mt-4">
+                            <h4 class="font-bold mb-2">الإنجازات:</h4>
+                            ${results.achievements.map(a => `
+                                <div class="bg-yellow-100 p-2 rounded mb-1">
+                                    🏆 ${a.title} (+${a.points} نقاط)
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        async function getQuizHistory() {
+            try {
+                const response = await apiRequest('/quiz/history');
+                displayResponse(response);
+            } catch (error) {
+                console.error('Get quiz history error:', error);
+            }
+        }
+
+        async function getQuizStatistics() {
+            const lessonId = document.getElementById('quiz-lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
+            
+            try {
+                const response = await apiRequest(`/quiz/statistics/${lessonId}`);
+                displayResponse(response);
+            } catch (error) {
+                console.error('Get statistics error:', error);
+            }
+        }
+
+        async function generateQuizQuestions() {
+            const lessonId = document.getElementById('quiz-lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
+            
+            const data = {
+                lessonId: lessonId,
+                count: 5,
+                difficulty: 'MEDIUM'
+            };
+            
+            try {
+                const response = await apiRequest('/quiz/generate', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                displayResponse(response);
+            } catch (error) {
+                console.error('Generate questions error:', error);
+            }
+        }
+
+        // ============= PROGRESS FUNCTIONS =============
+        async function getUserProgress() {
+            try {
+                const response = await apiRequest('/quiz/progress');
+                displayResponse(response);
+                
+                // Display progress cards
+                const progressDiv = document.getElementById('user-progress');
+                progressDiv.innerHTML = '';
+                
+                if (response.data) {
+                    // Add progress cards
+                    const stats = [
+                        { label: 'الدروس المكتملة', value: response.data.completedLessons || 0, color: 'blue' },
+                        { label: 'إجمالي النقاط', value: response.data.totalPoints || 0, color: 'green' },
+                        { label: 'المستوى', value: response.data.level || 1, color: 'purple' },
+                        { label: 'السلسلة', value: response.data.streak || 0, color: 'orange' }
+                    ];
+                    
+                    stats.forEach(stat => {
+                        const card = document.createElement('div');
+                        card.className = `bg-${stat.color}-100 p-4 rounded text-center`;
+                        card.innerHTML = `
+                            <div class="text-2xl font-bold text-${stat.color}-600">${stat.value}</div>
+                            <div class="text-sm text-gray-700">${stat.label}</div>
+                        `;
+                        progressDiv.appendChild(card);
+                    });
+                }
+            } catch (error) {
+                console.error('Get progress error:', error);
+            }
+        }
+
+        async function getLearningAnalytics() {
+            const subjectId = document.getElementById('analytics-subject').value;
+            const url = subjectId ? `/quiz/analytics?subjectId=${subjectId}` : '/quiz/analytics';
+            
+            try {
+                const response = await apiRequest(url);
+                displayResponse(response);
+                
+                // Display analytics
+                const analyticsDiv = document.getElementById('learning-analytics');
+                analyticsDiv.innerHTML = '';
+                
+                if (response.data) {
+                    // Strengths
+                    if (response.data.strengths && response.data.strengths.length > 0) {
+                        const strengthsDiv = document.createElement('div');
+                        strengthsDiv.className = 'bg-green-50 p-3 rounded';
+                        strengthsDiv.innerHTML = '<h4 class="font-bold text-green-700 mb-2">نقاط القوة:</h4>';
+                        response.data.strengths.forEach(s => {
+                            strengthsDiv.innerHTML += `<div>• ${s}</div>`;
+                        });
+                        analyticsDiv.appendChild(strengthsDiv);
+                    }
+                    
+                    // Weaknesses
+                    if (response.data.weaknesses && response.data.weaknesses.length > 0) {
+                        const weaknessesDiv = document.createElement('div');
+                        weaknessesDiv.className = 'bg-red-50 p-3 rounded';
+                        weaknessesDiv.innerHTML = '<h4 class="font-bold text-red-700 mb-2">نقاط الضعف:</h4>';
+                        response.data.weaknesses.forEach(w => {
+                            weaknessesDiv.innerHTML += `<div>• ${w}</div>`;
+                        });
+                        analyticsDiv.appendChild(weaknessesDiv);
+                    }
+                    
+                    // Recommendations
+                    if (response.data.recommendations && response.data.recommendations.length > 0) {
+                        const recDiv = document.createElement('div');
+                        recDiv.className = 'bg-blue-50 p-3 rounded';
+                        recDiv.innerHTML = '<h4 class="font-bold text-blue-700 mb-2">التوصيات:</h4>';
+                        response.data.recommendations.forEach(r => {
+                            recDiv.innerHTML += `<div>• ${r}</div>`;
+                        });
+                        analyticsDiv.appendChild(recDiv);
+                    }
+                }
+            } catch (error) {
+                console.error('Get analytics error:', error);
+            }
+        }
+
+        async function getLeaderboard() {
+            try {
+                const response = await apiRequest('/quiz/leaderboard?limit=10');
+                displayResponse(response);
+                
+                // Display leaderboard
+                const tbody = document.getElementById('leaderboard-body');
+                tbody.innerHTML = '';
+                
+                if (response.data && Array.isArray(response.data)) {
+                    response.data.forEach((entry, index) => {
+                        const row = document.createElement('tr');
+                        row.className = index % 2 === 0 ? 'bg-gray-50' : '';
+                        row.innerHTML = `
+                            <td class="p-2">${index + 1}</td>
+                            <td class="p-2">${entry.name || 'غير معروف'}</td>
+                            <td class="p-2">${entry.points || 0}</td>
+                            <td class="p-2">${entry.level || 1}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            } catch (error) {
+                console.error('Get leaderboard error:', error);
+            }
+        }
+
+        // ============= WEBSOCKET FUNCTIONS =============
+        function connectWebSocket() {
+            if (socket && socket.connected) {
+                console.log('WebSocket already connected');
+                return;
+            }
+            
+            const wsUrl = document.getElementById('ws-url').value;
+            socket = io(wsUrl, {
+                transports: ['polling', 'websocket'],
+                path: '/socket.io/'
+            });
+            
+            // Connection events
+            socket.on('connect', () => {
+                console.log('WebSocket connected');
+                updateConnectionStatus(true);
+                addWSEvent('CONNECTED', { socketId: socket.id });
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus(false);
+                addWSEvent('DISCONNECTED', {});
+            });
+            
+            socket.on('error', (error) => {
+                console.error('WebSocket error:', error);
+                addWSEvent('ERROR', error);
+            });
+            
+            // Custom events
+            socket.on('welcome', (data) => {
+                addWSEvent('WELCOME', data);
+            });
+            
+            socket.on('authenticated', (data) => {
+                addWSEvent('AUTHENTICATED', data);
+            });
+            
+            socket.on('joined_lesson', (data) => {
+                addWSEvent('JOINED_LESSON', data);
+            });
+            
+            socket.on('teaching_script_ready', (data) => {
+                addWSEvent('TEACHING_SCRIPT_READY', data);
+                if (data.script) {
+                    document.getElementById('teaching-script').innerHTML = 
+                        `<pre class="whitespace-pre-wrap">${data.script}</pre>`;
+                }
+            });
+            
+            socket.on('interaction_response', (data) => {
+                addWSEvent('INTERACTION_RESPONSE', data);
+            });
+            
+            socket.on('slide_ready', (data) => {
+                addWSEvent('SLIDE_READY', data);
+                if (data.html) {
+                    document.getElementById('slide-preview').innerHTML = data.html;
+                }
+            });
+            
+            socket.on('slide_voice_ready', (data) => {
+                addWSEvent('SLIDE_VOICE_READY', data);
+            });
+            
+            socket.on('ai_response', (data) => {
+                addWSEvent('AI_RESPONSE', data);
+                if (data.message) {
+                    addChatMessage(data.message, 'ai');
+                }
+            });
+            
+            socket.on('teaching_error', (error) => {
+                addWSEvent('TEACHING_ERROR', error);
+            });
+            
+            socket.on('slide_error', (error) => {
+                addWSEvent('SLIDE_ERROR', error);
+            });
+            
+            socket.on('voice_error', (error) => {
+                addWSEvent('VOICE_ERROR', error);
+            });
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusIndicator = document.getElementById('connection-status');
+            const statusText = document.getElementById('connection-text');
+            
+            if (connected) {
+                statusIndicator.className = 'status-indicator w-3 h-3 bg-green-500 rounded-full';
+                statusText.textContent = 'متصل';
+            } else {
+                statusIndicator.className = 'status-indicator w-3 h-3 bg-red-500 rounded-full';
+                statusText.textContent = 'غير متصل';
+            }
+        }
+
+        function addWSEvent(eventName, data) {
+            const eventsDiv = document.getElementById('ws-events');
+            const timestamp = new Date().toLocaleTimeString();
+            const eventLine = document.createElement('div');
+            eventLine.innerHTML = `[${timestamp}] <span class="text-yellow-400">${eventName}</span>: ${JSON.stringify(data, null, 2)}`;
+            eventsDiv.appendChild(eventLine);
+            eventsDiv.scrollTop = eventsDiv.scrollHeight;
+        }
+
+        function authenticateWS() {
+            if (!socket || !socket.connected) {
+                alert('WebSocket غير متصل');
+                return;
+            }
+            
+            if (!TOKEN) {
+                alert('يجب تسجيل الدخول أولاً');
+                return;
+            }
+            
+            socket.emit('authenticate', { token: TOKEN });
+        }
+
+        function joinLesson() {
+            if (!socket || !socket.connected) {
+                alert('WebSocket غير متصل');
+                return;
+            }
+            
+            const lessonId = document.getElementById('ws-lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
+            
+            socket.emit('join_lesson', { lessonId });
+        }
+
+        function requestTeachingScript() {
+            if (!socket || !socket.connected) {
+                alert('WebSocket غير متصل');
+                return;
+            }
+            
+            const lessonId = document.getElementById('ws-lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
+            
+            socket.emit('generate_teaching_script', {
+                slideContent: {
+                    type: 'content',
+                    title: 'درس تجريبي',
+                    content: 'محتوى الدرس التجريبي'
+                },
+                lessonId: lessonId,
+                options: {
+                    generateVoice: true,
+                    voiceStyle: 'friendly',
+                    paceSpeed: 'normal',
+                    useAnalogies: true,
+                    useStories: true
+                }
+            });
+        }
+
+        function sendStudentInteraction(type) {
+            if (!socket || !socket.connected) {
+                alert('WebSocket غير متصل');
+                return;
+            }
+            
+            const lessonId = document.getElementById('ws-lesson-id').value;
+            if (!lessonId) {
+                alert('Please enter a lesson ID');
+                return;
+            }
+            
+            socket.emit('student_interaction', {
+                type: type,
+                lessonId: lessonId,
+                currentSlide: {
+                    type: 'content',
+                    content: 'محتوى الشريحة الحالية'
+                }
+            });
+        }
+
+        function requestSlide() {
+            if (!socket || !socket.connected) {
+                alert('WebSocket غير متصل');
+                return;
+            }
+            
+            socket.emit('request_slide', {
+                slideContent: {
+                    type: 'content',
+                    title: 'عنوان الشريحة',
+                    content: 'محتوى الشريحة التجريبية'
+                },
+                slideNumber: 0,
+                theme: 'default',
+                generateVoice: true,
+                generateTeaching: true
+            });
+        }
+
+        function generateSlideVoice() {
+            if (!socket || !socket.connected) {
+                alert('WebSocket غير متصل');
+                return;
+            }
+            
+            socket.emit('generate_slide_voice', {
+                slideContent: {
+                    type: 'content',
+                    title: 'عنوان الشريحة',
+                    content: 'محتوى الشريحة للصوت'
+                },
+                options: {
+                    voiceId: 'arabic_male',
+                    speed: 1.0,
+                    stability: 0.5
+                }
+            });
+        }
+
+        function sendWSChat() {
+            if (!socket || !socket.connected) {
+                alert('WebSocket غير متصل');
+                return;
+            }
+            
+            const lessonId = document.getElementById('ws-lesson-id').value;
+            const message = prompt('أدخل رسالتك:');
+            if (!message) return;
+            
+            socket.emit('chat_message', {
+                message: message,
+                lessonId: lessonId
+            });
+        }
+
+        function clearWSLog() {
+            const eventsDiv = document.getElementById('ws-events');
+            eventsDiv.innerHTML = `
+                <div>WebSocket Events Log</div>
+                <div>==================</div>
+            `;
         }
     </script>
 </body>

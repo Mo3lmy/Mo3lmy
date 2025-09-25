@@ -1,40 +1,92 @@
 import { openAIService } from '../../services/ai/openai.service';
 import { vectorSearch } from './vector.search';
 import { documentProcessor } from './document.processor';
-import type { RAGContext, RAGResponse } from '../../types/rag.types';
+import type { RAGContext, RAGResponse, SearchResult } from '../../types/rag.types';
 
+/**
+ * Enhanced RAG Service with Safe Optimizations
+ * Version: 2.0 - Backward Compatible
+ */
 export class RAGService {
-  private cache: Map<string, { answer: string; timestamp: number }> = new Map();
+  private cache: Map<string, { answer: string; timestamp: number; hits: number }> = new Map();
   private readonly CACHE_TTL = parseInt(process.env.CACHE_TTL || '3600') * 1000; // Convert to ms
   
+  // ============= NEW: Feature Flags for Safe Control =============
+  private readonly FEATURES = {
+    USE_CACHE: process.env.USE_CACHE !== 'false', // Default: true (changed from === 'true')
+    USE_SMART_CONTEXT: process.env.USE_SMART_CONTEXT !== 'false', // Default: true
+    USE_FALLBACK_SEARCH: process.env.USE_FALLBACK_SEARCH !== 'false', // Default: true
+    LOG_PERFORMANCE: process.env.LOG_PERFORMANCE === 'true', // Default: false
+    CACHE_CONFIDENCE_THRESHOLD: parseInt(process.env.CACHE_CONFIDENCE_THRESHOLD || '40'), // Lowered from 50
+    MAX_CACHE_SIZE: parseInt(process.env.MAX_CACHE_SIZE || '200'), // Increased from 100
+  };
+
+  // ============= NEW: Performance Metrics =============
+  private metrics = {
+    cacheHits: 0,
+    cacheMisses: 0,
+    totalQuestions: 0,
+    averageConfidence: 0,
+  };
+
   /**
-   * Answer a question using RAG
+   * Answer a question using RAG - ENHANCED VERSION
    */
   async answerQuestion(
     question: string,
     lessonId?: string,
     userId?: string
   ): Promise<RAGResponse> {
+    const startTime = Date.now();
+    this.metrics.totalQuestions++;
+    
     console.log('🤔 Processing question:', question);
     
-    // Check cache first if enabled
-    if (process.env.USE_CACHE === 'true') {
-      const cacheKey = `${question}-${lessonId || 'general'}`;
+    // ============= IMPROVED: Better Cache Check =============
+    if (this.FEATURES.USE_CACHE) {
+      const cacheKey = this.generateCacheKey(question, lessonId);
       const cached = this.getFromCache(cacheKey);
       if (cached) {
-        console.log('📦 Returning cached answer');
+        this.metrics.cacheHits++;
+        console.log(`📦 Cache hit! (${this.metrics.cacheHits}/${this.metrics.totalQuestions} = ${Math.round(this.metrics.cacheHits/this.metrics.totalQuestions*100)}%)`);
+        
+        // Update cache hit counter
+        const cacheEntry = this.cache.get(cacheKey);
+        if (cacheEntry) {
+          cacheEntry.hits++;
+        }
+        
         return {
           answer: cached,
           sources: [],
           confidence: 100,
         };
       }
+      this.metrics.cacheMisses++;
     }
     
-    // Search for relevant content
-    const relevantChunks = lessonId
-     ? await vectorSearch.searchInLesson(lessonId, question, 5)
-     : await vectorSearch.enhancedSearch(question, 8);
+    // ============= ENHANCED: Search with Fallback =============
+    let relevantChunks: SearchResult[] = [];
+    
+    try {
+      relevantChunks = lessonId
+        ? await vectorSearch.searchInLesson(lessonId, question, 5)
+        : await vectorSearch.enhancedSearch(question, 8); // Already using enhanced!
+      
+      // NEW: If no results and fallback enabled, try broader search
+      if (relevantChunks.length === 0 && this.FEATURES.USE_FALLBACK_SEARCH && lessonId) {
+        console.log('🔄 No results in lesson, trying broader search...');
+        relevantChunks = await vectorSearch.enhancedSearch(question, 5);
+      }
+    } catch (error) {
+      console.error('❌ Search error, using fallback:', error);
+      // Fallback to basic search if enhanced fails
+      try {
+        relevantChunks = await vectorSearch.searchSimilar(question, 5);
+      } catch (fallbackError) {
+        console.error('❌ Fallback search also failed:', fallbackError);
+      }
+    }
     
     if (relevantChunks.length === 0) {
       return {
@@ -44,8 +96,10 @@ export class RAGService {
       };
     }
     
-    // Build context from chunks
-    const context = this.buildContext(question, relevantChunks);
+    // ============= IMPROVED: Smart Context Building =============
+    const context = this.FEATURES.USE_SMART_CONTEXT 
+      ? this.buildSmartContext(question, relevantChunks)
+      : this.buildContext(question, relevantChunks);
     
     // Generate answer using OpenAI
     const answer = await this.generateAnswer(context, question);
@@ -53,10 +107,21 @@ export class RAGService {
     // Calculate confidence based on relevance scores
     const confidence = this.calculateConfidence(relevantChunks);
     
-    // Cache the answer if enabled
-    if (process.env.USE_CACHE === 'true' && confidence > 50) {
-      const cacheKey = `${question}-${lessonId || 'general'}`;
-      this.saveToCache(cacheKey, answer);
+    // Update average confidence metric
+    this.metrics.averageConfidence = 
+      (this.metrics.averageConfidence * (this.metrics.totalQuestions - 1) + confidence) / 
+      this.metrics.totalQuestions;
+    
+    // ============= IMPROVED: Better Caching Strategy =============
+    if (this.FEATURES.USE_CACHE && confidence > this.FEATURES.CACHE_CONFIDENCE_THRESHOLD) {
+      const cacheKey = this.generateCacheKey(question, lessonId);
+      this.saveToCache(cacheKey, answer, confidence);
+    }
+    
+    // Log performance if enabled
+    if (this.FEATURES.LOG_PERFORMANCE) {
+      const duration = Date.now() - startTime;
+      console.log(`⚡ Performance: ${duration}ms | Confidence: ${confidence}% | Chunks: ${relevantChunks.length}`);
     }
     
     return {
@@ -67,9 +132,86 @@ export class RAGService {
   }
   
   /**
-   * Build context for RAG from retrieved chunks
+   * NEW: Smart context building for better answers
    */
-  private buildContext(question: string, chunks: any[]): string {
+  private buildSmartContext(question: string, chunks: SearchResult[]): string {
+    // Group chunks by lesson
+    const chunksByLesson = new Map<string, SearchResult[]>();
+    
+    chunks.forEach(chunk => {
+      const lessonId = chunk.lessonInfo?.id || 'unknown';
+      if (!chunksByLesson.has(lessonId)) {
+        chunksByLesson.set(lessonId, []);
+      }
+      chunksByLesson.get(lessonId)!.push(chunk);
+    });
+    
+    // Smart selection strategy
+    const selectedChunks: SearchResult[] = [];
+    
+    // 1. Take top 3 highest scoring chunks
+    const topScored = chunks
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+    selectedChunks.push(...topScored);
+    
+    // 2. Add adjacent chunks if they're from the same lesson
+    topScored.forEach(chunk => {
+      const lessonChunks = chunksByLesson.get(chunk.lessonInfo?.id || '');
+      if (lessonChunks && lessonChunks.length > 1) {
+        // Find adjacent chunks (by chunkIndex)
+        const currentIndex = chunk.chunk.metadata?.chunkIndex || 0;
+        const adjacent = lessonChunks.filter(c => {
+          const idx = c.chunk.metadata?.chunkIndex || 0;
+          return Math.abs(idx - currentIndex) === 1 && !selectedChunks.includes(c);
+        });
+        selectedChunks.push(...adjacent.slice(0, 1)); // Add max 1 adjacent
+      }
+    });
+    
+    // 3. Remove duplicates and sort by lesson + chunk index
+    const uniqueChunks = Array.from(new Set(selectedChunks));
+    uniqueChunks.sort((a, b) => {
+      // First by lesson
+      const lessonCompare = (a.lessonInfo?.id || '').localeCompare(b.lessonInfo?.id || '');
+      if (lessonCompare !== 0) return lessonCompare;
+      
+      // Then by chunk index
+      return (a.chunk.metadata?.chunkIndex || 0) - (b.chunk.metadata?.chunkIndex || 0);
+    });
+    
+    // Build context with better formatting
+    let context = 'معلومات من المنهج ذات الصلة:\n\n';
+    let currentLesson = '';
+    
+    uniqueChunks.forEach((chunk, index) => {
+      // Add lesson header if changed
+      if (chunk.lessonInfo?.title && chunk.lessonInfo.title !== currentLesson) {
+        currentLesson = chunk.lessonInfo.title;
+        context += `\n📚 من درس: ${currentLesson}\n`;
+        context += '─'.repeat(40) + '\n';
+      }
+      
+      context += `[معلومة ${index + 1}]:\n`;
+      context += `${chunk.chunk.text}\n`;
+      
+      // Add relevance indicator
+      if (chunk.score > 0.7) {
+        context += `✅ (صلة قوية: ${Math.round(chunk.score * 100)}%)\n`;
+      } else if (chunk.score > 0.4) {
+        context += `✓ (صلة متوسطة: ${Math.round(chunk.score * 100)}%)\n`;
+      }
+      
+      context += '\n';
+    });
+    
+    return context;
+  }
+  
+  /**
+   * Original context building (kept for backward compatibility)
+   */
+  private buildContext(question: string, chunks: SearchResult[]): string {
     let context = 'معلومات من المنهج ذات الصلة:\n\n';
     
     // Sort chunks by relevance score
@@ -137,9 +279,9 @@ ${context}
   }
   
   /**
-   * Calculate confidence score based on similarity scores
+   * ENHANCED: Better confidence calculation
    */
-  private calculateConfidence(chunks: any[]): number {
+  private calculateConfidence(chunks: SearchResult[]): number {
     if (chunks.length === 0) return 0;
     
     // Take top 3 chunks for confidence calculation
@@ -159,8 +301,12 @@ ${context}
     
     const avgScore = weightTotal > 0 ? weightedSum / weightTotal : 0;
     
+    // Bonus for multiple high-quality sources
+    const highQualityCount = chunks.filter(c => c.score > 0.6).length;
+    const diversityBonus = Math.min(highQualityCount * 0.05, 0.15);
+    
     // Convert to percentage (0-100)
-    return Math.min(Math.round(avgScore * 100), 100);
+    return Math.min(Math.round((avgScore + diversityBonus) * 100), 100);
   }
   
   /**
@@ -176,7 +322,9 @@ ${context}
       throw new Error('No content found for lesson');
     }
     
-    const context = this.buildContext('', chunks);
+    const context = this.FEATURES.USE_SMART_CONTEXT
+      ? this.buildSmartContext('', chunks)
+      : this.buildContext('', chunks);
     
     const systemPrompt = `أنت مُعلم متخصص في إنشاء أسئلة اختبارات تعليمية للمناهج المصرية.
 
@@ -252,7 +400,7 @@ ${context}
     
     // Check cache
     const cacheKey = `explain-${concept}-${gradeLevel}`;
-    if (process.env.USE_CACHE === 'true') {
+    if (this.FEATURES.USE_CACHE) {
       const cached = this.getFromCache(cacheKey);
       if (cached) {
         console.log('📦 Returning cached explanation');
@@ -292,8 +440,8 @@ ${context}
       });
       
       // Cache the explanation
-      if (process.env.USE_CACHE === 'true') {
-        this.saveToCache(cacheKey, explanation);
+      if (this.FEATURES.USE_CACHE) {
+        this.saveToCache(cacheKey, explanation, 95);
       }
       
       return explanation;
@@ -406,7 +554,7 @@ ${context}
   }
   
   /**
-   * Cache management
+   * IMPROVED: Better cache management
    */
   private getFromCache(key: string): string | null {
     const cached = this.cache.get(key);
@@ -421,45 +569,100 @@ ${context}
     return cached.answer;
   }
   
-  private saveToCache(key: string, answer: string): void {
-    // Limit cache size
-    if (this.cache.size > 100) {
-      // Remove oldest entries
-      const firstKey = this.cache.keys().next().value;
-      if (typeof firstKey === 'string') {
-        this.cache.delete(firstKey);
+  /**
+   * ENHANCED: Generate better cache keys
+   */
+  private generateCacheKey(question: string, lessonId?: string): string {
+  const normalized = question
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[؟?!.،,؛:]/g, '') 
+    .replace(/[ًٌٍَُِّْ]/g, ''); 
+    
+  return `rag_${normalized}_${lessonId || 'general'}`;
+}
+  
+  /**
+   * IMPROVED: Save to cache with metadata
+   */
+  private saveToCache(key: string, answer: string, confidence: number): void {
+    // Remove oldest entries if cache is full
+    if (this.cache.size >= this.FEATURES.MAX_CACHE_SIZE) {
+      // Find and remove least frequently used entries
+      const entries = Array.from(this.cache.entries());
+      entries.sort((a, b) => (a[1].hits || 0) - (b[1].hits || 0));
+      
+      // Remove bottom 20%
+      const toRemove = Math.ceil(entries.length * 0.2);
+      for (let i = 0; i < toRemove; i++) {
+        this.cache.delete(entries[i][0]);
       }
     }
     
     this.cache.set(key, {
       answer,
       timestamp: Date.now(),
+      hits: 0,
     });
+    
+    // Log cache status
+    if (this.FEATURES.LOG_PERFORMANCE) {
+      console.log(`💾 Cache: ${this.cache.size}/${this.FEATURES.MAX_CACHE_SIZE} entries`);
+    }
   }
   
   /**
    * Clear cache
    */
   clearCache(): void {
+    const size = this.cache.size;
     this.cache.clear();
-    console.log('🗑️ RAG cache cleared');
+    console.log(`🗑️ RAG cache cleared (${size} entries removed)`);
+  }
+  
+  /**
+   * NEW: Get performance metrics
+   */
+  getMetrics(): any {
+    return {
+      ...this.metrics,
+      cacheSize: this.cache.size,
+      cacheHitRate: this.metrics.totalQuestions > 0 
+        ? Math.round((this.metrics.cacheHits / this.metrics.totalQuestions) * 100) 
+        : 0,
+    };
+  }
+  
+  /**
+   * NEW: Get feature status
+   */
+  getFeatureStatus(): any {
+    return this.FEATURES;
   }
 }
 
 // Export singleton instance
 export const ragService = new RAGService();
 
-// Clear old cache entries periodically
+// ============= IMPROVED: Better cache cleanup =============
 setInterval(() => {
   const now = Date.now();
-  const cacheMap = (ragService as any).cache;
-  const cacheTTL = (ragService as any).CACHE_TTL;
+  const service = ragService as any;
+  const cache = service.cache;
+  const cacheTTL = service.CACHE_TTL;
   
-  if (cacheMap && cacheTTL) {
-    for (const [key, value] of cacheMap) {
+  if (cache && cacheTTL) {
+    let removed = 0;
+    for (const [key, value] of cache) {
       if (now - value.timestamp > cacheTTL) {
-        cacheMap.delete(key);
+        cache.delete(key);
+        removed++;
       }
+    }
+    
+    if (removed > 0 && service.FEATURES?.LOG_PERFORMANCE) {
+      console.log(`🧹 Cache cleanup: removed ${removed} expired entries`);
     }
   }
 }, 3600000); // Every hour

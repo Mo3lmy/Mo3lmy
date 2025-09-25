@@ -38,7 +38,7 @@ export class TeachingContextManager {
     this.sessions = new Map();
     
     // Optional Redis for persistence
-    if (config.REDIS_URL && config.USE_CACHE === 'true') {
+    if (config.REDIS_URL && config.USE_CACHE) {
       this.redis = new Redis(config.REDIS_URL);
       console.log('✅ Teaching Context: Redis connected');
     } else {
