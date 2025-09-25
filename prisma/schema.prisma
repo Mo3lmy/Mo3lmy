@@ -35,6 +35,8 @@ model User {
   rewards         ClaimedReward[]
   challenges      DailyChallenge[]
   learningSessions LearningSession[]
+  studentContext  StudentContext?      //  NEW
+  emotionalStates EmotionalState[]     //  NEW
   
   @@index([email])
   @@index([role])
@@ -69,6 +71,99 @@ model Profile {
   user            User      @relation(fields: [userId], references: [id])
   
   @@index([userId])
+}
+
+// =============  STUDENT CONTEXT & EMOTIONAL INTELLIGENCE =============
+
+model StudentContext {
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  
+  // Learning Profile
+  learningStyle         String?   // visual, auditory, kinesthetic, reading
+  preferredDifficulty   String    @default("medium") // easy, medium, hard
+  currentLevel          Int       @default(1)
+  
+  // Performance Metrics
+  totalSessions         Int       @default(0)
+  totalLearningTime     Int       @default(0) // بالدقائق
+  correctAnswers        Int       @default(0)
+  wrongAnswers          Int       @default(0)
+  averageScore          Float     @default(0)
+  streakCount           Int       @default(0)
+  longestStreak         Int       @default(0)
+  
+  // Emotional Tracking
+  currentMood           String    @default("neutral") // happy, neutral, frustrated, confused, tired
+  lastMoodUpdate        DateTime  @default(now())
+  averageConfidence     Float     @default(70)
+  averageEngagement     Float     @default(80)
+  
+  // Topics & Skills
+  strugglingTopics      String?   // JSON array للمواضيع الصعبة
+  masteredTopics        String?   // JSON array للمواضيع المتقنة
+  recentTopics          String?   // JSON array آخر المواضيع
+  strengths             String?   // JSON array نقاط القوة
+  weaknesses            String?   // JSON array نقاط الضعف
+  
+  // Interaction History
+  lastInteractionTime   DateTime  @default(now())
+  questionsAsked        Int       @default(0)
+  hintsRequested        Int       @default(0)
+  breaksRequested       Int       @default(0)
+  sessionsCompleted     Int       @default(0)
+  
+  // Personalization Data
+  conversationHistory   String?   // JSON array آخر المحادثات
+  preferences           String?   // JSON تفضيلات التعلم
+  achievementPreferences String?  // JSON تفضيلات الإنجازات
+  notificationPreferences String? // JSON تفضيلات التنبيهات
+  
+  // Parent Communication
+  parentNotified        Boolean   @default(false)
+  lastParentReport      DateTime?
+  parentReportFrequency String    @default("weekly") // daily, weekly, monthly
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  user                  User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([currentMood])
+  @@index([lastInteractionTime])
+}
+
+model EmotionalState {
+  id              String    @id @default(uuid())
+  userId          String
+  lessonId        String?
+  
+  // Emotional Data
+  mood            String    // happy, neutral, frustrated, confused, tired
+  confidence      Int       // 0-100
+  engagement      Int       // 0-100
+  stress          Int       @default(0) // 0-100
+  
+  // Indicators
+  indicators      String?   // JSON array للمؤشرات
+  triggers        String?   // JSON array للمحفزات
+  
+  // Response
+  systemResponse  String?   // JSON للاستجابة النظام
+  suggestions     String?   // JSON للاقتراحات
+  
+  // Timestamps
+  detectedAt      DateTime  @default(now())
+  resolvedAt      DateTime?
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([detectedAt])
+  @@index([mood])
 }
 
 // ============= EDUCATIONAL CONTENT MODELS =============
@@ -130,6 +225,11 @@ model Lesson {
   keyPoints       String?   // JSON array للنقاط الرئيسية
   estimatedMinutes Int     @default(45)
   
+  //  Emotional Adaptation Fields
+  emotionalTones  String?   // JSON array للنبرات العاطفية المناسبة
+  motivationalMessages String? // JSON array للرسائل التحفيزية
+  difficultyVariations String? // JSON للتنويعات حسب المستوى
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
@@ -145,9 +245,9 @@ model Lesson {
   formulas        Formula[]
   ragContent      RAGContent[]
   learningSessions LearningSession[]
-  visualElements  VisualElement[]      // جديد
-  interactiveComponents InteractiveComponent[] // جديد
-  contentQuality  ContentQuality?       // جديد
+  visualElements  VisualElement[]
+  interactiveComponents InteractiveComponent[]
+  contentQuality  ContentQuality?
   
   @@index([unitId])
   @@index([isPublished])
@@ -172,6 +272,10 @@ model Content {
   enrichedContent String?   // JSON للمحتوى المحسن بالكامل
   lastEnrichedAt  DateTime? // آخر تحسين
   enrichmentLevel Int       @default(0) // مستوى التحسين 0-10
+  
+  //  Context-Aware Content
+  adaptiveContent String?   // JSON للمحتوى المتكيف حسب المستوى
+  emotionalSupport String?  // JSON للدعم العاطفي
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -388,6 +492,10 @@ model Question {
   hints           String?   // JSON array للتلميحات
   stepByStepSolution String? // JSON array للحل خطوة بخطوة
   
+  // Emotional Support Fields
+  encouragementMessages String? // JSON array للرسائل التشجيعية
+  errorFeedback   String?   // JSON للتعامل مع الأخطاء
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
@@ -415,6 +523,12 @@ model QuizAttempt {
   correctAnswers  Int       @default(0)
   timeSpent       Int?      // بالثواني
   completedAt     DateTime?
+  
+  //  Emotional Context
+  emotionalState  String?   // JSON للحالة العاطفية أثناء الاختبار
+  confidenceLevel Float     @default(0) // 0-100
+  stressLevel     Float     @default(0) // 0-100
+  
   createdAt       DateTime  @default(now())
   
   // Relations
@@ -432,6 +546,12 @@ model QuizAttemptAnswer {
   userAnswer      String
   isCorrect       Boolean
   timeSpent       Int?      // بالثواني
+  
+  //  Learning Analytics
+  confidence      Int       @default(0) // 0-100 مدى ثقة الطالب
+  hintsUsed       Int       @default(0) // عدد التلميحات المستخدمة
+  attempts        Int       @default(1) // عدد المحاولات
+  
   createdAt       DateTime  @default(now())
   
   // Relations
@@ -460,6 +580,11 @@ model Progress {
   lastScrollPosition Float  @default(0)     // موضع التمرير
   lastSectionId   String?                   // آخر قسم
   
+  //  Emotional Journey
+  emotionalJourney String?  // JSON array للرحلة العاطفية
+  struggledSections String? // JSON array للأقسام الصعبة
+  masteredSections String?  // JSON array للأقسام المتقنة
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
@@ -478,7 +603,7 @@ enum ProgressStatus {
   COMPLETED
 }
 
-// ============= AI CHAT (FIXED FOR REALTIME) =============
+// ============= AI CHAT (ENHANCED) =============
 
 model ChatMessage {
   id              String    @id @default(uuid())
@@ -486,18 +611,22 @@ model ChatMessage {
   lessonId        String?
   sessionId       String?   // ربط بجلسة التعلم
   
-  // محتوى الرسالة - اختياري لأن الرسالة قد تكون من user أو AI
+  // محتوى الرسالة
   userMessage     String    @default("")
   aiResponse      String    @default("")
   
   // معلومات إضافية
-  role            String    @default("USER") // أبسط من enum
+  role            String    @default("USER")
   metadata        String?   // JSON for suggestions, context, etc.
   rating          Int?      // تقييم المستخدم للرد (1-5)
   feedback        String?   // ملاحظات المستخدم
   
+  //  Emotional Context
+  emotionalContext String?  // JSON للسياق العاطفي
+  wasHelpful      Boolean?  // هل كان الرد مفيداً
+  
   // Stream support
-  isStreaming     Boolean   @default(false) // هل تم بث الرد
+  isStreaming     Boolean   @default(false)
   responseTime    Int?      // وقت الاستجابة بالـ ms
   
   // Timestamps
@@ -514,7 +643,7 @@ model ChatMessage {
   @@index([createdAt])
 }
 
-// ============= GAMIFICATION MODELS =============
+// ============= GAMIFICATION MODELS (ENHANCED) =============
 
 model UserAchievement {
   id              String    @id @default(uuid())
@@ -523,11 +652,20 @@ model UserAchievement {
   unlockedAt      DateTime  @default(now())
   points          Int
   
+  //  Achievement Details
+  title           String
+  description     String
+  icon            String?
+  category        String?   // academic, social, consistency, mastery
+  rarity          String    @default("common") // common, rare, epic, legendary
+  progress        Float     @default(100) // للإنجازات التدريجية
+  
   // Relations
   user            User      @relation(fields: [userId], references: [id])
   
   @@unique([userId, achievementId])
   @@index([userId])
+  @@index([category])
 }
 
 model ClaimedReward {
@@ -551,6 +689,11 @@ model DailyChallenge {
   completed       Boolean   @default(false)
   progress        Float     @default(0)
   
+  //  Challenge Details
+  difficulty      String    @default("medium")
+  points          Int       @default(10)
+  bonusPoints     Int       @default(0)
+  
   // Relations
   user            User      @relation(fields: [userId], references: [id])
   
@@ -558,7 +701,7 @@ model DailyChallenge {
   @@index([userId])
 }
 
-// ============= LEARNING SESSION MODEL =============
+// ============= LEARNING SESSION MODEL (ENHANCED) =============
 
 model LearningSession {
   id              String    @id @default(uuid())
@@ -576,16 +719,25 @@ model LearningSession {
   lastActivityAt  DateTime  @default(now())
   completedAt     DateTime?
   
+  //  Enhanced Session Data
+  emotionalStates String?   // JSON array للحالات العاطفية خلال الجلسة
+  interactionCount Int      @default(0)
+  questionsAsked  Int       @default(0)
+  hintsRequested  Int       @default(0)
+  breaksTaken     Int       @default(0)
+  focusScore      Float     @default(0) // 0-100
+  
   // Content State (JSON)
   chatHistory     String?   // JSON array of messages
   slideHistory    String?   // JSON array of visited slides
   userPreferences String?   // JSON object for settings
+  teachingScripts String?   // JSON array للسكريبتات التعليمية
   
   // Relations
   user            User      @relation(fields: [userId], references: [id])
   lesson          Lesson    @relation(fields: [lessonId], references: [id])
   
-  @@unique([userId, lessonId]) // مستخدم واحد، درس واحد، جلسة واحدة نشطة
+  @@unique([userId, lessonId])
   @@index([userId])
   @@index([lessonId])
   @@index([isActive])

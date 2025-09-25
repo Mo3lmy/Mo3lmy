@@ -18,9 +18,47 @@ import type {
 } from '../../types/quiz.types';
 import type { Question, QuizAttempt, QuestionType } from '@prisma/client';
 
+// 🆕 Import for student context integration
+interface StudentQuizContext {
+  id: string;
+  name: string;
+  emotionalState?: {
+    mood: 'happy' | 'neutral' | 'frustrated' | 'confused' | 'tired';
+    confidence: number;
+    engagement: number;
+  };
+  quizHistory: {
+    totalAttempts: number;
+    averageScore: number;
+    strongTopics: string[];
+    weakTopics: string[];
+    commonMistakes: string[];
+    lastAttemptDate?: Date;
+  };
+  learningStyle: {
+    preferredQuestionTypes: string[];
+    averageResponseTime: number;
+    hintsUsed: number;
+  };
+}
+
+// Extended interfaces for new features
+interface ExtendedQuizSession extends QuizSession {
+  welcomeMessage?: string;
+  emotionalSupport?: any;
+}
+
+interface ExtendedAnswerSubmissionResult extends AnswerSubmissionResult {
+  encouragement?: string;
+}
+
+interface ExtendedQuizResult extends QuizResult {
+  parentReport?: any;
+}
+
 /**
  * Enhanced Quiz Service with Adaptive & Dynamic Features
- * Version: 3.0 - Smart Quiz Generation
+ * Version: 3.1 - With Student Context & Emotional Intelligence
  */
 export class QuizService {
   private readonly PASS_THRESHOLD = 60;
@@ -33,6 +71,8 @@ export class QuizService {
     useGamification: true,
     provideHints: true,
     instantFeedback: true,
+    emotionalAdaptation: true, // 🆕
+    parentReporting: true, // 🆕
   };
   
   // Question type distribution
@@ -46,9 +86,80 @@ export class QuizService {
   
   // Performance tracking (in-memory)
   private userPerformance: Map<string, QuizPerformance> = new Map();
+  
+  // 🆕 Student contexts
+  private studentContexts: Map<string, StudentQuizContext> = new Map();
+  
+  // 🆕 Emotional response templates
+  private readonly EMOTIONAL_RESPONSES = {
+    frustrated: {
+      encouragement: 'لا تقلق، كل واحد بيغلط. المهم نتعلم من أخطائنا!',
+      hint: 'خد نفس عميق وفكر تاني. أنت قادر!',
+      afterCorrect: 'شفت؟ قلتلك إنك تقدر! 🌟'
+    },
+    confused: {
+      encouragement: 'خلينا نفكر سوا خطوة بخطوة',
+      hint: 'الموضوع أبسط مما تتخيل. فكر في الأساسيات',
+      afterCorrect: 'ممتاز! بدأت تفهم الموضوع'
+    },
+    tired: {
+      encouragement: 'أعرف إنك تعبان، بس شوية كمان وهنخلص',
+      hint: 'ركز في النقطة الأساسية بس',
+      afterCorrect: 'برافو! حتى وأنت تعبان بتحل صح'
+    },
+    happy: {
+      encouragement: 'حماسك جميل! يلا نكمل',
+      hint: 'أنت على الطريق الصحيح!',
+      afterCorrect: 'رائع! استمر كده'
+    },
+    neutral: {
+      encouragement: 'أنت بتبلي بلاء حسن',
+      hint: 'راجع السؤال مرة تانية',
+      afterCorrect: 'أحسنت!'
+    }
+  };
 
   /**
-   * Generate adaptive quiz questions
+   * 🆕 Get or create student quiz context
+   */
+  private async getStudentContext(userId: string): Promise<StudentQuizContext> {
+    if (!this.studentContexts.has(userId)) {
+      // Load from database or create new
+      const history = await this.getUserQuizHistory(userId);
+      
+      const context: StudentQuizContext = {
+        id: userId,
+        name: userId, // In production, get from user profile
+        emotionalState: {
+          mood: 'neutral',
+          confidence: 70,
+          engagement: 70
+        },
+        quizHistory: {
+          totalAttempts: history.length,
+          averageScore: history.length > 0 
+            ? history.reduce((sum, h) => sum + (h.score || 0), 0) / history.length
+            : 0,
+          strongTopics: [],
+          weakTopics: [],
+          commonMistakes: [],
+          lastAttemptDate: history[0]?.createdAt
+        },
+        learningStyle: {
+          preferredQuestionTypes: [],
+          averageResponseTime: 45,
+          hintsUsed: 0
+        }
+      };
+      
+      this.studentContexts.set(userId, context);
+    }
+    
+    return this.studentContexts.get(userId)!;
+  }
+
+  /**
+   * Generate adaptive quiz questions with student context
    */
   async generateQuizQuestions(
     lessonId: string,
@@ -57,6 +168,9 @@ export class QuizService {
     userId?: string
   ): Promise<Question[]> {
     console.log(`📝 Generating ${count} adaptive questions`);
+    
+    // 🆕 Get student context
+    const studentContext = userId ? await this.getStudentContext(userId) : null;
     
     // Check lesson exists
     const lesson = await prisma.lesson.findUnique({
@@ -70,16 +184,27 @@ export class QuizService {
     
     // Get user performance for adaptive difficulty
     const userLevel = userId ? this.getUserLevel(userId) : null;
-    const adaptedDifficulty = this.adaptDifficulty(difficulty, userLevel);
+    const adaptedDifficulty = this.adaptDifficulty(difficulty, userLevel, studentContext);
+    
+    // 🆕 Adapt question types based on student preference
+    const preferredTypes = studentContext?.learningStyle.preferredQuestionTypes || [];
     
     // Check existing questions
     let existingQuestions = await prisma.question.findMany({
       where: { 
         lessonId,
         ...(adaptedDifficulty && { difficulty: adaptedDifficulty as Difficulty }),
+        ...(preferredTypes.length > 0 && { type: { in: preferredTypes as QuestionType[] } })
       },
       take: Math.floor(count / 2),
     });
+    
+    // 🆕 Avoid questions that caused mistakes before
+    if (studentContext && studentContext.quizHistory.commonMistakes.length > 0) {
+      existingQuestions = existingQuestions.filter(q => 
+        !studentContext.quizHistory.commonMistakes.includes(q.id)
+      );
+    }
     
     // Shuffle for variety
     existingQuestions = this.shuffleArray(existingQuestions);
@@ -123,8 +248,11 @@ export class QuizService {
         userId
       );
       
+      // 🆕 Get student context for personalization
+      const studentContext = userId ? await this.getStudentContext(userId) : null;
+      
       // Enhance with variety and features
-      return questions.map((q, index) => this.enhanceQuestion(q, index, difficulty));
+      return questions.map((q, index) => this.enhanceQuestion(q, index, difficulty, studentContext));
       
     } catch (error) {
       console.error('Dynamic generation failed:', error);
@@ -133,15 +261,16 @@ export class QuizService {
   }
   
   /**
-   * Enhance question with additional features
+   * Enhance question with additional features and personalization
    */
   private enhanceQuestion(
     question: any,
     index: number,
-    difficulty: 'EASY' | 'MEDIUM' | 'HARD'
+    difficulty: 'EASY' | 'MEDIUM' | 'HARD',
+    studentContext?: StudentQuizContext | null
   ): QuizQuestion {
     // Ensure variety in question types
-    const type = this.selectQuestionType(index) as QuizQuestion['type'];
+    const type = this.selectQuestionType(index, studentContext) as QuizQuestion['type'];
     
     // Transform based on type
     let enhanced = { ...question };
@@ -161,7 +290,14 @@ export class QuizService {
     // Add gamification elements
     enhanced.points = this.calculatePoints(difficulty, type);
     enhanced.timeBonus = difficulty === 'HARD' ? 10 : 5;
-    enhanced.hint = enhanced.hint || this.generateHint(enhanced.question);
+    
+    // 🆕 Personalized hints based on student's weak points
+    enhanced.hint = this.generatePersonalizedHint(enhanced.question, studentContext);
+    
+    // 🆕 Add encouragement based on emotional state
+    if (studentContext?.emotionalState) {
+      enhanced.encouragement = this.EMOTIONAL_RESPONSES[studentContext.emotionalState.mood].encouragement;
+    }
     
     // Add metadata
     enhanced.tags = enhanced.tags || this.extractTags(enhanced.question);
@@ -169,6 +305,41 @@ export class QuizService {
     enhanced.type = type;
     
     return enhanced;
+  }
+  
+  /**
+   * 🆕 Select question type based on student preference
+   */
+  private selectQuestionType(index: number, studentContext?: StudentQuizContext | null): string {
+    const types = Object.keys(this.QUESTION_TYPE_MIX);
+    const weights = Object.values(this.QUESTION_TYPE_MIX);
+    
+    // 🆕 Prefer student's successful question types
+    if (studentContext?.learningStyle?.preferredQuestionTypes && 
+        studentContext.learningStyle.preferredQuestionTypes.length > 0) {
+      const preferred = studentContext.learningStyle.preferredQuestionTypes;
+      if (index % 2 === 0 && preferred.length > 0) {
+        return preferred[index % preferred.length];
+      }
+    }
+    
+    // Rotate through types for variety
+    if (this.QUIZ_SETTINGS.mixQuestionTypes) {
+      return types[index % types.length];
+    }
+    
+    // Random weighted selection
+    const random = Math.random() * 100;
+    let cumulative = 0;
+    
+    for (let i = 0; i < types.length; i++) {
+      cumulative += weights[i];
+      if (random <= cumulative) {
+        return types[i];
+      }
+    }
+    
+    return 'MCQ';
   }
   
   /**
@@ -236,29 +407,35 @@ export class QuizService {
   }
   
   /**
-   * Select question type for variety
+   * 🆕 Generate personalized hint
    */
-  private selectQuestionType(index: number): string {
-    const types = Object.keys(this.QUESTION_TYPE_MIX);
-    const weights = Object.values(this.QUESTION_TYPE_MIX);
+  private generatePersonalizedHint(question: string, studentContext?: StudentQuizContext | null): string {
+    const baseHints = [
+      'راجع الدرس مرة أخرى',
+      'فكر في المعطيات',
+      'ابحث عن الكلمات المفتاحية',
+      'تذكر القاعدة الأساسية',
+      'حاول التبسيط أولاً'
+    ];
     
-    // Rotate through types for variety
-    if (this.QUIZ_SETTINGS.mixQuestionTypes) {
-      return types[index % types.length];
+    if (!studentContext) {
+      return baseHints[Math.floor(Math.random() * baseHints.length)];
     }
     
-    // Random weighted selection
-    const random = Math.random() * 100;
-    let cumulative = 0;
-    
-    for (let i = 0; i < types.length; i++) {
-      cumulative += weights[i];
-      if (random <= cumulative) {
-        return types[i];
-      }
+    // Personalized hints based on weak topics
+    if (studentContext.quizHistory.weakTopics.length > 0) {
+      const weakTopic = studentContext.quizHistory.weakTopics[0];
+      return `راجع ${weakTopic} - ده نقطة ضعفك`;
     }
     
-    return 'MCQ';
+    // Based on emotional state
+    if (studentContext.emotionalState?.mood === 'frustrated') {
+      return 'خد نفس عميق. الإجابة أبسط مما تتخيل';
+    } else if (studentContext.emotionalState?.mood === 'confused') {
+      return 'ابدأ بالأساسيات وابني عليها';
+    }
+    
+    return baseHints[Math.floor(Math.random() * baseHints.length)];
   }
   
   /**
@@ -313,15 +490,36 @@ export class QuizService {
   }
   
   /**
-   * Start adaptive quiz session
+   * Start adaptive quiz session with emotional support
    */
   async startQuizAttempt(
     userId: string,
     lessonId: string,
     questionCount?: number,
     mode?: 'practice' | 'test' | 'challenge'
-  ): Promise<QuizSession> {
+  ): Promise<ExtendedQuizSession> {
     console.log(`🎮 Starting ${mode || 'practice'} quiz for ${userId}`);
+    
+    // 🆕 Get student context
+    const studentContext = await this.getStudentContext(userId);
+    
+    // 🆕 Welcome message based on history
+    let welcomeMessage = '';
+    if (studentContext.quizHistory.lastAttemptDate) {
+      const daysSinceLastAttempt = Math.floor(
+        (Date.now() - new Date(studentContext.quizHistory.lastAttemptDate).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      
+      if (daysSinceLastAttempt === 0) {
+        welcomeMessage = 'أهلاً بيك تاني! حماسك جميل';
+      } else if (daysSinceLastAttempt === 1) {
+        welcomeMessage = 'رجعت بعد يوم! ممتاز';
+      } else if (daysSinceLastAttempt > 7) {
+        welcomeMessage = `اشتقنالك! غايب من ${daysSinceLastAttempt} يوم`;
+      }
+    } else {
+      welcomeMessage = 'أول اختبار ليك! بالتوفيق';
+    }
     
     // Get adaptive questions
     const requestedCount = questionCount || this.MAX_QUESTIONS_PER_QUIZ;
@@ -332,8 +530,8 @@ export class QuizService {
       userId
     );
     
-    // Order questions by difficulty (easy to hard)
-    const orderedQuestions = this.orderQuestionsByDifficulty(questions);
+    // 🆕 Order questions based on student's emotional state
+    const orderedQuestions = this.orderQuestionsByEmotionalState(questions, studentContext);
     
     // Create attempt
     const attempt = await prisma.quizAttempt.create({
@@ -346,7 +544,7 @@ export class QuizService {
     });
     
     // Enhanced session with features
-    const session: QuizSession = {
+    const session: ExtendedQuizSession = {
       id: attempt.id,
       userId,
       lessonId,
@@ -370,20 +568,54 @@ export class QuizService {
       lives: mode === 'challenge' ? 3 : undefined,
       streakCount: 0,
       bonusPoints: 0,
+      // 🆕 Personalization
+      welcomeMessage,
+      emotionalSupport: this.EMOTIONAL_RESPONSES[studentContext.emotionalState?.mood || 'neutral'],
     };
     
     return session;
   }
   
   /**
-   * Submit answer with instant feedback
+   * 🆕 Order questions based on emotional state
+   */
+  private orderQuestionsByEmotionalState(questions: any[], studentContext: StudentQuizContext): any[] {
+    const mood = studentContext.emotionalState?.mood || 'neutral';
+    
+    if (mood === 'frustrated' || mood === 'tired') {
+      // Start with easy questions to build confidence
+      return this.orderQuestionsByDifficulty(questions);
+    } else if (mood === 'happy') {
+      // Mix difficulties for engagement
+      const easy = questions.filter(q => q.difficulty === 'EASY');
+      const medium = questions.filter(q => q.difficulty === 'MEDIUM');
+      const hard = questions.filter(q => q.difficulty === 'HARD');
+      
+      const mixed: any[] = [];
+      const maxLength = Math.max(easy.length, medium.length, hard.length);
+      
+      for (let i = 0; i < maxLength; i++) {
+        if (easy[i]) mixed.push(easy[i]);
+        if (medium[i]) mixed.push(medium[i]);
+        if (hard[i]) mixed.push(hard[i]);
+      }
+      
+      return mixed;
+    }
+    
+    // Default: easy to hard
+    return this.orderQuestionsByDifficulty(questions);
+  }
+  
+  /**
+   * Submit answer with instant feedback and emotional support
    */
   async submitAnswer(
     attemptId: string,
     questionId: string,
     answer: string,
     timeSpent: number
-  ): Promise<AnswerSubmissionResult> {
+  ): Promise<ExtendedAnswerSubmissionResult> {
     // Get question
     const question = await prisma.question.findUnique({
       where: { id: questionId },
@@ -398,6 +630,11 @@ export class QuizService {
       where: { id: attemptId },
       include: { answers: true }
     });
+    
+    // 🆕 Get student context
+    const studentContext = attempt?.userId 
+      ? await this.getStudentContext(attempt.userId) 
+      : null;
     
     // Check answer
     const isCorrect = this.checkAnswer(question, answer);
@@ -421,6 +658,31 @@ export class QuizService {
       if (currentStreak >= 3) {
         streakBonus = Math.min(currentStreak * 2, 10);
         pointsEarned += streakBonus;
+      }
+      
+      // 🆕 Update emotional state positively
+      if (studentContext && studentContext.emotionalState) {
+        studentContext.emotionalState.confidence = Math.min(100, studentContext.emotionalState.confidence + 5);
+        studentContext.emotionalState.engagement = Math.min(100, studentContext.emotionalState.engagement + 3);
+      }
+    } else {
+      // 🆕 Update emotional state
+      if (studentContext && studentContext.emotionalState) {
+        studentContext.emotionalState.confidence = Math.max(0, studentContext.emotionalState.confidence - 3);
+        
+        // Check if student is getting frustrated
+        const recentWrong = attempt?.answers.slice(-3).filter(a => !a.isCorrect).length || 0;
+        if (recentWrong >= 2) {
+          studentContext.emotionalState.mood = 'frustrated';
+        }
+        
+        // Track common mistake
+        if (!studentContext.quizHistory.commonMistakes.includes(questionId)) {
+          studentContext.quizHistory.commonMistakes.push(questionId);
+          if (studentContext.quizHistory.commonMistakes.length > 10) {
+            studentContext.quizHistory.commonMistakes.shift();
+          }
+        }
       }
     }
     
@@ -451,14 +713,19 @@ export class QuizService {
       ragService.updateUserPerformance(attempt.userId, isCorrect);
     }
     
-    // Generate personalized explanation if wrong
+    // 🆕 Generate personalized explanation and encouragement
     let explanation = question.explanation || '';
-    if (!isCorrect && attempt?.userId) {
+    let encouragement = '';
+    
+    if (!isCorrect && studentContext && studentContext.emotionalState) {
       explanation = await this.getPersonalizedExplanation(
         question,
         answer,
-        attempt.userId
+        attempt!.userId
       );
+      encouragement = this.EMOTIONAL_RESPONSES[studentContext.emotionalState.mood].hint;
+    } else if (isCorrect && studentContext && studentContext.emotionalState) {
+      encouragement = this.EMOTIONAL_RESPONSES[studentContext.emotionalState.mood].afterCorrect;
     }
     
     return {
@@ -466,7 +733,8 @@ export class QuizService {
       explanation,
       pointsEarned,
       streakBonus,
-      hint: !isCorrect ? this.generateHint(question.question) : undefined
+      hint: !isCorrect ? this.generatePersonalizedHint(question.question, studentContext) : undefined,
+      encouragement // 🆕
     };
   }
   
@@ -550,9 +818,9 @@ export class QuizService {
   }
   
   /**
-   * Complete quiz with enhanced analysis
+   * Complete quiz with enhanced analysis and parent report
    */
-  async completeQuiz(attemptId: string): Promise<QuizResult> {
+  async completeQuiz(attemptId: string): Promise<ExtendedQuizResult> {
     console.log(`🏁 Completing quiz ${attemptId}`);
     
     // Get attempt with all data
@@ -571,6 +839,9 @@ export class QuizService {
     if (!attempt) {
       throw new NotFoundError('Quiz attempt');
     }
+    
+    // 🆕 Get student context
+    const studentContext = await this.getStudentContext(attempt.userId);
     
     // Calculate scores
     const totalPoints = attempt.answers.reduce(
@@ -615,12 +886,32 @@ export class QuizService {
     // Enhanced performance analysis
     const analysis = this.analyzeEnhancedPerformance(questionResults, avgTimePerQuestion);
     
+    // 🆕 Update student context
+    studentContext.quizHistory.totalAttempts++;
+    studentContext.quizHistory.averageScore = 
+      (studentContext.quizHistory.averageScore * (studentContext.quizHistory.totalAttempts - 1) + percentage) / 
+      studentContext.quizHistory.totalAttempts;
+    
+    // Update strong/weak topics
+    analysis.strengths.forEach(s => {
+      if (!studentContext.quizHistory.strongTopics.includes(s)) {
+        studentContext.quizHistory.strongTopics.push(s);
+      }
+    });
+    
+    analysis.weaknesses.forEach(w => {
+      if (!studentContext.quizHistory.weakTopics.includes(w)) {
+        studentContext.quizHistory.weakTopics.push(w);
+      }
+    });
+    
     // Generate personalized recommendations
     const recommendations = await this.generatePersonalizedRecommendations(
       attempt.userId,
       attempt.lessonId,
       analysis,
-      percentage
+      percentage,
+      studentContext // 🆕
     );
     
     // Calculate achievements
@@ -629,6 +920,14 @@ export class QuizService {
       percentage,
       attempt.answers.length,
       timeSpent
+    );
+    
+    // 🆕 Generate parent report if needed
+    const parentReport = this.generateParentReport(
+      studentContext,
+      percentage,
+      analysis,
+      recommendations
     );
     
     // Update progress
@@ -651,6 +950,44 @@ export class QuizService {
       recommendations,
       achievements,
       nextSteps: this.getNextSteps(passed, percentage),
+      parentReport // 🆕
+    };
+  }
+  
+  /**
+   * 🆕 Generate parent report
+   */
+  private generateParentReport(
+    studentContext: StudentQuizContext,
+    percentage: number,
+    analysis: any,
+    recommendations: string[]
+  ): any {
+    return {
+      studentName: studentContext.name,
+      date: new Date().toLocaleDateString('ar-EG'),
+      performance: {
+        currentScore: Math.round(percentage),
+        averageScore: Math.round(studentContext.quizHistory.averageScore),
+        totalAttempts: studentContext.quizHistory.totalAttempts,
+        trend: percentage > studentContext.quizHistory.averageScore ? 'تحسن' : 'يحتاج دعم'
+      },
+      emotionalState: {
+        mood: studentContext.emotionalState?.mood === 'happy' ? 'سعيد ومتحمس' :
+              studentContext.emotionalState?.mood === 'frustrated' ? 'محبط قليلاً' :
+              studentContext.emotionalState?.mood === 'tired' ? 'متعب' :
+              'عادي',
+        confidence: `${studentContext.emotionalState?.confidence || 70}%`,
+        engagement: `${studentContext.emotionalState?.engagement || 70}%`
+      },
+      strengths: analysis.strengths,
+      weaknesses: analysis.weaknesses,
+      recommendations: recommendations.slice(0, 3),
+      parentActions: [
+        percentage < 50 ? 'يحتاج مساعدة في المذاكرة' : 'شجعوه على الاستمرار',
+        studentContext.emotionalState?.mood === 'frustrated' ? 'امنحوه راحة وادعموه نفسياً' : '',
+        'راجعوا معه الأخطاء بهدوء'
+      ].filter(a => a)
     };
   }
   
@@ -731,13 +1068,14 @@ export class QuizService {
   }
   
   /**
-   * Generate personalized recommendations
+   * Generate personalized recommendations with emotional support
    */
   private async generatePersonalizedRecommendations(
     userId: string,
     lessonId: string,
     analysis: any,
-    percentage: number
+    percentage: number,
+    studentContext?: StudentQuizContext // 🆕
   ): Promise<string[]> {
     const recommendations: string[] = [];
     
@@ -759,9 +1097,23 @@ export class QuizService {
       recommendations.push('حل تمارين سهلة أولاً');
     }
     
+    // 🆕 Based on emotional state
+    if (studentContext?.emotionalState?.mood === 'frustrated') {
+      recommendations.push('خذ راحة 15 دقيقة وارجع بنشاط');
+      recommendations.push('تذكر أن كل شخص يتعلم بسرعته الخاصة');
+    } else if (studentContext?.emotionalState?.mood === 'tired') {
+      recommendations.push('أجل باقي المراجعة لوقت آخر');
+      recommendations.push('النوم الجيد يساعد على التركيز');
+    }
+    
     // Based on weaknesses
     if (analysis.weaknesses.includes('تحتاج تحسين السرعة')) {
       recommendations.push('⏱️ تدرب على حل الأسئلة بوقت محدد');
+    }
+    
+    // 🆕 Based on common mistakes
+    if (studentContext && studentContext.quizHistory.commonMistakes.length > 5) {
+      recommendations.push('راجع الأسئلة التي تخطئ فيها باستمرار');
     }
     
     // Based on insights
@@ -801,6 +1153,12 @@ export class QuizService {
     const userPerf = this.getUserPerformance(userId);
     if (userPerf.streakCount >= 5) {
       achievements.push(`🔥 سلسلة ${userPerf.streakCount} اختبارات ناجحة`);
+    }
+    
+    // 🆕 Emotional achievements
+    const studentContext = this.studentContexts.get(userId);
+    if (studentContext?.emotionalState?.mood === 'frustrated' && percentage >= 60) {
+      achievements.push('💪 تغلبت على الإحباط');
     }
     
     return achievements;
@@ -848,9 +1206,25 @@ export class QuizService {
     };
   }
   
-  private adaptDifficulty(requested?: 'EASY' | 'MEDIUM' | 'HARD', userLevel?: any): 'EASY' | 'MEDIUM' | 'HARD' {
+  /**
+   * 🆕 Enhanced difficulty adaptation
+   */
+  private adaptDifficulty(
+    requested?: 'EASY' | 'MEDIUM' | 'HARD', 
+    userLevel?: any,
+    studentContext?: StudentQuizContext | null
+  ): 'EASY' | 'MEDIUM' | 'HARD' {
     if (!this.QUIZ_SETTINGS.adaptiveDifficulty || !userLevel) {
       return requested || 'MEDIUM';
+    }
+    
+    // 🆕 Consider emotional state
+    if (studentContext?.emotionalState?.mood === 'frustrated') {
+      return 'EASY'; // Give easier questions when frustrated
+    } else if (studentContext?.emotionalState?.mood === 'happy' && 
+               studentContext.emotionalState && 
+               studentContext.emotionalState.confidence > 80) {
+      return 'HARD'; // Challenge when confident and happy
     }
     
     if (userLevel.level === 'advanced') {
@@ -935,17 +1309,6 @@ export class QuizService {
     if (type === 'PROBLEM' || type === 'ESSAY') base += 60;
     if (type === 'SHORT_ANSWER') base += 30;
     return base;
-  }
-  
-  private generateHint(question: string): string {
-    const hints = [
-      'راجع الدرس مرة أخرى',
-      'فكر في المعطيات',
-      'ابحث عن الكلمات المفتاحية',
-      'تذكر القاعدة الأساسية',
-      'حاول التبسيط أولاً'
-    ];
-    return hints[Math.floor(Math.random() * hints.length)];
   }
   
   private extractTags(question: string): string[] {
@@ -1126,6 +1489,21 @@ export class QuizService {
       },
       take: 10,
     });
+  }
+  
+  /**
+   * 🆕 Clear student context (for testing)
+   */
+  clearStudentContext(userId: string): void {
+    this.studentContexts.delete(userId);
+    this.userPerformance.delete(userId);
+  }
+  
+  /**
+   * 🆕 Get all student contexts (for analytics)
+   */
+  getAllStudentContexts(): Map<string, StudentQuizContext> {
+    return this.studentContexts;
   }
 }
 

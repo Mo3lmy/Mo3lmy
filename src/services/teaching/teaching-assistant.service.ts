@@ -1165,13 +1165,13 @@ Return JSON format:
    * 🆕 Build personalized prompt with all enhancements
    */
   private buildPersonalizedPrompt(
-  slideContent: any,
-  context: EducationalContext,
-  level: EducationalLevel,
-  options: TeachingScriptOptions,
-  profile: StudentProfile,
-  problem?: EducationalProblem
-): string {
+    slideContent: any,
+    context: EducationalContext,
+    level: EducationalLevel,
+    options: TeachingScriptOptions,
+    profile: StudentProfile,
+    problem?: EducationalProblem
+  ): string {
     
     // Teaching style based on profile
     const teachingStyle = this.determineTeachingStyle(profile, options);
@@ -1513,14 +1513,14 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
     
     // Base visual keywords
     const visualKeywords: Record<string, string> = {
-  'تخيل': 'show_imagination_graphic',
-  'انظر': 'highlight_element',
-  'شوف': 'zoom_in',
-  'لاحظ': 'add_pointer',
-  'ركز': 'focus_effect',
-  'مثال': 'show_example_box',
-  'المعادلة': 'highlight_equation'
-};
+      'تخيل': 'show_imagination_graphic',
+      'انظر': 'highlight_element',
+      'شوف': 'zoom_in',
+      'لاحظ': 'add_pointer',
+      'ركز': 'focus_effect',
+      'مثال': 'show_example_box',
+      'المعادلة': 'highlight_equation'
+    };
     
     // Add more cues for visual learners
     if (learningStyle.visual > 0.6) {

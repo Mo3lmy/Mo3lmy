@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <title>اختبار الذكاء العاطفي</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>اختبار Student Context</h1>
+    
+    <div id="status">غير متصل</div>
+    <div id="context"></div>
+    <div id="emotional"></div>
+    
+    <button onclick="simulateFrustration()">محاكاة إحباط</button>
+    <button onclick="simulateSuccess()">محاكاة نجاح</button>
+    <button onclick="submitWrongAnswers()">3 إجابات خاطئة</button>
+    
+    <script>
+        const socket = io('http://localhost:3000');
+        
+        // Authenticate
+        socket.on('connect', () => {
+            socket.emit('authenticate', { token: 'dev-token' });
+        });
+        
+        socket.on('authenticated', (data) => {
+            document.getElementById('status').innerHTML = `
+                <h3>✅ متصل</h3>
+                <p>${data.greeting}</p>
+                <p>المزاج: ${data.context?.mood || 'neutral'}</p>
+                <p>Streak: ${data.context?.streakCount || 0}</p>
+            `;
+        });
+        
+        // Listen for emotional state updates
+        socket.on('emotional_state_updated', (data) => {
+            document.getElementById('emotional').innerHTML = `
+                <h3>الحالة العاطفية:</h3>
+                <p>المزاج: ${data.state.mood}</p>
+                <p>الثقة: ${data.state.confidence}%</p>
+                <p>المشاركة: ${data.state.engagement}%</p>
+                <p>اقتراحات: ${data.suggestions.join(', ')}</p>
+            `;
+        });
+        
+        // Listen for achievements
+        socket.on('achievement_unlocked', (data) => {
+            alert(`🏆 إنجاز جديد: ${data.title}`);
+        });
+        
+        // Listen for help offers
+        socket.on('help_offered', (data) => {
+            if(confirm(data.message)) {
+                console.log('User needs help');
+            }
+        });
+        
+        // Listen for break suggestions
+        socket.on('break_suggested', (data) => {
+            alert(`⏰ ${data.message}`);
+        });
+        
+        // Test functions
+        function simulateFrustration() {
+            socket.emit('update_emotional_state', {
+                indicators: ['multiple_errors', 'slow_response']
+            });
+        }
+        
+        function simulateSuccess() {
+            socket.emit('user_activity', {
+                type: 'answer_submitted',
+                correct: true
+            });
+        }
+        
+        function submitWrongAnswers() {
+            for(let i = 0; i < 3; i++) {
+                socket.emit('user_activity', {
+                    type: 'answer_submitted',
+                    correct: false
+                });
+            }
+        }
+    </script>
+</body>
+</html>
