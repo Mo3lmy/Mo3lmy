@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingRoot: require('path').join(__dirname, '..'),
+  reactStrictMode: true
 };
 
 export default nextConfig;

@@ -36,8 +36,10 @@ export default function LoginPage() {
     setIsLoading(true)
     try {
       await login(data.email, data.password)
-      router.push('/dashboard')
+      console.log('Login successful, navigating to dashboard...')
+      router.push('/dashboard/dashboard')
     } catch (error: any) {
+      console.error('Login failed:', error)
       const message = error.message || 'حدث خطأ أثناء تسجيل الدخول'
       setError('root', {
         message: message === 'Invalid email or password' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : message,

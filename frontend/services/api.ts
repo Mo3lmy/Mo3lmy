@@ -266,64 +266,41 @@ class ApiService {
     return await this.api.get(`/api/v1/lessons/${lessonId}/teaching/status`)
   }
 
-  // Student context endpoints - Mock for now since backend doesn't have these yet
+  // Student context endpoints
   async getStudentContext(userId: string) {
-    // Mock response for now
-    return {
-      success: true,
-      data: {
-        xp: 150,
-        level: 2,
-        streak: 3,
-        rank: 15,
-        totalStudyTime: 240,
-        lessonsCompleted: 5,
-        quizzesPassed: 3,
-        perfectScores: 1
-      }
-    }
+    const response = await this.api.get(`/api/v1/student-context/${userId}`)
+    return response
   }
 
   async updateStudentContext(userId: string, data: any) {
-    // Mock response
-    return { success: true, data }
+    const response = await this.api.put(`/api/v1/student-context/${userId}`, data)
+    return response
   }
 
   async getEmotionalState(userId: string) {
-    // Mock response
-    return {
-      success: true,
-      data: {
-        mood: 'happy',
-        energy: 7,
-        focus: 8,
-        timestamp: new Date().toISOString()
-      }
-    }
+    const response = await this.api.get(`/api/v1/student-context/${userId}/emotional-state`)
+    return response
   }
 
   async updateEmotionalState(userId: string, state: any) {
-    // Mock response
-    return { success: true, data: state }
+    const response = await this.api.post(`/api/v1/student-context/${userId}/emotional-state`, state)
+    return response
   }
 
   async getLearningPatterns(userId: string) {
-    // Mock response
-    return { success: true, data: [] }
+    const response = await this.api.get(`/api/v1/student-context/${userId}/learning-patterns`)
+    return response
   }
 
   async getRecommendations(userId: string) {
-    // Mock response
-    return { success: true, data: [] }
+    const response = await this.api.get(`/api/v1/student-context/${userId}/recommendations`)
+    return response
   }
 
-  // Achievements endpoints - Mock for now
+  // Achievements endpoints
   async getAchievements(userId: string) {
-    // Mock response
-    return {
-      success: true,
-      data: []
-    }
+    const response = await this.api.get(`/api/v1/achievements/${userId}`)
+    return response
   }
 
   async unlockAchievement(userId: string, achievementId: string) {
@@ -335,7 +312,7 @@ class ApiService {
   }
 
   async getLeaderboard() {
-    return await this.api.get('/api/v1/achievements/leaderboard')
+    return await this.api.get('/api/v1/achievements/leaderboard/top')
   }
 
   // Parent reports endpoints

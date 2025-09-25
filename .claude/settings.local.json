@@ -15,7 +15,10 @@
       "Bash(npx prisma generate:*)",
       "Bash(npx prisma studio:*)",
       "Bash(curl:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(dir:*)",
+      "Bash(tasklist)"
     ],
     "deny": [],
     "ask": []

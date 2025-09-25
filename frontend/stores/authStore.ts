@@ -33,9 +33,11 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null })
         try {
           const response = await apiService.login(email, password)
+          console.log('Login response:', response)
 
           if (response.success && response.data) {
             const { user, token } = response.data
+            console.log('Setting auth state:', { user, token })
             set({
               user,
               token,
@@ -50,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
             throw new Error(response.message || 'Login failed')
           }
         } catch (error: any) {
+          console.error('Login error:', error)
           const errorMessage = error.error?.message || error.message || 'Login failed'
           set({
             error: errorMessage,
