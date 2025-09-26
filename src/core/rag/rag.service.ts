@@ -740,7 +740,7 @@ ${predictions?.predictedDifficulties.length ? `📍 تجنب التعقيد في
 الصيغة المطلوبة (JSON):
 [
   {
-    "type": "mcq|true_false|fill_blank|problem",
+    "type": "mcq|true_false|fill_blank|problem|short_answer|essay",
     "question": "نص السؤال",
     "options": ["خيار1", "خيار2", "خيار3", "خيار4"],
     "correctAnswer": "الإجابة الصحيحة",
@@ -749,7 +749,9 @@ ${predictions?.predictedDifficulties.length ? `📍 تجنب التعقيد في
     "difficulty": "easy|medium|hard",
     "points": 1-5,
     "tags": ["tag1", "tag2"],
-    "encouragement": "رسالة تحفيزية"
+    "encouragement": "رسالة تحفيزية",
+    "stepByStepSolution": ["خطوة 1", "خطوة 2", "خطوة 3"],
+    "requiresSteps": true
   }
 ]`;
     

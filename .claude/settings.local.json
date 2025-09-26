@@ -25,7 +25,10 @@
       "Bash(sqlite3:*)",
       "Bash(npx tsc:*)",
       "Bash(npm run build:backend)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npx prisma:*)",
+      "Bash(cmd /c:*)",
+      "Bash(npx kill-port:*)"
     ],
     "deny": [],
     "ask": []

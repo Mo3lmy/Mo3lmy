@@ -511,6 +511,7 @@ enum QuestionType {
   TRUE_FALSE    // True/False
   FILL_BLANK    // Fill in the blank
   SHORT_ANSWER  // Short answer
+  PROBLEM       // Mathematical/Scientific problems
   ESSAY         // Essay question
 }
 

@@ -77,11 +77,12 @@ export class QuizService {
   
   // Question type distribution
   private readonly QUESTION_TYPE_MIX = {
-    MCQ: 40,
+    MCQ: 35,
     TRUE_FALSE: 20,
-    FILL_BLANK: 20,
+    FILL_BLANK: 15,
     SHORT_ANSWER: 10,
-    ESSAY: 10,
+    PROBLEM: 15,
+    ESSAY: 5,
   };
   
   // Performance tracking (in-memory)
@@ -242,7 +243,7 @@ export class QuizService {
             'true_false': 'TRUE_FALSE',
             'fill_blank': 'FILL_BLANK',
             'short_answer': 'SHORT_ANSWER',
-            'problem': 'SHORT_ANSWER', // Map problem to SHORT_ANSWER
+            'problem': 'PROBLEM',
             'essay': 'ESSAY'
           };
           type = typeMap[ex.type.toLowerCase()] || 'MCQ';
@@ -503,14 +504,17 @@ export class QuizService {
    */
   private convertToProblem(question: any): any {
     if (question.type === 'PROBLEM') return question;
-    
+
     return {
       ...question,
-      type: 'PROBLEM',
+      type: 'PROBLEM' as QuestionType,
       question: `مسألة: ${question.question}`,
       requiresSteps: true,
       points: (question.points || 2) * 2,
-      hint: 'ابدأ بتحديد المعطيات والمطلوب'
+      hint: 'ابدأ بتحديد المعطيات والمطلوب',
+      timeLimit: 180,
+      showCalculator: true,
+      allowPartialCredit: true
     };
   }
   
@@ -592,6 +596,10 @@ export class QuizService {
         return `أكمل: ${lessonTitle} يتحدث عن _____ و _____`;
       case 'SHORT_ANSWER':
         return `اذكر ثلاثة أمثلة من ${lessonTitle}`;
+      case 'PROBLEM':
+        return `احسب: إذا كان لديك ${index + 5} وحدات من ${lessonTitle}، كم تحتاج لإكمال 20 وحدة؟`;
+      case 'ESSAY':
+        return `اشرح بالتفصيل أهمية ${lessonTitle} في الحياة اليومية`;
       default:
         return `سؤال ${index + 1} عن ${lessonTitle}؟`;
     }
@@ -872,26 +880,43 @@ export class QuizService {
   private checkAnswer(question: Question, userAnswer: string): boolean {
     const correct = question.correctAnswer.toLowerCase().trim();
     const user = userAnswer.toLowerCase().trim();
-    
+
     switch (question.type) {
       case 'TRUE_FALSE':
         const trueAnswers = ['صح', 'صحيح', 'نعم', 'true', '1'];
         const falseAnswers = ['خطأ', 'خاطئ', 'لا', 'false', '0'];
-        
+
         if (trueAnswers.includes(user)) return trueAnswers.includes(correct);
         if (falseAnswers.includes(user)) return falseAnswers.includes(correct);
         return false;
-        
+
       case 'MCQ':
         if (!isNaN(Number(user))) {
           return correct === user;
         }
         return this.fuzzyMatch(correct, user, 0.9);
-        
+
       case 'FILL_BLANK':
       case 'SHORT_ANSWER':
         return this.fuzzyMatch(correct, user, 0.8);
-        
+
+      case 'PROBLEM':
+        // للمسائل الرقمية، نسمح بهامش خطأ صغير
+        const correctNum = parseFloat(correct);
+        const userNum = parseFloat(user);
+
+        if (!isNaN(correctNum) && !isNaN(userNum)) {
+          const tolerance = Math.abs(correctNum * 0.01); // 1% هامش خطأ
+          return Math.abs(correctNum - userNum) <= tolerance;
+        }
+
+        // إذا لم تكن أرقام، نستخدم fuzzy match
+        return this.fuzzyMatch(correct, user, 0.7);
+
+      case 'ESSAY':
+        // المقالات تحتاج تقييم يدوي أو AI
+        return true; // مؤقتاً
+
       default:
         return correct === user;
     }

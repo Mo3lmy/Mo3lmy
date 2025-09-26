@@ -1,36 +1,47 @@
-/**
- * 🧪 Comprehensive API & WebSocket Test Suite
- * Tests all major endpoints and WebSocket events
- */
+// test-all-apis.js
+// اختبار شامل لجميع APIs في المشروع
 
-const fetch = require('node-fetch');
-const io = require('socket.io-client');
+const axios = require('axios');
+const fs = require('fs');
 
-const BASE_URL = 'http://localhost:3001';
-const WS_URL = 'http://localhost:3001';
+const API_BASE = 'http://localhost:3001/api/v1';
+let token = null;
+let userId = null;
+let lessonId = null;
+let quizSessionId = null;
+let chatSessionId = null;
 
-// Test user data
-const testUser = {
-  email: `test_${Date.now()}@example.com`,
-  password: 'Test123456', // Simpler password without special chars
-  firstName: 'Test',
-  lastName: 'User',
-  grade: 6
+// ألوان للطباعة
+const colors = {
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  reset: '\x1b[0m'
 };
 
-let authToken = '';
-let userId = '';
-let socket = null;
-let lessonId = '';
-let quizId = '';
-let attemptId = '';
+// دالة للطباعة بالألوان
+function log(message, color = 'reset') {
+  console.log(`${colors[color]}${message}${colors.reset}`);
+}
 
-// Utility function to print test results
-function printResult(testName, success, details = '') {
-  const icon = success ? '✅' : '❌';
-  console.log(`${icon} ${testName}${details ? ': ' + details : ''}`);
-  if (!success && details) {
-    console.log(`   └─ Error: ${details}`);
+// دالة لتسجيل النتائج
+const results = {
+  passed: [],
+  failed: [],
+  warnings: []
+};
+
+function recordResult(testName, status, details = '') {
+  if (status === 'pass') {
+    results.passed.push({ test: testName, details });
+    log(`✅ ${testName}`, 'green');
+  } else if (status === 'fail') {
+    results.failed.push({ test: testName, details });
+    log(`❌ ${testName}: ${details}`, 'red');
+  } else if (status === 'warning') {
+    results.warnings.push({ test: testName, details });
+    log(`⚠️  ${testName}: ${details}`, 'yellow');
   }
 }
 

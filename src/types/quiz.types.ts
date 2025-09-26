@@ -38,6 +38,11 @@ export interface QuizQuestion {
   stepByStepSolution?: string[];
   requiresSteps?: boolean;
   order?: number;
+
+  // Enhanced fields for PROBLEM type
+  showCalculator?: boolean;
+  allowPartialCredit?: boolean;
+  formulaSheet?: string[];
 }
 
 export interface UserAnswer {
