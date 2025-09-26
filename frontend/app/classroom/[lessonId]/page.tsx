@@ -436,6 +436,9 @@ export default function ClassroomPage() {
             >
               <AssistantPanel
                 lessonId={params.lessonId as string}
+                lessonTitle={lesson?.titleAr}
+                subject={lesson?.subject?.nameAr}
+                grade={parseInt(lesson?.gradeLevel || '0')}
                 onClose={() => setState(prev => ({ ...prev, showAssistant: false }))}
               />
             </motion.div>

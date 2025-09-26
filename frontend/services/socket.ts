@@ -1,5 +1,4 @@
-import { io } from 'socket.io-client'
-import type { Socket } from 'socket.io-client'
+import { io, Socket } from 'socket.io-client'
 import { EmotionalState } from '@/types'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001'
@@ -40,12 +39,12 @@ class SocketService {
       this.emit('connection_established')
     })
 
-    this.socket.on('disconnect', (reason) => {
+    this.socket.on('disconnect', (reason: string) => {
       console.log('WebSocket disconnected:', reason)
       this.emit('connection_lost', reason)
     })
 
-    this.socket.on('connect_error', (error) => {
+    this.socket.on('connect_error', (error: Error) => {
       console.error('Connection error:', error)
       this.reconnectAttempts++
 
@@ -55,39 +54,39 @@ class SocketService {
     })
 
     // Core events
-    this.socket.on('emotional_state_detected', (data) => {
+    this.socket.on('emotional_state_detected', (data: any) => {
       this.emit('emotional_state_detected', data)
     })
 
-    this.socket.on('achievement_unlocked', (data) => {
+    this.socket.on('achievement_unlocked', (data: any) => {
       this.emit('achievement_unlocked', data)
     })
 
-    this.socket.on('celebration', (data) => {
+    this.socket.on('celebration', (data: any) => {
       this.emit('celebration', data)
     })
 
-    this.socket.on('break_suggested', (data) => {
+    this.socket.on('break_suggested', (data: any) => {
       this.emit('break_suggested', data)
     })
 
-    this.socket.on('quiz_answer_submitted', (data) => {
+    this.socket.on('quiz_answer_submitted', (data: any) => {
       this.emit('quiz_answer_submitted', data)
     })
 
-    this.socket.on('teaching_script_ready', (data) => {
+    this.socket.on('teaching_script_ready', (data: any) => {
       this.emit('teaching_script_ready', data)
     })
 
-    this.socket.on('student_progress_update', (data) => {
+    this.socket.on('student_progress_update', (data: any) => {
       this.emit('student_progress_update', data)
     })
 
-    this.socket.on('chat_message', (data) => {
+    this.socket.on('chat_message', (data: any) => {
       this.emit('chat_message', data)
     })
 
-    this.socket.on('typing_indicator', (data) => {
+    this.socket.on('typing_indicator', (data: any) => {
       this.emit('typing_indicator', data)
     })
 
@@ -104,7 +103,7 @@ class SocketService {
   }
 
   // Emit events
-  authenticate(token: string) {
+  authenticate(_token: string) {
     // Authentication now handled in connection handshake
     // Kept for backwards compatibility but not needed
     if (this.socket && !this.socket.connected) {

@@ -4,9 +4,12 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Send, MessageCircle, BookOpen, FileText, HelpCircle,
-  ChevronUp, Sparkles, Mic, Paperclip, Image as ImageIcon
+  ChevronUp, Sparkles, Mic, Paperclip, Image as ImageIcon,
+  Trash2, Download, ZoomIn, ZoomOut, Check
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import apiService from '@/services/api'
+import socketService from '@/services/socket'
 
 interface Message {
   id: string
@@ -16,28 +19,83 @@ interface Message {
 }
 
 interface AssistantPanelProps {
-  lessonId: string
+  lessonId?: string
   onClose: () => void
+  lessonTitle?: string
+  subject?: string
+  grade?: number
+  onNewMessage?: () => void
 }
 
-export function AssistantPanel({ lessonId, onClose }: AssistantPanelProps) {
+export function AssistantPanel({ lessonId, onClose, lessonTitle, subject, grade, onNewMessage }: AssistantPanelProps) {
   const [activeTab, setActiveTab] = useState<'chat' | 'qa' | 'notes' | 'resources'>('chat')
+  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium')
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'ai',
-      content: 'مرحباً! كيف يمكنني مساعدتك في هذا الدرس؟',
+      content: lessonId && lessonTitle
+        ? `مرحباً! أنا هنا لمساعدتك في درس "${lessonTitle}" من مادة ${subject || 'الرياضيات'}. كيف يمكنني مساعدتك؟`
+        : 'مرحباً! أنا مساعدك الذكي. كيف يمكنني مساعدتك اليوم؟ يمكنني المساعدة في الدروس، الواجبات، أو أي استفسارات تعليمية.',
       timestamp: new Date()
     }
   ])
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+  const [suggestions] = useState([
+    'اشرح لي الدرس',
+    'أعطني مثال',
+    'اختبرني',
+    'ما هي النقاط المهمة؟'
+  ])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    // Connect to WebSocket
+    const token = localStorage.getItem('auth-token') ||
+                 JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.token
+
+    if (token) {
+      socketService.connect(token)
+
+      // Join lesson room
+      if (lessonId) {
+        socketService.joinLesson(lessonId)
+      }
+
+      // Listen for AI responses
+      socketService.on('ai_response', (data: any) => {
+        setIsTyping(false)
+        const aiMessage: Message = {
+          id: Date.now().toString(),
+          type: 'ai',
+          content: data.message,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, aiMessage])
+        onNewMessage?.()
+      })
+
+      // Listen for typing indicator
+      socketService.on('typing_indicator', (data: any) => {
+        setIsTyping(data.isTyping)
+      })
+    }
+
+    return () => {
+      if (lessonId) {
+        socketService.leaveLesson(lessonId)
+      }
+      socketService.off('ai_response')
+      socketService.off('typing_indicator')
+    }
+  }, [lessonId])
 
   const handleSend = async () => {
     if (!inputValue.trim()) return
@@ -53,23 +111,95 @@ export function AssistantPanel({ lessonId, onClose }: AssistantPanelProps) {
     setInputValue('')
     setIsTyping(true)
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'ai',
-        content: 'دعني أساعدك في فهم هذا المفهوم بشكل أفضل. هل يمكنك توضيح ما الجزء الذي تجد صعوبة فيه؟',
-        timestamp: new Date()
+    // جرب WebSocket أولاً
+    if (socketService.isConnected()) {
+      socketService.sendChatMessage(inputValue, lessonId || undefined)
+      // الرد سيأتي من خلال event listener في useEffect
+    } else {
+      // Fallback to HTTP
+      try {
+        const context = lessonId ? {
+          lessonId,
+          lessonTitle,
+          subject,
+          grade,
+          language: 'ar'
+        } : {
+          language: 'ar',
+          type: 'general'
+        }
+
+        const response = await apiService.sendChatMessage(
+          inputValue,
+          sessionId,
+          context
+        )
+
+        // تعامل مع الرد
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'ai',
+          content: response?.data?.response || response?.data?.message || 'عذراً، حدث خطأ',
+          timestamp: new Date()
+        }
+
+        setMessages(prev => [...prev, aiMessage])
+        setIsTyping(false)
+        onNewMessage?.()
+      } catch (error) {
+        console.error('Chat error:', error)
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'ai',
+          content: 'عذراً، حدث خطأ في الإرسال. حاول مرة أخرى.',
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, errorMessage])
+        setIsTyping(false)
       }
-      setMessages(prev => [...prev, aiMessage])
-      setIsTyping(false)
-    }, 1500)
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  // Clear chat function
+  const clearChat = () => {
+    setMessages([{
+      id: '1',
+      type: 'ai',
+      content: lessonId && lessonTitle
+        ? `مرحباً! أنا هنا لمساعدتك في درس "${lessonTitle}" من مادة ${subject || 'الرياضيات'}. كيف يمكنني مساعدتك؟`
+        : 'مرحباً! أنا مساعدك الذكي. كيف يمكنني مساعدتك اليوم؟ يمكنني المساعدة في الدروس، الواجبات، أو أي استفسارات تعليمية.',
+      timestamp: new Date()
+    }])
+  }
+
+  // Export chat as text
+  const exportChat = () => {
+    const chatText = messages.map(msg =>
+      `[${msg.timestamp.toLocaleTimeString('ar-SA')}] ${msg.type === 'ai' ? 'المساعد' : 'أنت'}: ${msg.content}`
+    ).join('\n\n')
+
+    const blob = new Blob([chatText], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `chat_${new Date().toISOString()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Get font size class
+  const getFontSizeClass = () => {
+    switch(fontSize) {
+      case 'small': return 'text-xs'
+      case 'large': return 'text-base'
+      default: return 'text-sm'
     }
   }
 
@@ -83,19 +213,73 @@ export function AssistantPanel({ lessonId, onClose }: AssistantPanelProps) {
   return (
     <div className="glass-dark rounded-t-3xl overflow-hidden flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-white/10">
+      <div className="p-4 border-b border-white/10 backdrop-blur-md">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <ChevronUp className="w-5 h-5 text-gray-400" />
-            <h2 className="text-lg font-bold text-white">المساعد الذكي</h2>
-            <Sparkles className="w-4 h-4 text-primary-400" />
+          <div className="flex items-center gap-3">
+            <motion.div
+              animate={{ rotate: [0, 360] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+              className="p-2 rounded-full bg-gradient-to-br from-primary-400 to-secondary-500"
+            >
+              <Sparkles className="w-5 h-5 text-white" />
+            </motion.div>
+            <div>
+              <h2 className="text-lg font-bold text-white">المساعد الذكي</h2>
+              {lessonTitle && (
+                <p className="text-xs text-gray-400">{lessonTitle}</p>
+              )}
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Font Size Controls */}
+            <button
+              onClick={() => setFontSize('small')}
+              className={cn(
+                "p-1.5 rounded-lg transition-colors",
+                fontSize === 'small' ? 'bg-white/20' : 'hover:bg-white/10'
+              )}
+              title="خط صغير"
+            >
+              <ZoomOut className="w-4 h-4 text-gray-400" />
+            </button>
+            <button
+              onClick={() => setFontSize('large')}
+              className={cn(
+                "p-1.5 rounded-lg transition-colors",
+                fontSize === 'large' ? 'bg-white/20' : 'hover:bg-white/10'
+              )}
+              title="خط كبير"
+            >
+              <ZoomIn className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {/* Clear Chat */}
+            <button
+              onClick={clearChat}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              title="مسح المحادثة"
+            >
+              <Trash2 className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {/* Export Chat */}
+            <button
+              onClick={exportChat}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              title="تصدير المحادثة"
+            >
+              <Download className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-all hover:rotate-90"
+              title="إغلاق"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -158,24 +342,31 @@ export function AssistantPanel({ lessonId, onClose }: AssistantPanelProps) {
                     </div>
 
                     {/* Message bubble */}
-                    <div
+                    <motion.div
+                      whileHover={{ scale: 1.01 }}
                       className={cn(
-                        'max-w-[70%] rounded-2xl p-3',
+                        'max-w-[70%] rounded-2xl p-3 shadow-lg',
                         message.type === 'ai'
-                          ? 'glass rounded-tl-none'
-                          : 'bg-primary-500/20 border border-primary-500/30 rounded-tr-none'
+                          ? 'glass rounded-tl-none backdrop-blur-md'
+                          : 'bg-primary-500/20 border border-primary-500/30 rounded-tr-none backdrop-blur-sm'
                       )}
                     >
-                      <p className="text-sm text-white leading-relaxed">
+                      <p className={cn(
+                        "text-white leading-relaxed whitespace-pre-wrap",
+                        getFontSizeClass()
+                      )}>
                         {message.content}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
                         {message.timestamp.toLocaleTimeString('ar-SA', {
                           hour: '2-digit',
                           minute: '2-digit'
                         })}
+                        {message.type === 'user' && (
+                          <Check className="w-3 h-3 text-primary-400" />
+                        )}
                       </p>
-                    </div>
+                    </motion.div>
                   </motion.div>
                 ))}
 
@@ -192,19 +383,22 @@ export function AssistantPanel({ lessonId, onClose }: AssistantPanelProps) {
                         <Sparkles className="w-4 h-4 text-white" />
                       </div>
                       <div className="glass rounded-2xl rounded-tl-none p-3">
-                        <div className="flex gap-1">
-                          {[...Array(3)].map((_, i) => (
-                            <motion.div
-                              key={i}
-                              animate={{ opacity: [0.3, 1, 0.3] }}
-                              transition={{
-                                duration: 1,
-                                repeat: Infinity,
-                                delay: i * 0.2
-                              }}
-                              className="w-2 h-2 rounded-full bg-gray-400"
-                            />
-                          ))}
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-1">
+                            {[...Array(3)].map((_, i) => (
+                              <motion.div
+                                key={i}
+                                animate={{ opacity: [0.3, 1, 0.3] }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  delay: i * 0.2
+                                }}
+                                className="w-2 h-2 rounded-full bg-primary-400"
+                              />
+                            ))}
+                          </div>
+                          <span className="text-sm text-gray-300">المساعد يكتب...</span>
                         </div>
                       </div>
                     </motion.div>
@@ -216,6 +410,29 @@ export function AssistantPanel({ lessonId, onClose }: AssistantPanelProps) {
 
               {/* Input */}
               <div className="border-t border-white/10 p-4">
+                {/* Quick Suggestions */}
+                {messages.length === 1 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {suggestions.map((suggestion, index) => (
+                      <motion.button
+                        key={index}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        onClick={() => {
+                          setInputValue(suggestion)
+                          inputRef.current?.focus()
+                        }}
+                        className="px-3 py-1.5 text-sm bg-primary-500/20 hover:bg-primary-500/30
+                                 text-primary-300 border border-primary-500/30 rounded-full
+                                 transition-all hover:scale-105"
+                      >
+                        {suggestion}
+                      </motion.button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
                     <Paperclip className="w-5 h-5 text-gray-400" />
@@ -243,18 +460,20 @@ export function AssistantPanel({ lessonId, onClose }: AssistantPanelProps) {
                     </button>
                   </div>
 
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={handleSend}
-                    disabled={!inputValue.trim()}
+                    disabled={!inputValue.trim() || isTyping}
                     className={cn(
-                      'p-2 rounded-lg transition-all',
-                      inputValue.trim()
-                        ? 'bg-primary-500 hover:bg-primary-600 text-white'
+                      'p-2 rounded-lg transition-all shadow-lg',
+                      inputValue.trim() && !isTyping
+                        ? 'bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-white'
                         : 'bg-white/5 text-gray-500 cursor-not-allowed'
                     )}
                   >
                     <Send className="w-5 h-5" />
-                  </button>
+                  </motion.button>
                 </div>
               </div>
             </motion.div>

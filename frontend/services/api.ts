@@ -1,20 +1,11 @@
-import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios'
+import axios from 'axios'
 import { AuthResponse, User } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
-interface ApiErrorResponse {
-  success: false
-  error?: {
-    code?: string
-    message: string
-    details?: any
-  }
-  message?: string
-}
 
 class ApiService {
-  private api: AxiosInstance
+  private api: any
   private token: string | null = null
 
   constructor() {
@@ -42,18 +33,18 @@ class ApiService {
 
     // Request interceptor
     this.api.interceptors.request.use(
-      (config) => {
+      (config: any) => {
         if (this.token) {
           config.headers.Authorization = `Bearer ${this.token}`
         }
         return config
       },
-      (error) => Promise.reject(this.formatError(error))
+      (error: any) => Promise.reject(this.formatError(error))
     )
 
     // Response interceptor
     this.api.interceptors.response.use(
-      (response) => {
+      (response: any) => {
         console.log('API Response:', {
           url: response.config.url,
           status: response.status,
@@ -61,7 +52,7 @@ class ApiService {
         });
         return this.handleResponse(response)
       },
-      (error: AxiosError<ApiErrorResponse>) => {
+      (error: any) => {
         if (error.response?.status === 401) {
           // Token expired or invalid
           this.logout()
@@ -74,7 +65,7 @@ class ApiService {
     )
   }
 
-  private handleResponse(response: AxiosResponse) {
+  private handleResponse(response: any) {
     // Normalize response format
     if (response.data && typeof response.data === 'object') {
       // If response has both success and data fields, return as is
@@ -92,7 +83,7 @@ class ApiService {
     return response.data
   }
 
-  private formatError(error: AxiosError<ApiErrorResponse> | any): Error {
+  private formatError(error: any): Error {
     let message = 'An unexpected error occurred'
 
     if (error.response?.data) {
@@ -345,8 +336,8 @@ class ApiService {
   }
 
   // Chat endpoints
-  async sendChatMessage(message: string, sessionId?: string) {
-    return await this.api.post('/api/v1/chat/message', { message, sessionId })
+  async sendChatMessage(message: string, sessionId?: string, context?: any) {
+    return await this.api.post('/api/v1/chat/message', { message, sessionId, context })
   }
 
   async getChatHistory(sessionId?: string) {

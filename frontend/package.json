@@ -28,11 +28,9 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@types/axios": "^0.9.36",
-    "@types/node": "^20",
+    "@types/node": "^20.19.17",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/socket.io-client": "^1.4.36",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.5.4",

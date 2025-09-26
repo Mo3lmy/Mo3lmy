@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Cairo } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { FloatingChatWrapper } from "@/components/chat/FloatingChatWrapper";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -36,6 +37,7 @@ export default function RootLayout({
         className={`${inter.variable} ${cairo.variable} antialiased bg-gradient-to-br from-primary-50 via-white to-secondary-50`}
       >
         <Providers>{children}</Providers>
+        <FloatingChatWrapper />
       </body>
     </html>
   );
