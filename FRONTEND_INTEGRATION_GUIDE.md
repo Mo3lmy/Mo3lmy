@@ -1,4 +1,4 @@
-# 📱 دليل التكامل مع واجهة Frontend - منصة التعليم الذكية
+# 📱 دليل التكامل مع واجهة Frontend - منصة التعليم الذكية (محدث)
 
 ## 🌟 نظرة عامة
 هذا الدليل موجه لفريق تطوير الواجهات الأمامية لربط الواجهة مع خدمات Backend المتقدمة للمنصة التعليمية.
@@ -9,11 +9,15 @@
 
 ## 📋 قائمة المحتويات
 1. [المصادقة والتسجيل](#authentication)
-2. [نظام Quiz المحسّن](#quiz-system)
-3. [المحتوى التعليمي المثرى](#educational-content)
-4. [المساعد التعليمي الذكي](#teaching-assistant)
-5. [نظام Cache والأداء](#cache-system)
-6. [WebSocket للتواصل الفوري](#websocket)
+2. [المحتوى والمواد الدراسية](#content-management)
+3. [نظام Quiz المحسّن](#quiz-system)
+4. [المحتوى التعليمي المثرى](#educational-content)
+5. [المساعد التعليمي الذكي](#teaching-assistant)
+6. [نظام الدردشة الذكية](#chat-system)
+7. [سياق الطالب والإنجازات](#student-context)
+8. [تقارير أولياء الأمور](#parent-reports)
+9. [WebSocket للتواصل الفوري](#websocket)
+10. [معلومات مهمة](#important-notes)
 
 ---
 
@@ -22,6 +26,7 @@
 ### تسجيل مستخدم جديد
 ```javascript
 // POST /api/v1/auth/register
+// يحتاج Authentication: لا
 const registerUser = async (userData) => {
   const response = await fetch(`${API_URL}/auth/register`, {
     method: 'POST',
@@ -48,6 +53,7 @@ const registerUser = async (userData) => {
 ### تسجيل الدخول
 ```javascript
 // POST /api/v1/auth/login
+// يحتاج Authentication: لا
 const login = async (email, password) => {
   const response = await fetch(`${API_URL}/auth/login`, {
     method: 'POST',
@@ -75,11 +81,171 @@ const getAuthHeaders = () => ({
 
 ---
 
-## 🎯 <a name="quiz-system"></a>2. نظام Quiz المحسّن
+## 📚 <a name="content-management"></a>2. المحتوى والمواد الدراسية
+
+### الحصول على المواد الدراسية
+```javascript
+// GET /api/v1/subjects
+// يحتاج Authentication: نعم
+const getSubjects = async (grade) => {
+  const params = grade ? `?grade=${grade}` : '';
+  const response = await fetch(`${API_URL}/subjects${params}`, {
+    headers: getAuthHeaders()
+  });
+
+  const data = await response.json();
+  /*
+  Response: {
+    success: true,
+    data: [
+      {
+        id: "SUBJECT_ID",
+        name: "Mathematics",
+        nameAr: "الرياضيات",
+        nameEn: "Mathematics",
+        grade: 6,
+        description: "مادة الرياضيات للصف السادس",
+        icon: "🗽",
+        order: 1
+      }
+    ]
+  }
+  */
+  return data;
+};
+
+// GET /api/v1/subjects/:id
+// يحتاج Authentication: نعم
+const getSubjectDetails = async (subjectId) => {
+  const response = await fetch(`${API_URL}/subjects/${subjectId}`, {
+    headers: getAuthHeaders()
+  });
+
+  const data = await response.json();
+  return data;
+};
+```
+
+### الحصول على المحتوى حسب المستوى
+```javascript
+// GET /api/v1/content/subjects
+// يحتاج Authentication: لا (عام)
+const getContentByGrade = async (grade) => {
+  const response = await fetch(`${API_URL}/content/subjects?grade=${grade}`);
+  return await response.json();
+};
+
+// GET /api/v1/content/subjects/:id/units
+// يحتاج Authentication: لا (عام)
+const getUnits = async (subjectId) => {
+  const response = await fetch(`${API_URL}/content/subjects/${subjectId}/units`);
+  const data = await response.json();
+  /*
+  Response: {
+    success: true,
+    data: [
+      {
+        id: "UNIT_ID",
+        title: "Unit Title",
+        titleAr: "عنوان الوحدة",
+        order: 1,
+        description: "وصف الوحدة"
+      }
+    ]
+  }
+  */
+  return data;
+};
+
+// GET /api/v1/content/units/:id/lessons
+// يحتاج Authentication: لا (عام)
+const getLessons = async (unitId) => {
+  const response = await fetch(`${API_URL}/content/units/${unitId}/lessons`);
+  const data = await response.json();
+  /*
+  Response: {
+    success: true,
+    data: [
+      {
+        id: "LESSON_ID",
+        title: "Lesson Title",
+        titleAr: "عنوان الدرس",
+        order: 1,
+        duration: 45,
+        difficulty: "MEDIUM",
+        isPublished: true
+      }
+    ]
+  }
+  */
+  return data;
+};
+
+// GET /api/v1/content/lessons/:id
+// يحتاج Authentication: اختياري (optional)
+const getLessonContent = async (lessonId) => {
+  const headers = localStorage.getItem('token')
+    ? getAuthHeaders()
+    : { 'Content-Type': 'application/json' };
+
+  const response = await fetch(`${API_URL}/content/lessons/${lessonId}`, {
+    headers
+  });
+
+  const data = await response.json();
+  /*
+  Response: {
+    success: true,
+    data: {
+      lesson: { ...lessonDetails },
+      content: {
+        id: "CONTENT_ID",
+        fullText: "نص الدرس الكامل",
+        summary: "ملخص الدرس",
+        keyPoints: [...],
+        examples: [...],
+        exercises: [...],
+        enrichmentLevel: 3,
+        realWorldApplications: [...],
+        commonMistakes: [...],
+        studentTips: [...],
+        educationalStories: [...],
+        funFacts: [...]
+      }
+    }
+  }
+  */
+  return data;
+};
+
+// GET /api/v1/content/lessons/:id/questions
+// يحتاج Authentication: نعم
+const getLessonQuestions = async (lessonId) => {
+  const response = await fetch(`${API_URL}/content/lessons/${lessonId}/questions`, {
+    headers: getAuthHeaders()
+  });
+  return await response.json();
+};
+
+// GET /api/v1/content/search
+// يحتاج Authentication: لا (عام)
+const searchLessons = async (query, grade) => {
+  const params = new URLSearchParams({ q: query });
+  if (grade) params.append('grade', grade);
+
+  const response = await fetch(`${API_URL}/content/search?${params}`);
+  return await response.json();
+};
+```
+
+---
+
+## 🎯 <a name="quiz-system"></a>3. نظام Quiz المحسّن
 
 ### الحصول على التمارين المثراة
 ```javascript
 // GET /api/v1/quiz/lessons/:lessonId/exercises
+// يحتاج Authentication: نعم
 const getEnrichedExercises = async (lessonId, options = {}) => {
   const params = new URLSearchParams({
     count: options.count || 10,
@@ -114,6 +280,7 @@ const getEnrichedExercises = async (lessonId, options = {}) => {
       total: 10,
       lessonId: "LESSON_ID",
       lessonTitle: "العامل المشترك الأكبر",
+      hasMore: false,
       enrichmentLevel: 3
     }
   }
@@ -125,6 +292,7 @@ const getEnrichedExercises = async (lessonId, options = {}) => {
 ### بدء Quiz جديد
 ```javascript
 // POST /api/v1/quiz/start
+// يحتاج Authentication: نعم
 const startQuiz = async (lessonId, questionCount = 10) => {
   const response = await fetch(`${API_URL}/quiz/start`, {
     method: 'POST',
@@ -135,30 +303,14 @@ const startQuiz = async (lessonId, questionCount = 10) => {
     })
   });
 
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      id: "ATTEMPT_ID",
-      questions: [...],
-      timeLimit: 600, // ثواني
-      mode: "practice",
-      welcomeMessage: "أهلاً أحمد! بالتوفيق",
-      emotionalSupport: {
-        encouragement: "أنت قادر على النجاح!",
-        hint: "خد وقتك وفكر بهدوء"
-      }
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
 ### إرسال إجابة
 ```javascript
 // POST /api/v1/quiz/answer
+// يحتاج Authentication: نعم
 const submitAnswer = async (attemptId, questionId, answer, timeSpent) => {
   const response = await fetch(`${API_URL}/quiz/answer`, {
     method: 'POST',
@@ -176,11 +328,7 @@ const submitAnswer = async (attemptId, questionId, answer, timeSpent) => {
   Response: {
     success: true,
     data: {
-      isCorrect: true,
-      explanation: "شرح الإجابة...",
-      pointsEarned: 2,
-      streakBonus: 5,
-      encouragement: "ممتاز! استمر"
+      isCorrect: true
     }
   }
   */
@@ -188,9 +336,10 @@ const submitAnswer = async (attemptId, questionId, answer, timeSpent) => {
 };
 ```
 
-### إنهاء Quiz والحصول على النتائج
+### إكمال Quiz
 ```javascript
 // POST /api/v1/quiz/complete/:attemptId
+// يحتاج Authentication: نعم
 const completeQuiz = async (attemptId) => {
   const response = await fetch(`${API_URL}/quiz/complete/${attemptId}`, {
     method: 'POST',
@@ -202,18 +351,21 @@ const completeQuiz = async (attemptId) => {
   Response: {
     success: true,
     data: {
+      id: "ATTEMPT_ID",
       score: 85,
-      percentage: 85,
-      passed: true,
-      correctAnswers: 17,
-      totalQuestions: 20,
-      timeSpent: 450,
-      achievements: ["نجم الرياضيات", "سريع البديهة"],
-      recommendations: ["راجع موضوع الكسور", "ممتاز في الجبر"],
-      parentReport: {
-        studentName: "أحمد",
-        performance: { ... },
-        recommendations: [...]
+      totalQuestions: 10,
+      correctAnswers: 8,
+      incorrectAnswers: 2,
+      timeSpent: 300,
+      insights: [],
+      avgTimePerQuestion: 30,
+      streakBonus: 5,
+      performanceLevel: 'intermediate',
+      achievements: [...],
+      feedback: {
+        message: "ممتاز! أداء رائع",
+        strengths: [...],
+        areasToImprove: [...]
       }
     }
   }
@@ -222,681 +374,583 @@ const completeQuiz = async (attemptId) => {
 };
 ```
 
+### endpoints إضافية للـ Quiz
+```javascript
+// GET /api/v1/quiz/progress
+// يحتاج Authentication: نعم
+const getProgress = async () => {
+  const response = await fetch(`${API_URL}/quiz/progress`, {
+    headers: getAuthHeaders()
+  });
+  return await response.json();
+};
+
+// GET /api/v1/quiz/analytics
+// يحتاج Authentication: نعم
+const getAnalytics = async (subjectId) => {
+  const params = subjectId ? `?subjectId=${subjectId}` : '';
+  const response = await fetch(`${API_URL}/quiz/analytics${params}`, {
+    headers: getAuthHeaders()
+  });
+  return await response.json();
+};
+
+// GET /api/v1/quiz/leaderboard
+// يحتاج Authentication: نعم
+const getLeaderboard = async (subjectId, grade, limit = 10) => {
+  const params = new URLSearchParams({ limit });
+  if (subjectId) params.append('subjectId', subjectId);
+  if (grade) params.append('grade', grade);
+
+  const response = await fetch(`${API_URL}/quiz/leaderboard?${params}`, {
+    headers: getAuthHeaders()
+  });
+  return await response.json();
+};
+```
+
 ---
 
-## 📚 <a name="educational-content"></a>3. المحتوى التعليمي المثرى
+## 📖 <a name="educational-content"></a>4. المحتوى التعليمي المثرى
 
-### الحصول على النصائح التعليمية
+### الحصول على التلميحات
 ```javascript
 // GET /api/v1/educational/lessons/:lessonId/tips
-const getStudentTips = async (lessonId) => {
+// يحتاج Authentication: لا
+const getLessonTips = async (lessonId) => {
   const response = await fetch(`${API_URL}/educational/lessons/${lessonId}/tips`);
-
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      tips: [
-        "ابدأ دائماً بتحليل العدد إلى عوامله الأولية",
-        "تذكر: العامل المشترك الأكبر دائماً أصغر من أو يساوي الأعداد المعطاة"
-      ],
-      count: 5,
-      lessonTitle: "العامل المشترك الأكبر"
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
 ### الحصول على القصص التعليمية
 ```javascript
 // GET /api/v1/educational/lessons/:lessonId/stories
-const getEducationalStories = async (lessonId) => {
+// يحتاج Authentication: لا
+const getLessonStories = async (lessonId) => {
   const response = await fetch(`${API_URL}/educational/lessons/${lessonId}/stories`);
-
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      stories: [
-        {
-          title: "قصة الخوارزمي والأعداد",
-          content: "في بغداد القديمة...",
-          moral: "الرياضيات تحل مشاكل الحياة",
-          relatedConcept: "العامل المشترك"
-        }
-      ],
-      count: 3
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
 ### الحصول على التطبيقات الواقعية
 ```javascript
 // GET /api/v1/educational/lessons/:lessonId/applications
+// يحتاج Authentication: لا
 const getRealWorldApplications = async (lessonId) => {
   const response = await fetch(`${API_URL}/educational/lessons/${lessonId}/applications`);
-
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      applications: [
-        {
-          title: "توزيع الهدايا",
-          scenario: "لديك 24 قلم و 36 دفتر...",
-          solution: "نجد العامل المشترك الأكبر = 12",
-          realLifeConnection: "يُستخدم في المتاجر والمصانع"
-        }
-      ],
-      count: 5
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
-### الحصول على محتوى عشوائي تفاعلي
+### الحصول على محتوى عشوائي
 ```javascript
 // GET /api/v1/educational/lessons/:lessonId/random
-const getRandomContent = async (lessonId, type) => {
-  const params = type ? `?type=${type}` : '';
-  const response = await fetch(
-    `${API_URL}/educational/lessons/${lessonId}/random${params}`
-  );
-
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      type: "funFact", // أو tip, story, application, challenge
-      content: {
-        text: "هل تعلم أن الرقم 6 هو أول عدد كامل؟",
-        explanation: "لأن عوامله (1،2،3) مجموعها = 6"
-      }
-    }
-  }
-  */
-  return data;
+// يحتاج Authentication: لا
+const getRandomContent = async (lessonId) => {
+  const response = await fetch(`${API_URL}/educational/lessons/${lessonId}/random`);
+  return await response.json();
 };
 ```
 
 ### الحصول على كل المحتوى المثرى
 ```javascript
 // GET /api/v1/educational/lessons/:lessonId/all
+// يحتاج Authentication: لا
 const getAllEnrichedContent = async (lessonId) => {
   const response = await fetch(`${API_URL}/educational/lessons/${lessonId}/all`);
-
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      content: {
-        tips: [...],
-        stories: [...],
-        mistakes: [...],
-        applications: [...],
-        funFacts: [...],
-        challenges: [...],
-        visualAids: [...]
-      },
-      stats: {
-        totalTips: 10,
-        totalStories: 3,
-        // ...
-      }
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
 ---
 
-## 🤖 <a name="teaching-assistant"></a>4. المساعد التعليمي الذكي
+## 🤖 <a name="teaching-assistant"></a>5. المساعد التعليمي الذكي
 
-### توليد سكريبت تعليمي
+### توليد نص تعليمي
 ```javascript
 // POST /api/v1/lessons/:lessonId/teaching/script
+// يحتاج Authentication: نعم
 const generateTeachingScript = async (lessonId, slideContent, options = {}) => {
   const response = await fetch(`${API_URL}/lessons/${lessonId}/teaching/script`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({
-      slideContent: {
-        title: "العوامل والمضاعفات",
-        content: "سنتعلم اليوم عن العوامل..."
-      },
-      generateVoice: true, // توليد صوت
+      slideContent,
+      generateVoice: options.generateVoice || false,
       options: {
-        voiceStyle: 'friendly', // formal, energetic
-        paceSpeed: 'normal', // slow, fast
-        useAnalogies: true,
-        useStories: true,
-        needMoreDetail: false,
-        needExample: true,
-        needProblem: false
+        voiceStyle: options.voiceStyle || 'friendly',
+        paceSpeed: options.paceSpeed || 'normal',
+        useAnalogies: options.useAnalogies || true,
+        useStories: options.useStories || true,
+        needMoreDetail: options.needMoreDetail,
+        needExample: options.needExample,
+        needProblem: options.needProblem,
+        problemDifficulty: options.problemDifficulty || 'medium'
       }
     })
   });
 
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      script: "أهلاً يا بطل! اليوم هنتعلم حاجة جميلة...",
-      duration: 120, // ثواني
-      keyPoints: ["العامل هو...", "المضاعف هو..."],
-      examples: ["مثال: العدد 12..."],
-      visualCues: ["ارسم دائرة", "اكتب الأعداد"],
-      emotionalTone: "encouraging",
-      nextSuggestions: ["example", "problem", "quiz"],
-      audioUrl: "http://localhost:3001/audio/teaching_12345.mp3"
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
-### التفاعل مع المساعد
+### التفاعل مع المساعد التعليمي
 ```javascript
 // POST /api/v1/lessons/:lessonId/teaching/interaction
-const interactWithAssistant = async (lessonId, interactionType, context) => {
+// يحتاج Authentication: نعم
+const handleTeachingInteraction = async (lessonId, interactionType, currentSlide, context) => {
   const response = await fetch(`${API_URL}/lessons/${lessonId}/teaching/interaction`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({
-      type: interactionType, // 'explain', 'example', 'problem', 'quiz', 'summary'
-      currentSlide: {
-        title: "العنوان الحالي",
-        content: "المحتوى..."
-      },
-      context: {
-        previousScript: "الشرح السابق...",
-        sessionHistory: ["سؤال 1", "إجابة 1"]
-      }
+      type: interactionType, // 'explain', 'more_detail', 'example', 'problem', 'repeat', 'continue', 'stop', 'quiz', 'summary'
+      currentSlide,
+      context
     })
   });
 
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      type: "example",
-      script: "خلينا نشوف مثال عملي...",
-      duration: 60,
-      audioUrl: "http://localhost:3001/audio/interaction_12345.mp3",
-      emotionalTone: "supportive",
-      nextSuggestions: ["problem", "quiz"]
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
 ### توليد مسألة تعليمية
 ```javascript
 // POST /api/v1/lessons/:lessonId/teaching/problem
+// يحتاج Authentication: نعم
 const generateProblem = async (lessonId, topic, difficulty = 'medium') => {
   const response = await fetch(`${API_URL}/lessons/${lessonId}/teaching/problem`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({
       topic,
-      difficulty, // easy, medium, hard
+      difficulty,
       generateVoice: true
     })
   });
 
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      script: "خلينا نحل مسألة جميلة...",
-      problem: {
-        question: "لديك 24 كرة و 36 قلم...",
-        hints: ["فكر في العوامل", "استخدم التحليل"],
-        solution: "العامل المشترك = 12",
-        steps: ["الخطوة 1...", "الخطوة 2..."]
-      },
-      duration: 180,
-      audioUrl: "http://localhost:3001/audio/problem_12345.mp3"
-    }
-  }
-  */
-  return data;
+  return await response.json();
 };
 ```
 
 ---
 
-## ⚡ <a name="cache-system"></a>5. نظام Cache والأداء
+## 💬 <a name="chat-system"></a>6. نظام الدردشة الذكية
 
-### الحصول على إحصائيات Cache
+### إرسال رسالة
 ```javascript
-// GET /api/v1/lessons/cache/stats
-const getCacheStats = async () => {
-  const response = await fetch(`${API_URL}/lessons/cache/stats`, {
-    headers: getAuthHeaders()
-  });
-
-  const data = await response.json();
-  /*
-  Response: {
-    success: true,
-    data: {
-      keys: 45,
-      hits: 1250,
-      misses: 85,
-      hitRate: 0.936,
-      memoryUsage: "2.5 MB",
-      avgHitTime: 2.3 // milliseconds
-    }
-  }
-  */
-  return data;
-};
-```
-
-### تسخين Cache
-```javascript
-// POST /api/v1/lessons/cache/warmup
-const warmupCache = async () => {
-  const response = await fetch(`${API_URL}/lessons/cache/warmup`, {
+// POST /api/v1/chat/message
+// يحتاج Authentication: نعم
+const sendChatMessage = async (message, sessionId, lessonId, language = 'ar') => {
+  const response = await fetch(`${API_URL}/chat/message`, {
     method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      message,
+      sessionId,
+      lessonId,
+      context: { language }
+    })
+  });
+
+  return await response.json();
+};
+```
+
+### الحصول على سجل المحادثة
+```javascript
+// GET /api/v1/chat/history
+// يحتاج Authentication: نعم
+const getChatHistory = async (lessonId, limit = 50) => {
+  const params = new URLSearchParams({ limit });
+  if (lessonId) params.append('lessonId', lessonId);
+
+  const response = await fetch(`${API_URL}/chat/history?${params}`, {
     headers: getAuthHeaders()
   });
 
-  return response.json();
+  return await response.json();
+};
+```
+
+### الحصول على ملخص المحادثة
+```javascript
+// GET /api/v1/chat/session/:sessionId/summary
+// يحتاج Authentication: نعم
+const getSessionSummary = async (sessionId) => {
+  const response = await fetch(`${API_URL}/chat/session/${sessionId}/summary`, {
+    headers: getAuthHeaders()
+  });
+
+  return await response.json();
+};
+```
+
+### إرسال تقييم للرسالة
+```javascript
+// POST /api/v1/chat/feedback
+// يحتاج Authentication: نعم
+const submitFeedback = async (messageId, rating, feedback) => {
+  const response = await fetch(`${API_URL}/chat/feedback`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      messageId,
+      rating,
+      feedback
+    })
+  });
+
+  return await response.json();
+};
+```
+
+### الحصول على اقتراحات
+```javascript
+// GET /api/v1/chat/suggestions
+// يحتاج Authentication: نعم
+const getChatSuggestions = async (lessonId) => {
+  const params = lessonId ? `?lessonId=${lessonId}` : '';
+
+  const response = await fetch(`${API_URL}/chat/suggestions${params}`, {
+    headers: getAuthHeaders()
+  });
+
+  return await response.json();
 };
 ```
 
 ---
 
-## 🔌 <a name="websocket"></a>6. WebSocket للتواصل الفوري
+## 👤 <a name="student-context"></a>7. سياق الطالب والإنجازات
+
+### الحصول على سياق الطالب
+```javascript
+// GET /api/v1/student-context/:userId
+// يحتاج Authentication: لا
+const getStudentContext = async (userId) => {
+  const response = await fetch(`${API_URL}/student-context/${userId}`);
+  return await response.json();
+};
+```
+
+### تحديث سياق الطالب
+```javascript
+// PUT /api/v1/student-context/:userId
+// يحتاج Authentication: لا
+const updateStudentContext = async (userId, updates) => {
+  const response = await fetch(`${API_URL}/student-context/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  });
+
+  return await response.json();
+};
+```
+
+### الحالة العاطفية
+```javascript
+// GET /api/v1/student-context/:userId/emotional-state
+// يحتاج Authentication: لا
+const getEmotionalState = async (userId) => {
+  const response = await fetch(`${API_URL}/student-context/${userId}/emotional-state`);
+  return await response.json();
+};
+
+// POST /api/v1/student-context/:userId/emotional-state
+// يحتاج Authentication: لا
+const updateEmotionalState = async (userId, state) => {
+  const response = await fetch(`${API_URL}/student-context/${userId}/emotional-state`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state)
+  });
+
+  return await response.json();
+};
+```
+
+### الإنجازات
+```javascript
+// GET /api/v1/achievements/:userId
+// يحتاج Authentication: لا
+const getUserAchievements = async (userId) => {
+  const response = await fetch(`${API_URL}/achievements/${userId}`);
+  return await response.json();
+};
+
+// POST /api/v1/achievements/:userId/unlock
+// يحتاج Authentication: لا
+const unlockAchievement = async (userId, achievementData) => {
+  const response = await fetch(`${API_URL}/achievements/${userId}/unlock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(achievementData)
+  });
+
+  return await response.json();
+};
+
+// GET /api/v1/achievements/:userId/progress
+// يحتاج Authentication: لا
+const getAchievementProgress = async (userId) => {
+  const response = await fetch(`${API_URL}/achievements/${userId}/progress`);
+  return await response.json();
+};
+
+// GET /api/v1/achievements/leaderboard/top
+// يحتاج Authentication: لا
+const getLeaderboardTop = async () => {
+  const response = await fetch(`${API_URL}/achievements/leaderboard/top`);
+  return await response.json();
+};
+```
+
+---
+
+## 📊 <a name="parent-reports"></a>8. تقارير أولياء الأمور
+
+### الحصول على آخر تقرير
+```javascript
+// GET /api/v1/parent-reports/:userId/latest
+// يحتاج Authentication: لا
+const getLatestReport = async (userId) => {
+  const response = await fetch(`${API_URL}/parent-reports/${userId}/latest`);
+  return await response.json();
+};
+```
+
+### الحصول على سجل التقارير
+```javascript
+// GET /api/v1/parent-reports/:userId/history
+// يحتاج Authentication: لا
+const getReportHistory = async (userId) => {
+  const response = await fetch(`${API_URL}/parent-reports/${userId}/history`);
+  return await response.json();
+};
+```
+
+### توليد تقرير جديد
+```javascript
+// POST /api/v1/parent-reports/:userId/generate
+// يحتاج Authentication: لا
+const generateNewReport = async (userId) => {
+  const response = await fetch(`${API_URL}/parent-reports/${userId}/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+  return await response.json();
+};
+```
+
+### إرسال التقرير بالبريد الإلكتروني
+```javascript
+// POST /api/v1/parent-reports/:userId/send-email
+// يحتاج Authentication: لا
+const sendReportByEmail = async (userId, email) => {
+  const response = await fetch(`${API_URL}/parent-reports/${userId}/send-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+
+  return await response.json();
+};
+```
+
+---
+
+## 🔌 <a name="websocket"></a>9. WebSocket للتواصل الفوري
 
 ### الاتصال بـ WebSocket
 ```javascript
-import { io } from 'socket.io-client';
+import io from 'socket.io-client';
 
-const socket = io('ws://localhost:3001', {
+const socket = io('http://localhost:3001', {
   auth: {
     token: localStorage.getItem('token')
   }
 });
 
-// الاتصال
+// Authentication
 socket.on('connect', () => {
-  console.log('Connected to WebSocket');
-
-  // الانضمام لغرفة الدرس
-  socket.emit('join-lesson', {
-    lessonId: 'LESSON_ID',
-    userId: 'USER_ID'
-  });
+  socket.emit('authenticate', { token: localStorage.getItem('token') });
 });
 
-// استقبال رسائل المعلم
-socket.on('teaching-update', (data) => {
-  console.log('New teaching content:', data);
-  /*
-  data: {
-    type: 'explanation',
-    content: 'شرح جديد...',
-    audioUrl: '...',
-    visualAids: [...]
-  }
-  */
+// Student Context Events
+socket.emit('student:update-context', {
+  userId: 'USER_ID',
+  updates: { currentMood: 'happy' }
 });
 
-// إرسال تفاعل الطالب
-const sendStudentInteraction = (type, data) => {
-  socket.emit('student-interaction', {
-    type, // 'question', 'answer', 'confused', 'understood'
-    data,
-    timestamp: new Date()
-  });
-};
+socket.on('student:context-updated', (data) => {
+  console.log('Context updated:', data);
+});
 
-// تحديث الحالة العاطفية
-const updateEmotionalState = (mood, confidence) => {
-  socket.emit('emotional-update', {
-    mood, // 'happy', 'neutral', 'frustrated', 'confused', 'tired'
-    confidence, // 0-100
-    engagement: 75 // 0-100
-  });
-};
+// Teaching Events
+socket.emit('teaching:request-script', {
+  lessonId: 'LESSON_ID',
+  slideContent: { /* ... */ }
+});
 
-// استقبال التشجيع الشخصي
-socket.on('personalized-encouragement', (data) => {
-  console.log('Encouragement:', data.message);
-  // عرض رسالة تشجيعية للطالب
+socket.on('teaching:script-ready', (script) => {
+  console.log('Teaching script:', script);
+});
+
+// Quiz Events
+socket.emit('quiz:start', {
+  lessonId: 'LESSON_ID',
+  userId: 'USER_ID'
+});
+
+socket.on('quiz:question', (question) => {
+  console.log('New question:', question);
+});
+
+socket.emit('quiz:answer', {
+  attemptId: 'ATTEMPT_ID',
+  questionId: 'QUESTION_ID',
+  answer: 'USER_ANSWER'
+});
+
+socket.on('quiz:feedback', (feedback) => {
+  console.log('Feedback:', feedback);
+});
+
+// Emotional State Tracking
+socket.emit('emotion:update', {
+  userId: 'USER_ID',
+  emotion: 'confident',
+  confidence: 85
+});
+
+socket.on('emotion:support', (supportMessage) => {
+  console.log('Emotional support:', supportMessage);
+});
+
+// Reconnection Strategy
+socket.on('disconnect', () => {
+  setTimeout(() => socket.connect(), 1000);
 });
 ```
 
 ---
 
-## 🎨 أفضل الممارسات للـ Frontend
+## ⚠️ <a name="important-notes"></a>10. معلومات مهمة
 
-### 1. إدارة الحالة (State Management)
+### Rate Limiting
 ```javascript
-// استخدام Redux أو Context API
-const initialState = {
-  user: null,
-  currentLesson: null,
-  quizSession: null,
-  enrichedContent: {},
-  teachingScript: null,
-  emotionalState: {
-    mood: 'neutral',
-    confidence: 70,
-    engagement: 70
+// معدلات الحد الأقصى للطلبات:
+const RATE_LIMITS = {
+  'AI_ENDPOINTS': '10 requests/minute',     // للـ teaching، chat endpoints
+  'REGULAR_API': '100 requests/15 minutes',  // للـ API العادي
+  'AUTH_ENDPOINTS': '5 requests/15 minutes', // للـ login/register
+  'WEBSOCKET': 'unlimited'                   // للمستخدمين المصدقين
+};
+```
+
+### Error Codes
+```javascript
+const ERROR_CODES = {
+  'AUTH_REQUIRED': 401,        // يحتاج تسجيل دخول
+  'FORBIDDEN': 403,            // غير مصرح
+  'NOT_FOUND': 404,            // المورد غير موجود
+  'VALIDATION_ERROR': 400,     // بيانات غير صحيحة
+  'RATE_LIMIT_EXCEEDED': 429,  // تجاوز حد الطلبات
+  'INTERNAL_ERROR': 500        // خطأ في السيرفر
+};
+```
+
+### معالجة الأخطاء
+```javascript
+const handleApiError = (error) => {
+  switch (error.status) {
+    case 401:
+      // توجيه لصفحة تسجيل الدخول
+      window.location.href = '/login';
+      break;
+    case 429:
+      // عرض رسالة انتظار
+      showNotification('الرجاء الانتظار قبل المحاولة مرة أخرى');
+      break;
+    case 500:
+      // عرض رسالة خطأ عام
+      showNotification('حدث خطأ في السيرفر');
+      break;
+    default:
+      console.error('API Error:', error);
   }
 };
 ```
 
-### 2. معالجة الأخطاء
-```javascript
-const apiCall = async (url, options) => {
-  try {
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.message || 'API Error');
-    }
-
-    return data;
-  } catch (error) {
-    console.error('API Error:', error);
-    // عرض رسالة خطأ للمستخدم
-    showErrorNotification(error.message);
-    throw error;
-  }
-};
-```
-
-### 3. التخزين المحلي (Caching)
-```javascript
-// تخزين البيانات التي لا تتغير كثيراً
-const cacheData = (key, data, expiryMinutes = 60) => {
-  const item = {
-    data,
-    expiry: new Date().getTime() + (expiryMinutes * 60 * 1000)
-  };
-  localStorage.setItem(key, JSON.stringify(item));
-};
-
-const getCachedData = (key) => {
-  const itemStr = localStorage.getItem(key);
-  if (!itemStr) return null;
-
-  const item = JSON.parse(itemStr);
-  if (new Date().getTime() > item.expiry) {
-    localStorage.removeItem(key);
-    return null;
-  }
-
-  return item.data;
-};
-```
-
-### 4. تحسين الأداء
-```javascript
-// Lazy Loading للمحتوى
-const LazyContent = React.lazy(() => import('./components/EnrichedContent'));
-
-// Debounce للبحث
-const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
-const searchLessons = debounce(async (query) => {
-  // API call
-}, 500);
-```
-
-### 5. واجهات تفاعلية
-```javascript
-// عرض التقدم في الوقت الفعلي
-const QuizProgress = ({ current, total, score }) => (
-  <div className="quiz-progress">
-    <div className="progress-bar">
-      <div
-        className="progress-fill"
-        style={{ width: `${(current/total) * 100}%` }}
-      />
-    </div>
-    <div className="stats">
-      <span>السؤال {current} من {total}</span>
-      <span>النقاط: {score}</span>
-    </div>
-  </div>
-);
-
-// رسائل تشجيعية متحركة
-const EncouragementMessage = ({ message, type }) => (
-  <motion.div
-    className={`encouragement ${type}`}
-    initial={{ opacity: 0, y: -20 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: 20 }}
-  >
-    {message}
-  </motion.div>
-);
-```
-
----
-
-## 📊 مؤشرات الأداء المطلوبة
-
-### Core Web Vitals المستهدفة:
-- **LCP (Largest Contentful Paint):** < 2.5s
-- **FID (First Input Delay):** < 100ms
-- **CLS (Cumulative Layout Shift):** < 0.1
-
-### معدلات الاستجابة:
-- **API Calls:** < 200ms (مع cache)
-- **WebSocket Latency:** < 50ms
-- **Audio Loading:** < 1s
-- **Quiz Response:** فوري
-
----
-
-## 🔧 أدوات مساعدة
+### نصائح للأداء
+1. **استخدام Cache**: المحتوى المثرى محفوظ في cache، استفد منه
+2. **Batch Requests**: جمع الطلبات المتعددة قدر الإمكان
+3. **Lazy Loading**: تحميل المحتوى عند الحاجة فقط
+4. **WebSocket**: استخدم WebSocket للتحديثات الفورية بدلاً من polling
 
 ### SDK جاهز للاستخدام
 ```javascript
-// smart-education-sdk.js
-class SmartEducationAPI {
-  constructor(apiUrl = 'http://localhost:3001/api/v1') {
-    this.apiUrl = apiUrl;
-    this.token = null;
-  }
+// يمكنك استخدام SDK جاهز:
+import SmartEducationSDK from './sdk/smart-education-sdk';
 
-  setToken(token) {
-    this.token = token;
-    localStorage.setItem('token', token);
-  }
+const sdk = new SmartEducationSDK({
+  baseURL: 'http://localhost:3001/api/v1',
+  token: localStorage.getItem('token')
+});
 
-  async request(endpoint, options = {}) {
-    const url = `${this.apiUrl}${endpoint}`;
-    const headers = {
-      'Content-Type': 'application/json',
-      ...options.headers
-    };
-
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
-
-    const response = await fetch(url, {
-      ...options,
-      headers
-    });
-
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  // Auth methods
-  auth = {
-    login: (email, password) =>
-      this.request('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password })
-      }),
-
-    register: (userData) =>
-      this.request('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify(userData)
-      })
-  };
-
-  // Quiz methods
-  quiz = {
-    start: (lessonId, questionCount) =>
-      this.request('/quiz/start', {
-        method: 'POST',
-        body: JSON.stringify({ lessonId, questionCount })
-      }),
-
-    submitAnswer: (data) =>
-      this.request('/quiz/answer', {
-        method: 'POST',
-        body: JSON.stringify(data)
-      }),
-
-    complete: (attemptId) =>
-      this.request(`/quiz/complete/${attemptId}`, {
-        method: 'POST'
-      })
-  };
-
-  // Educational content methods
-  educational = {
-    getTips: (lessonId) =>
-      this.request(`/educational/lessons/${lessonId}/tips`),
-
-    getStories: (lessonId) =>
-      this.request(`/educational/lessons/${lessonId}/stories`),
-
-    getAll: (lessonId) =>
-      this.request(`/educational/lessons/${lessonId}/all`)
-  };
-
-  // Teaching assistant methods
-  teaching = {
-    generateScript: (lessonId, data) =>
-      this.request(`/lessons/${lessonId}/teaching/script`, {
-        method: 'POST',
-        body: JSON.stringify(data)
-      }),
-
-    interact: (lessonId, data) =>
-      this.request(`/lessons/${lessonId}/teaching/interaction`, {
-        method: 'POST',
-        body: JSON.stringify(data)
-      })
-  };
-}
-
-// استخدام SDK
-const api = new SmartEducationAPI();
-api.setToken('your-token-here');
-
-// مثال
-const startLearning = async () => {
-  try {
-    // تسجيل الدخول
-    const authResult = await api.auth.login('student@example.com', 'password');
-    api.setToken(authResult.data.token);
-
-    // بدء quiz
-    const quizSession = await api.quiz.start('LESSON_ID', 10);
-
-    // الحصول على نصائح
-    const tips = await api.educational.getTips('LESSON_ID');
-
-    console.log('Ready to learn!', { quizSession, tips });
-  } catch (error) {
-    console.error('Error:', error);
-  }
-};
+// أمثلة على الاستخدام:
+const subjects = await sdk.content.getSubjects(6);
+const quiz = await sdk.quiz.start('LESSON_ID', 10);
+const chat = await sdk.chat.sendMessage('سؤالي هو...');
 ```
 
 ---
 
-## 📝 ملاحظات مهمة
+## 📝 ملاحظات التحديث
 
-1. **المصادقة مطلوبة** لمعظم الـ endpoints - تأكد من إرسال token في headers
-2. **معدلات الطلبات محدودة** - 100 طلب/15 دقيقة للـ API العادي، 10 طلبات/دقيقة للـ AI
-3. **WebSocket يدعم reconnection** تلقائياً - استخدم socket.io-client
-4. **الصوت يُحفظ تلقائياً** في `/audio` ويمكن الوصول إليه مباشرة
-5. **Cache يحسن الأداء بشكل كبير** - استفد من الـ endpoints المُحسنة
-6. **المحتوى المثرى متاح** لجميع الدروس المنشورة
-7. **التقارير للآباء** تُولد تلقائياً بعد كل quiz
+### التحديثات الرئيسية في هذا الدليل:
+1. ✅ إضافة جميع Content و Subjects endpoints المفقودة
+2. ✅ تصحيح Parent Reports endpoints
+3. ✅ إضافة Chat endpoints بالكامل
+4. ✅ توضيح متطلبات Authentication لكل endpoint
+5. ✅ إضافة Progress و Analytics و Leaderboard endpoints
+6. ✅ إضافة معلومات Rate Limiting و Error Codes
+7. ✅ تحديث Response formats بناءً على الكود الفعلي
+8. ✅ إضافة Achievement leaderboard endpoint الصحيح
 
----
-
-## 🚀 البداية السريعة
-
-```bash
-# 1. تأكد من تشغيل Backend
-npm run dev # على port 3001
-
-# 2. في مشروع Frontend
-npm install axios socket.io-client
-
-# 3. إنشاء ملف config
-// config.js
-export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api/v1';
-export const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:3001';
-
-# 4. البدء في التطوير!
-```
+### Endpoints المهمة المضافة:
+- `/api/v1/content/*` - إدارة المحتوى التعليمي
+- `/api/v1/subjects/*` - المواد الدراسية
+- `/api/v1/chat/*` - نظام الدردشة الذكية
+- `/api/v1/quiz/progress` - تقدم الطالب
+- `/api/v1/quiz/analytics` - تحليلات التعلم
+- `/api/v1/quiz/leaderboard` - لوحة المتصدرين
 
 ---
 
-## 📞 الدعم
+## 🚀 البدء السريع
 
-للأسئلة والاستفسارات:
-- راجع الـ Postman Collection المرفقة
-- اختبر مع `test-enriched-system.js`
-- راجع logs الـ backend للـ debugging
+1. تأكد من تشغيل Backend على المنفذ 3001
+2. قم بتسجيل مستخدم جديد أو سجل دخول
+3. احفظ Token في localStorage
+4. استخدم `getAuthHeaders()` في كل طلب يحتاج authentication
+5. راجع Rate Limits لتجنب حظر الطلبات
 
-تم إعداد هذا الدليل بواسطة فريق Backend - آخر تحديث: ${new Date().toLocaleDateString('ar-EG')}
+---
+
+## 💡 للمساعدة والدعم
+
+في حالة وجود أي استفسارات أو مشاكل:
+1. راجع Error Codes لفهم الأخطاء
+2. تحقق من Rate Limits
+3. تأكد من صحة Token
+4. راجع console للأخطاء التفصيلية
+
+---
+
+تم التحديث بواسطة: فريق Backend
+التاريخ: ${new Date().toLocaleDateString('ar-EG')}
+الإصدار: 2.0.0

@@ -31,7 +31,8 @@
       "Bash(npx kill-port:*)",
       "Bash(copy prismadev.db prismabackup_before_migration.db)",
       "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"نعم و لكن خد باكاب للداتا عشان نرجعها تاني\" npx prisma migrate reset --force --skip-seed)",
-      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI4ZWY4ZjZhYS1hNWRkLTQwNmUtOWQyYy1hYWM4M2Y5OGZmMzkiLCJlbWFpbCI6InF1aXp0ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6IlNUVURFTlQiLCJncmFkZSI6MTAsImlhdCI6MTc1ODkxODYzOSwiZXhwIjoxNzU5NTIzNDM5fQ.XlhmgK3uCPxijf-DosrwPBwtwX5M3QT16DGhJepRHn8\")"
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI4ZWY4ZjZhYS1hNWRkLTQwNmUtOWQyYy1hYWM4M2Y5OGZmMzkiLCJlbWFpbCI6InF1aXp0ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6IlNUVURFTlQiLCJncmFkZSI6MTAsImlhdCI6MTc1ODkxODYzOSwiZXhwIjoxNzU5NTIzNDM5fQ.XlhmgK3uCPxijf-DosrwPBwtwX5M3QT16DGhJepRHn8\")",
+      "Bash(copy:*)"
     ],
     "deny": [],
     "ask": []
