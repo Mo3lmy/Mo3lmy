@@ -33,6 +33,7 @@ export interface TokenPayload {
   userId: string;
   email: string;
   role: UserRole;
+  grade?: number;
 }
 
 // Auth Service Class
@@ -83,6 +84,7 @@ export class AuthService {
       userId: user.id,
       email: user.email,
       role: user.role,
+      grade: user.grade || undefined,
     });
     
     return { user, token };
@@ -142,6 +144,7 @@ export class AuthService {
       userId: user.id,
       email: user.email,
       role: user.role,
+      grade: user.grade || undefined,
     });
     
     // Return user without password

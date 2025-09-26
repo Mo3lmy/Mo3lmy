@@ -533,6 +533,30 @@ router.get(
 );
 
 /**
+ * @route   POST /api/v1/lessons/:id/teaching/assistant
+ * @desc    Interact with teaching assistant
+ * @access  Private
+ */
+router.post(
+  '/:id/teaching/assistant',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { interactionType, context } = req.body;
+
+    const response = await teachingAssistant.handleStudentInteraction(
+      interactionType,
+      context?.currentSlide || {},
+      id,
+      req.user!.grade || 6,
+      context
+    );
+
+    res.json(successResponse(response, 'Teaching assistant response'));
+  })
+);
+
+/**
  * @route   GET /api/v1/lessons/:id/teaching/stats
  * @desc    Get teaching assistant statistics
  * @access  Private
@@ -542,7 +566,7 @@ router.get(
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const stats = teachingAssistant.getHealthStatus();
-    
+
     res.json(
       successResponse({
         lessonId: req.params.id,

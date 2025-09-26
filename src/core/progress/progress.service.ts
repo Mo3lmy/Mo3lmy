@@ -266,17 +266,24 @@ export class ProgressTrackingService {
     userId: string,
     subjectId?: string
   ): Promise<LearningAnalytics> {
+    // If subjectId is provided, get lesson IDs first
+    let lessonIds: string[] | undefined;
+
+    if (subjectId) {
+      const lessons = await prisma.lesson.findMany({
+        where: {
+          unit: { subjectId }
+        },
+        select: { id: true }
+      });
+      lessonIds = lessons.map(l => l.id);
+    }
+
     // Get all quiz attempts
     const attempts = await prisma.quizAttempt.findMany({
       where: {
         userId,
-        ...(subjectId && {
-          lesson: {
-            unit: {
-              subjectId,
-            },
-          },
-        }),
+        ...(lessonIds && { lessonId: { in: lessonIds } })
       },
       include: {
         answers: {
@@ -407,39 +414,47 @@ export class ProgressTrackingService {
     lessonsCompleted: number;
     badges: string[];
   }>> {
+    // If subjectId is provided, get user IDs who have progress in this subject
+    let userIds: string[] | undefined;
+
+    if (subjectId) {
+      // Use a workaround for distinct since Prisma may have issues with it
+      const progress = await prisma.progress.findMany({
+        where: {
+          lesson: {
+            unit: { subjectId }
+          }
+        },
+        select: { userId: true }
+      });
+      // Manually get unique user IDs
+      userIds = [...new Set(progress.map(p => p.userId))];
+    }
+
     // Get users with their progress
     const users = await prisma.user.findMany({
       where: {
-        ...(grade && { grade }),
-        progress: {
-          some: {
-            lesson: {
-              unit: {
-                ...(subjectId && { subjectId }),
-              },
-            },
-          },
-        },
+        ...(userIds && { id: { in: userIds } }),
+        ...(grade && { grade })
       },
       include: {
         progress: {
           where: {
-            status: 'COMPLETED',
-            lesson: {
-              unit: {
-                ...(subjectId && { subjectId }),
-              },
-            },
-          },
+            status: 'COMPLETED'
+          }
         },
         quizAttempts: {
           where: {
             completedAt: {
-              not: null,
-            },
+              not: null
+            }
           },
-        },
+          select: {
+            score: true
+          }
+        }
       },
+      take: limit * 2 // Get more users to account for filtering
     });
     
     // Calculate scores

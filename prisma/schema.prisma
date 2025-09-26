@@ -248,6 +248,7 @@ model Lesson {
   visualElements  VisualElement[]
   interactiveComponents InteractiveComponent[]
   contentQuality  ContentQuality?
+  quizAttempts    QuizAttempt[]
   
   @@index([unitId])
   @@index([isPublished])
@@ -534,8 +535,9 @@ model QuizAttempt {
   
   // Relations
   user            User      @relation(fields: [userId], references: [id])
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
   answers         QuizAttemptAnswer[]
-  
+
   @@index([userId])
   @@index([lessonId])
 }

@@ -20,6 +20,7 @@ export const validateBody = (schema: ZodSchema) => {
           },
         });
       } else {
+        console.error('[VALIDATION ERROR]:', error);
         res.status(500).json({
           success: false,
           error: {
@@ -52,6 +53,7 @@ export const validateParams = (schema: ZodSchema) => {
           },
         });
       } else {
+        console.error('[VALIDATION ERROR]:', error);
         res.status(500).json({
           success: false,
           error: {
@@ -71,7 +73,10 @@ export const validateQuery = (schema: ZodSchema) => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const validated = await schema.parseAsync(req.query);
-      req.query = validated as any;
+      // Instead of replacing req.query, merge the validated values
+      Object.keys(validated).forEach(key => {
+        (req.query as any)[key] = (validated as any)[key];
+      });
       next();
     } catch (error) {
       if (error instanceof ZodError) {
@@ -84,6 +89,7 @@ export const validateQuery = (schema: ZodSchema) => {
           },
         });
       } else {
+        console.error('[VALIDATION ERROR]:', error);
         res.status(500).json({
           success: false,
           error: {

@@ -272,13 +272,16 @@ router.get(
     subjectId: z.string().optional(),  // ✅ تم التعديل - أزلت .uuid()
   })),
   asyncHandler(async (req: Request, res: Response) => {
+    console.log('[ANALYTICS] Request received');
     const { subjectId } = req.query as any;
-    
+    console.log('[ANALYTICS] Parameters:', { userId: req.user!.userId, subjectId });
+
     const analytics = await progressService.getLearningAnalytics(
       req.user!.userId,
       subjectId
     );
-    
+    console.log('[ANALYTICS] Success');
+
     res.json(
       successResponse(analytics, 'Analytics retrieved successfully')
     );
@@ -299,14 +302,17 @@ router.get(
     limit: z.string().default('10').transform(Number).pipe(z.number()),
   })),
   asyncHandler(async (req: Request, res: Response) => {
+    console.log('[LEADERBOARD] Request received');
     const { subjectId, grade, limit } = req.query as any;
-    
+    console.log('[LEADERBOARD] Parameters:', { subjectId, grade: grade, gradeType: typeof grade, limit, limitType: typeof limit });
+
     const leaderboard = await progressService.getLeaderboard(
       subjectId,
-      grade,
-      limit
+      grade ? Number(grade) : undefined,
+      Number(limit) || 10
     );
-    
+    console.log('[LEADERBOARD] Success');
+
     res.json(
       successResponse(leaderboard, 'Leaderboard retrieved')
     );

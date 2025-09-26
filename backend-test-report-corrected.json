@@ -1,0 +1,108 @@
+{
+  "timestamp": "2025-09-26T20:22:48.023Z",
+  "summary": {
+    "total": 20,
+    "passed": 17,
+    "failed": 2,
+    "warnings": 1,
+    "passRate": 85
+  },
+  "details": {
+    "passed": [
+      {
+        "test": "Auth: Login",
+        "details": "تسجيل دخول ناجح"
+      },
+      {
+        "test": "Auth: Token Verification (/me)",
+        "details": "التوكن صالح"
+      },
+      {
+        "test": "Lessons: Get List",
+        "details": "عدد الدروس: 20"
+      },
+      {
+        "test": "Lessons: Get Details",
+        "details": "الدرس: القابلية للقسمة"
+      },
+      {
+        "test": "Quiz: Generate Questions",
+        "details": "تم توليد 5 أسئلة"
+      },
+      {
+        "test": "Quiz: Progress",
+        "details": "تم الحصول على التقدم"
+      },
+      {
+        "test": "RAG: Answer Question",
+        "details": "تم الحصول على إجابة"
+      },
+      {
+        "test": "RAG: Explain Concept",
+        "details": "تم شرح المفهوم"
+      },
+      {
+        "test": "RAG: Study Plan",
+        "details": "تم إنشاء خطة دراسية"
+      },
+      {
+        "test": "Chat: Send Message",
+        "details": "تم إرسال واستقبال الرد"
+      },
+      {
+        "test": "Student Context: Get",
+        "details": "تم الحصول على السياق"
+      },
+      {
+        "test": "Student Context: Update",
+        "details": "تم التحديث"
+      },
+      {
+        "test": "Achievements: Get List",
+        "details": "عدد الإنجازات: 0"
+      },
+      {
+        "test": "Achievements: Leaderboard",
+        "details": "تم الحصول على قائمة المتصدرين"
+      },
+      {
+        "test": "Achievements: Get Points",
+        "details": "النقاط: 0"
+      },
+      {
+        "test": "Parent Reports: Latest",
+        "details": "تم الحصول على آخر تقرير"
+      },
+      {
+        "test": "Parent Reports: History",
+        "details": "تم الحصول على سجل التقارير"
+      }
+    ],
+    "failed": [
+      {
+        "test": "Quiz: Analytics",
+        "details": "Request failed with status code 500"
+      },
+      {
+        "test": "Quiz: Leaderboard",
+        "details": "Request failed with status code 500"
+      }
+    ],
+    "warnings": [
+      {
+        "test": "Lessons: Teaching Assistant",
+        "details": "Endpoint غير موجود"
+      }
+    ]
+  },
+  "endpoints": {
+    "auth": "/api/v1/auth/*",
+    "lessons": "/api/v1/lessons/*",
+    "quiz": "/api/v1/quiz/*",
+    "rag": "/api/rag/*",
+    "chat": "/api/v1/chat/*",
+    "studentContext": "/api/v1/student-context/:userId",
+    "achievements": "/api/v1/achievements/:userId",
+    "parentReports": "/api/v1/parent-reports/:userId/*"
+  }
+}

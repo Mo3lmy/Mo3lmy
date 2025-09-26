@@ -238,13 +238,13 @@ export class QuizService {
         let type: QuestionType = 'MCQ';
         if (ex.type) {
           const typeMap: Record<string, QuestionType> = {
-            'multiple_choice': 'MCQ',
-            'mcq': 'MCQ',
-            'true_false': 'TRUE_FALSE',
-            'fill_blank': 'FILL_BLANK',
-            'short_answer': 'SHORT_ANSWER',
-            'problem': 'PROBLEM',
-            'essay': 'ESSAY'
+            'multiple_choice': 'MCQ' as QuestionType,
+            'mcq': 'MCQ' as QuestionType,
+            'true_false': 'TRUE_FALSE' as QuestionType,
+            'fill_blank': 'FILL_BLANK' as QuestionType,
+            'short_answer': 'SHORT_ANSWER' as QuestionType,
+            'problem': 'PROBLEM' as QuestionType,
+            'essay': 'ESSAY' as QuestionType
           };
           type = typeMap[ex.type.toLowerCase()] || 'MCQ';
         }
@@ -900,7 +900,7 @@ export class QuizService {
       case 'SHORT_ANSWER':
         return this.fuzzyMatch(correct, user, 0.8);
 
-      case 'PROBLEM':
+      case 'PROBLEM' as QuestionType:
         // للمسائل الرقمية، نسمح بهامش خطأ صغير
         const correctNum = parseFloat(correct);
         const userNum = parseFloat(user);
