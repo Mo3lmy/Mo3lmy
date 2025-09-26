@@ -127,12 +127,14 @@ export class WebSocketService {
   initialize(httpServer: HTTPServer): void {
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: config.NODE_ENV === 'development' ? '*' : ['https://yourdomain.com'],
+        origin: config.NODE_ENV === 'development'
+          ? ['http://localhost:3000', 'http://localhost:3001']
+          : ['https://yourdomain.com'],
         credentials: true,
-        methods: ['GET', 'POST']
+        methods: ['GET', 'POST', 'OPTIONS']
       },
-      
-      transports: ['polling', 'websocket'],
+
+      transports: ['websocket', 'polling'],
       allowUpgrades: true,
       
       pingTimeout: 60000,
@@ -143,6 +145,66 @@ export class WebSocketService {
       allowEIO3: true
     });
     
+    // Add authentication middleware
+    this.io.use(async (socket: Socket, next) => {
+      try {
+        const token = socket.handshake.auth?.token;
+
+        if (!token) {
+          // Allow connection but mark as not authenticated
+          socket.data.authenticated = false;
+          return next();
+        }
+
+        // For development, simplified auth
+        if (config.NODE_ENV === 'development') {
+          const testUser = await prisma.user.findFirst({
+            where: { email: { contains: 'test' } },
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+              grade: true
+            }
+          });
+
+          if (testUser) {
+            socket.data.user = testUser;
+            socket.data.authenticated = true;
+          }
+        } else {
+          // Production: verify JWT
+          try {
+            const decoded = jwt.verify(token, config.JWT_SECRET) as any;
+            const user = await prisma.user.findUnique({
+              where: { id: decoded.userId },
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                role: true,
+                grade: true
+              }
+            });
+
+            if (user) {
+              socket.data.user = user;
+              socket.data.authenticated = true;
+            }
+          } catch (err) {
+            socket.data.authenticated = false;
+          }
+        }
+
+        next();
+      } catch (error) {
+        next(new Error('Authentication failed'));
+      }
+    });
+
     // Setup event handlers
     this.setupEventHandlers();
     
@@ -171,7 +233,13 @@ export class WebSocketService {
     
     this.io.on('connection', async (socket: Socket) => {
       console.log(`✅ NEW CONNECTION: ${socket.id}`);
-      
+
+      // Add user to connected users if authenticated
+      if (socket.data.authenticated && socket.data.user) {
+        this.connectedUsers.set(socket.data.user.id, socket);
+        console.log(`✅ Authenticated: ${socket.data.user.email}`);
+      }
+
       // Welcome message
       socket.emit('welcome', {
         message: 'مرحباً بك في منصة التعليم الذكية! 👋',
@@ -190,8 +258,17 @@ export class WebSocketService {
         }
       });
       
-      // ============= AUTHENTICATION =============
+      // ============= AUTHENTICATION (LEGACY - for backwards compatibility) =============
       socket.on('authenticate', async (data: { token: string }) => {
+        // If already authenticated via handshake, just confirm
+        if (socket.data.authenticated) {
+          socket.emit('authenticated', {
+            success: true,
+            user: socket.data.user,
+            message: 'Already authenticated'
+          });
+          return;
+        }
         try {
           if (!data?.token) {
             socket.emit('auth_error', {
@@ -994,16 +1071,16 @@ export class WebSocketService {
     let engagement = context?.engagement || 80;
     
     // Analyze indicators
-    if (indicators.includes('multiple_errors') || indicators.includes('repeated_mistakes')) {
+    if (indicators && (indicators.includes('multiple_errors') || indicators.includes('repeated_mistakes'))) {
       mood = 'frustrated';
       confidence = Math.max(20, confidence - 20);
-    } else if (indicators.includes('slow_response') || indicators.includes('hesitation')) {
+    } else if (indicators && (indicators.includes('slow_response') || indicators.includes('hesitation'))) {
       mood = 'confused';
       confidence = Math.max(30, confidence - 10);
-    } else if (indicators.includes('long_session') || indicators.includes('frequent_pauses')) {
+    } else if (indicators && (indicators.includes('long_session') || indicators.includes('frequent_pauses'))) {
       mood = 'tired';
       engagement = Math.max(20, engagement - 20);
-    } else if (indicators.includes('quick_correct') || indicators.includes('streak')) {
+    } else if (indicators && (indicators.includes('quick_correct') || indicators.includes('streak'))) {
       mood = 'happy';
       confidence = Math.min(100, confidence + 10);
       engagement = Math.min(100, engagement + 10);

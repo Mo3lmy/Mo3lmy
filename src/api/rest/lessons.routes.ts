@@ -782,7 +782,7 @@ router.get('/', async (req: Request, res: Response) => {
       },
       take: 20
     });
-    
+
     res.json(
       successResponse({
         lessons,
@@ -792,6 +792,93 @@ router.get('/', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json(
       errorResponse('FETCH_FAILED', 'Failed to fetch lessons')
+    );
+  }
+});
+
+/**
+ * @route   GET /api/v1/lessons/:id
+ * @desc    Get lesson details by ID
+ * @access  Public
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const lesson = await prisma.lesson.findUnique({
+      where: { id },
+      include: {
+        unit: {
+          include: {
+            subject: true
+          }
+        },
+        content: true
+      }
+    });
+
+    if (!lesson) {
+      res.status(404).json(
+        errorResponse('LESSON_NOT_FOUND', 'الدرس غير موجود')
+      );
+      return;
+    }
+
+    // Parse JSON fields safely
+    let keyPoints = [];
+    let summary = lesson.summary;
+    let estimatedMinutes = lesson.estimatedMinutes || 45;
+
+    try {
+      keyPoints = JSON.parse(lesson.keyPoints || '[]');
+    } catch (e) {
+      keyPoints = [];
+    }
+
+    res.json(
+      successResponse({
+        id: lesson.id,
+        title: lesson.title,
+        titleAr: lesson.titleAr,
+        titleEn: lesson.titleEn,
+        description: lesson.description,
+        order: lesson.order,
+        duration: lesson.duration,
+        difficulty: lesson.difficulty,
+        isPublished: lesson.isPublished,
+        publishedAt: lesson.publishedAt,
+        summary,
+        keyPoints,
+        estimatedMinutes,
+        unit: {
+          id: lesson.unit.id,
+          title: lesson.unit.title,
+          titleAr: lesson.unit.titleAr,
+          titleEn: lesson.unit.titleEn,
+          subject: {
+            id: lesson.unit.subject.id,
+            name: lesson.unit.subject.name,
+            nameAr: lesson.unit.subject.nameAr,
+            nameEn: lesson.unit.subject.nameEn,
+            grade: lesson.unit.subject.grade
+          }
+        },
+        content: lesson.content ? {
+          id: lesson.content.id,
+          fullText: lesson.content.fullText,
+          summary: lesson.content.summary,
+          keyPoints: lesson.content.keyPoints,
+          examples: lesson.content.examples
+        } : null,
+        hasSlides: true,
+        hasQuiz: true,
+        hasChat: true
+      }, 'Lesson retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching lesson:', error);
+    res.status(500).json(
+      errorResponse('FETCH_FAILED', 'Failed to fetch lesson details')
     );
   }
 });

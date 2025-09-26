@@ -37,7 +37,7 @@ export default function LoginPage() {
     try {
       await login(data.email, data.password)
       console.log('Login successful, navigating to dashboard...')
-      router.push('/dashboard/dashboard')
+      router.push('/dashboard')
     } catch (error: any) {
       console.error('Login failed:', error)
       const message = error.message || 'حدث خطأ أثناء تسجيل الدخول'

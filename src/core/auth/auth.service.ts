@@ -97,20 +97,37 @@ export class AuthService {
   }> {
     // Validate input
     const validated = loginSchema.parse(data);
-    
+    console.log('🔍 Login attempt for:', validated.email);
+
     // Find user
     const user = await prisma.user.findUnique({
       where: { email: validated.email },
     });
-    
+
     if (!user) {
+      console.log('❌ User not found:', validated.email);
       throw new AuthenticationError('Invalid credentials');
     }
-    
+
+    console.log('✅ User found:', {
+      id: user.id,
+      email: user.email,
+      hasPassword: !!user.password,
+      passwordLength: user.password?.length,
+      isActive: user.isActive,
+      emailVerified: user.emailVerified
+    });
+
     // Check password
     const isValidPassword = await bcrypt.compare(validated.password, user.password);
-    
+    console.log('🔐 Password check:', {
+      inputPassword: validated.password,
+      passwordValid: isValidPassword,
+      hashStart: user.password.substring(0, 30)
+    });
+
     if (!isValidPassword) {
+      console.log('❌ Password invalid for user:', validated.email);
       throw new AuthenticationError('Invalid credentials');
     }
     

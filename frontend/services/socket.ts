@@ -16,16 +16,18 @@ class SocketService {
     }
 
     this.socket = io(WS_URL, {
-      transports: ['polling', 'websocket'],
-      autoConnect: true,
+      transports: ['websocket', 'polling'],
+      autoConnect: false,
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: this.maxReconnectAttempts,
-      auth: token ? { token } : undefined,
+      auth: token ? { token } : {},
+      withCredentials: true,
     })
 
     this.setupEventHandlers()
+    this.socket.connect()
     return this.socket
   }
 
@@ -103,7 +105,11 @@ class SocketService {
 
   // Emit events
   authenticate(token: string) {
-    this.socket?.emit('authenticate', { token })
+    // Authentication now handled in connection handshake
+    // Kept for backwards compatibility but not needed
+    if (this.socket && !this.socket.connected) {
+      console.warn('Socket not connected. Authentication is handled during connection.')
+    }
   }
 
   joinLesson(lessonId: string) {

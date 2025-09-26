@@ -18,7 +18,8 @@
       "Bash(python:*)",
       "mcp__ide__getDiagnostics",
       "Bash(dir:*)",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(npm run backend:dev:*)"
     ],
     "deny": [],
     "ask": []

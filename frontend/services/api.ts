@@ -53,7 +53,14 @@ class ApiService {
 
     // Response interceptor
     this.api.interceptors.response.use(
-      (response) => this.handleResponse(response),
+      (response) => {
+        console.log('API Response:', {
+          url: response.config.url,
+          status: response.status,
+          data: response.data
+        });
+        return this.handleResponse(response)
+      },
       (error: AxiosError<ApiErrorResponse>) => {
         if (error.response?.status === 401) {
           // Token expired or invalid
@@ -138,33 +145,38 @@ class ApiService {
     grade?: number
   }): Promise<AuthResponse> {
     const response = await this.api.post('/api/v1/auth/register', data)
-    if (response.data.success && response.data.data?.token) {
-      this.setToken(response.data.data.token)
-      return response.data
+    // Response is already unwrapped by interceptor
+    if (response.success && response.data?.token) {
+      this.setToken(response.data.token)
+      return response
     }
-    throw new Error(response.data.message || 'Registration failed')
+    throw new Error(response.message || 'Registration failed')
   }
 
   async login(email: string, password: string): Promise<AuthResponse> {
     const response = await this.api.post('/api/v1/auth/login', { email, password })
-    if (response.data.success && response.data.data?.token) {
-      this.setToken(response.data.data.token)
-      return response.data
+    // Response is already unwrapped by interceptor
+    if (response.success && response.data?.token) {
+      this.setToken(response.data.token)
+      return response
     }
-    throw new Error(response.data.message || 'Login failed')
+    throw new Error(response.message || 'Login failed')
   }
 
   async getMe(): Promise<User> {
     const response = await this.api.get('/api/v1/auth/me')
-    // The response is wrapped in the success format: { success: true, data: user }
-    return response.data
+    // Response is already unwrapped, extract user from data field
+    if (response.success && response.data) {
+      return response.data
+    }
+    throw new Error(response.message || 'Failed to get user')
   }
 
   async verifyToken(): Promise<boolean> {
     try {
       if (!this.token) return false
       const response = await this.api.post('/api/v1/auth/verify', { token: this.token })
-      return response.data.success || false
+      return response.success || false
     } catch {
       return false
     }

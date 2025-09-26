@@ -37,11 +37,21 @@ export default function DashboardPage() {
       return
     }
 
-    // Initialize WebSocket connection only once
-    const token = localStorage.getItem('auth_token')
+    // Initialize WebSocket connection
+    const authStorage = localStorage.getItem('auth-storage')
+    let token = null
+    if (authStorage) {
+      try {
+        const authData = JSON.parse(authStorage)
+        token = authData.state?.token
+      } catch (e) {
+        console.error('Failed to parse auth storage:', e)
+      }
+    }
+
     if (token && !socketService.isConnected()) {
+      // Connect with token in auth
       socketService.connect(token)
-      socketService.authenticate(token)
 
       // Set up WebSocket event listeners
       socketService.on('connect', () => {
@@ -52,6 +62,18 @@ export default function DashboardPage() {
       socketService.on('disconnect', () => {
         setConnectionStatus(false)
         console.log('WebSocket disconnected')
+      })
+
+      socketService.on('welcome', (data: any) => {
+        console.log('WebSocket welcome:', data)
+      })
+
+      socketService.on('authenticated', (data: any) => {
+        console.log('WebSocket authenticated:', data)
+      })
+
+      socketService.on('auth_error', (data: any) => {
+        console.error('WebSocket auth error:', data)
       })
 
       socketService.on('achievement_unlocked', (data: Achievement) => {
@@ -76,6 +98,9 @@ export default function DashboardPage() {
     return () => {
       socketService.off('connect')
       socketService.off('disconnect')
+      socketService.off('welcome')
+      socketService.off('authenticated')
+      socketService.off('auth_error')
       socketService.off('achievement_unlocked')
       socketService.off('emotional_state_detected')
     }
@@ -96,8 +121,15 @@ export default function DashboardPage() {
       promises.push(
         apiService.getLessons()
           .then(response => {
-            if (response.success && response.data) {
-              setLessons(response.data.lessons || [])
+            console.log('Lessons response:', response)
+            if (Array.isArray(response)) {
+              setLessons(response)
+            } else if (response?.data?.lessons) {
+              setLessons(response.data.lessons)
+            } else if (response?.data && Array.isArray(response.data)) {
+              setLessons(response.data)
+            } else if (response?.lessons) {
+              setLessons(response.lessons)
             }
           })
           .catch(err => console.error('Failed to load lessons:', err))
