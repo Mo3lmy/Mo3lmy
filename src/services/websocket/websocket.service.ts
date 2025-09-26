@@ -1000,10 +1000,10 @@ export class WebSocketService {
       });
       
       // ============= DISCONNECTION (ENHANCED) =============
-      
+
       socket.on('disconnect', async (reason) => {
         console.log(`❌ DISCONNECTED: ${socket.id} - ${reason}`);
-        
+
         const user = socket.data.user as UserData | undefined;
         if (user) {
           // 🆕 Save student context before disconnect
@@ -1011,45 +1011,13 @@ export class WebSocketService {
           if (context) {
             await this.saveStudentContext(user.id, context);
           }
-          
-          // Stop heartbeat
-          const heartbeatInterval = this.heartbeatIntervals.get(user.id);
-          if (heartbeatInterval) {
-            clearInterval(heartbeatInterval);
-            this.heartbeatIntervals.delete(user.id);
-          }
-          
-          // Clean up
-          this.connectedUsers.delete(user.id);
-          this.userSessions.delete(user.id);
-          this.studentContexts.delete(user.id);
-          
-          // Clean teaching sessions
-          this.teachingSessions.forEach((session, key) => {
-            if (key.endsWith(`_${user.id}`)) {
-              this.teachingSessions.delete(key);
-            }
-          });
-          
-          // Clean voice generation status
-          this.voiceGenerationStatus.forEach((status, key) => {
-            if (key.endsWith(`_${user.id}`)) {
-              this.voiceGenerationStatus.delete(key);
-            }
-          });
-          
-          // Remove from rooms
-          this.rooms.forEach((users, lessonId) => {
-            if (users.has(user.id)) {
-              users.delete(user.id);
-              
-              if (users.size === 0) {
-                this.rooms.delete(lessonId);
-              }
-            }
-          });
-          
-          console.log(`👤 ${user.email} disconnected`);
+
+          // 🆕 Use the new comprehensive cleanup function
+          this.cleanupUserData(user.id);
+
+          console.log(`👤 ${user.email} disconnected and fully cleaned up`);
+        } else {
+          console.log(`👤 Anonymous socket ${socket.id} disconnected`);
         }
       });
       
@@ -1237,10 +1205,14 @@ export class WebSocketService {
    * Start heartbeat for user
    */
   private startHeartbeat(userId: string, socket: Socket): void {
-    // Clear existing interval if any
+    // 🆕 IMPORTANT: Clear existing interval if any to prevent memory leaks
     const existing = this.heartbeatIntervals.get(userId);
-    if (existing) clearInterval(existing);
-    
+    if (existing) {
+      clearInterval(existing);
+      this.heartbeatIntervals.delete(userId);
+      console.log(`⏰ Cleared existing heartbeat interval for user: ${userId}`);
+    }
+
     const interval = setInterval(() => {
       const context = this.studentContexts.get(userId);
       if (!context) return;
@@ -1515,7 +1487,101 @@ export class WebSocketService {
   }
   
   // ============= HELPER METHODS =============
-  
+
+  /**
+   * 🆕 Complete cleanup of all user data from memory
+   */
+  private cleanupUserData(userId: string): void {
+    console.log(`🧹 Starting complete cleanup for user: ${userId}`);
+
+    // 1. Clean from connectedUsers
+    if (this.connectedUsers.has(userId)) {
+      this.connectedUsers.delete(userId);
+      console.log(`  ✓ Removed from connectedUsers`);
+    }
+
+    // 2. Clean from studentContexts
+    if (this.studentContexts.has(userId)) {
+      this.studentContexts.delete(userId);
+      console.log(`  ✓ Removed from studentContexts`);
+    }
+
+    // 3. Clean from userSessions
+    if (this.userSessions.has(userId)) {
+      this.userSessions.delete(userId);
+      console.log(`  ✓ Removed from userSessions`);
+    }
+
+    // 4. Clean from userAchievements
+    if (this.userAchievements.has(userId)) {
+      this.userAchievements.delete(userId);
+      console.log(`  ✓ Removed from userAchievements`);
+    }
+
+    // 5. Clean from heartbeatIntervals
+    const heartbeatInterval = this.heartbeatIntervals.get(userId);
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      this.heartbeatIntervals.delete(userId);
+      console.log(`  ✓ Cleared heartbeat interval`);
+    }
+
+    // 6. Clean from teachingSessions (all entries ending with _userId)
+    let teachingCleaned = 0;
+    this.teachingSessions.forEach((session, key) => {
+      if (key.endsWith(`_${userId}`)) {
+        this.teachingSessions.delete(key);
+        teachingCleaned++;
+      }
+    });
+    if (teachingCleaned > 0) {
+      console.log(`  ✓ Removed ${teachingCleaned} teaching sessions`);
+    }
+
+    // 7. Clean from voiceGenerationStatus
+    let voiceCleaned = 0;
+    this.voiceGenerationStatus.forEach((status, key) => {
+      if (key.endsWith(`_${userId}`)) {
+        this.voiceGenerationStatus.delete(key);
+        voiceCleaned++;
+      }
+    });
+    if (voiceCleaned > 0) {
+      console.log(`  ✓ Removed ${voiceCleaned} voice generation statuses`);
+    }
+
+    // 8. Clean from rooms
+    let roomsCleaned = 0;
+    this.rooms.forEach((users, lessonId) => {
+      if (users.has(userId)) {
+        users.delete(userId);
+        roomsCleaned++;
+
+        // If room is empty, delete it
+        if (users.size === 0) {
+          this.rooms.delete(lessonId);
+          console.log(`  ✓ Deleted empty room: ${lessonId}`);
+        }
+      }
+    });
+    if (roomsCleaned > 0) {
+      console.log(`  ✓ Removed from ${roomsCleaned} rooms`);
+    }
+
+    console.log(`✅ Complete cleanup finished for user: ${userId}`);
+
+    // Log memory status
+    console.log(`📊 Current memory status:`);
+    console.log(`  - Connected users: ${this.connectedUsers.size}`);
+    console.log(`  - Student contexts: ${this.studentContexts.size}`);
+    console.log(`  - User sessions: ${this.userSessions.size}`);
+    console.log(`  - Teaching sessions: ${this.teachingSessions.size}`);
+    console.log(`  - Voice statuses: ${this.voiceGenerationStatus.size}`);
+    console.log(`  - Heartbeat intervals: ${this.heartbeatIntervals.size}`);
+    console.log(`  - Achievements tracked: ${this.userAchievements.size}`);
+    console.log(`  - Active rooms: ${this.rooms.size}`);
+  }
+
   private getTimeOfDay(): 'morning' | 'afternoon' | 'evening' {
     const hour = new Date().getHours();
     if (hour < 12) return 'morning';

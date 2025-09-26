@@ -191,8 +191,8 @@ export class OpenAIService {
     try {
       this.client = new OpenAI({
         apiKey: apiKey,
-        maxRetries: 3,
-        timeout: 30000,
+        maxRetries: 5,
+        timeout: 1200000,
       });
       
       this.isInitialized = true;
@@ -1073,6 +1073,23 @@ export class OpenAIService {
    */
   isReady(): boolean {
     return this.isInitialized || this.useMockMode;
+  }
+
+  /**
+   * Compatibility helper: simple text completion from a single prompt.
+   * Accepts a raw string prompt and optional options, returns assistant text.
+   * Internally uses chat() with a single user message for consistency with
+   * the rest of the service (smart model selection, cost tracking, etc.).
+   */
+  async generateCompletion(prompt: string, options: CompletionOptions = {}): Promise<string> {
+    // If caller passed an empty prompt, return early to avoid unnecessary call
+    if (!prompt || !prompt.trim()) {
+      return '';
+    }
+    const messages: ChatMessage[] = [
+      { role: 'user', content: prompt }
+    ];
+    return this.chat(messages, options);
   }
 }
 

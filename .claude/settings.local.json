@@ -19,7 +19,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(dir:*)",
       "Bash(tasklist)",
-      "Bash(npm run backend:dev:*)"
+      "Bash(npm run backend:dev:*)",
+      "Bash(node test-all-apis.js)"
     ],
     "deny": [],
     "ask": []

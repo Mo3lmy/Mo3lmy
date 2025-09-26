@@ -4,32 +4,38 @@ import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
-// إضافة import لـ OpenAI service
-import { openAIService } from '../../src/services/ai/openai.service';
 
 const prisma = new PrismaClient();
+
+// توليد embedding محلي (مؤقت حتى نشغل OpenAI)
+function generateLocalEmbedding(text: string): number[] {
+  const hash = createHash('sha256').update(text).digest();
+  const embedding: number[] = [];
+  
+  // OpenAI يستخدم 1536 dimensions
+  for (let i = 0; i < 1536; i++) {
+    const byte = hash[i % hash.length];
+    embedding.push((byte / 255) * 2 - 1);
+  }
+  
+  return embedding;
+}
 
 // توليد embedding حقيقي مع OpenAI أو محلي كـ fallback
 async function generateEmbedding(text: string): Promise<number[]> {
   try {
-    // محاولة استخدام OpenAI API
-    const { embedding } = await openAIService.generateEmbedding(text);
-    return embedding;
-  } catch (error) {
-    // في حالة الفشل، استخدم embedding محلي
-    console.log('      ⚠️ استخدام embedding محلي (OpenAI غير متاح)');
-    
-    const hash = createHash('sha256').update(text).digest();
-    const embedding: number[] = [];
-    
-    // OpenAI يستخدم 1536 dimensions
-    for (let i = 0; i < 1536; i++) {
-      const byte = hash[i % hash.length];
-      embedding.push((byte / 255) * 2 - 1); // تطبيع بين -1 و 1
+    // جرب OpenAI لو متاح
+    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== '') {
+      const { openAIService } = await import('../../src/services/ai/openai.service');
+      const { embedding } = await openAIService.generateEmbedding(text);
+      return embedding;
     }
-    
-    return embedding;
+  } catch (error) {
+    console.log('      ⚠️ OpenAI غير متاح، استخدام embedding محلي');
   }
+  
+  // استخدم محلي كـ fallback
+  return generateLocalEmbedding(text);
 }
 
 // دالة مساعدة لتوليد معرف فريد
@@ -53,12 +59,40 @@ function extractText(obj: any): string {
   return '';
 }
 
+// دالة حذف البيانات القديمة
+async function cleanDatabase() {
+  console.log('🧹 حذف البيانات القديمة...');
+  
+  try {
+    // حذف بالترتيب الصحيح (احترام العلاقات)
+    await prisma.quizAttemptAnswer.deleteMany();
+    await prisma.quizAttempt.deleteMany();
+    await prisma.question.deleteMany();
+    await prisma.contentEmbedding.deleteMany();
+    await prisma.example.deleteMany();
+    await prisma.concept.deleteMany();
+    await prisma.formula.deleteMany();
+    await prisma.rAGContent.deleteMany();
+    await prisma.content.deleteMany();
+    await prisma.video.deleteMany();
+    await prisma.chatMessage.deleteMany();
+    await prisma.progress.deleteMany();
+    await prisma.lesson.deleteMany();
+    await prisma.unit.deleteMany();
+    await prisma.subject.deleteMany();
+    
+    console.log('✅ تم حذف البيانات القديمة');
+  } catch (error) {
+    console.log('⚠️ بعض الجداول غير موجودة، تجاهل...');
+  }
+}
+
 async function seedMathCurriculum() {
-  console.log('🚀 بدء إدخال منهج الرياضيات...');
-  console.log('⚠️ ملاحظة: تأكد من تشغيل "npx prisma generate" بعد تحديث Schema');
+  console.log('🚀 بدء إدخال منهج الرياضيات الكامل...');
+  console.log('════════════════════════════════════════\n');
   
   // تحقق من OpenAI API
-  if (process.env.OPENAI_API_KEY) {
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith('sk-')) {
     console.log('✅ OpenAI API متاح - سيتم إنشاء embeddings حقيقية');
   } else {
     console.log('⚠️ OpenAI API غير متاح - سيتم استخدام embeddings محلية');
@@ -68,27 +102,42 @@ async function seedMathCurriculum() {
     // قراءة البيانات من الملف
     const dataPath = path.join(__dirname, '../../data/curriculum-data.json');
     
-    // إذا لم يجد الملف، جرب مسار آخر
     let curriculumData: any;
     
     if (fs.existsSync(dataPath)) {
-      curriculumData = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+      const fileContent = fs.readFileSync(dataPath, 'utf-8');
+      curriculumData = JSON.parse(fileContent);
     } else {
       // مسار بديل
       const altPath = path.join(process.cwd(), 'data/curriculum-data.json');
       if (fs.existsSync(altPath)) {
-        curriculumData = JSON.parse(fs.readFileSync(altPath, 'utf-8'));
+        const fileContent = fs.readFileSync(altPath, 'utf-8');
+        curriculumData = JSON.parse(fileContent);
       } else {
-        console.error('❌ لا يمكن العثور على ملف curriculum-data.json');
-        console.log('تأكد من وجود الملف في: data/curriculum-data.json');
-        process.exit(1);
+        throw new Error('❌ لا يمكن العثور على ملف curriculum-data.json');
       }
     }
     
-    console.log(`📚 تم قراءة ${curriculumData.units?.length || 0} وحدات`);
+    // التحقق من البيانات
+    if (!curriculumData.units || !Array.isArray(curriculumData.units)) {
+      throw new Error('❌ البيانات غير صحيحة - لا توجد وحدات');
+    }
     
-    // 1. إنشاء المادة الدراسية - flexible لأي شكل data
-    const subjectName = curriculumData.subject?.name || curriculumData.subject?.nameAr || 'الرياضيات';
+    const totalUnits = curriculumData.units.length;
+    console.log(`📚 تم قراءة ${totalUnits} وحدات من الملف\n`);
+    
+    // عرض ملخص البيانات
+    let totalLessonsInFile = 0;
+    curriculumData.units.forEach((unit: any, i: number) => {
+      const lessonCount = unit.lessons?.length || 0;
+      totalLessonsInFile += lessonCount;
+      console.log(`   ${i + 1}. ${unit.title}: ${lessonCount} دروس`);
+    });
+    console.log(`   ──────────────────────`);
+    console.log(`   المجموع: ${totalLessonsInFile} درس\n`);
+    
+    // 1. إنشاء المادة الدراسية
+    const subjectName = curriculumData.subject?.name || 'الرياضيات';
     const subjectNameEn = curriculumData.subject?.nameEn || 'Mathematics';
     const subjectGrade = curriculumData.subject?.grade || 6;
     
@@ -114,7 +163,7 @@ async function seedMathCurriculum() {
       }
     });
     
-    console.log(`✅ تم إنشاء المادة: ${subject.name} (${subject.nameEn})`);
+    console.log(`✅ تم إنشاء المادة: ${subject.name} (${subject.nameEn})\n`);
     
     let totalLessons = 0;
     let totalConcepts = 0;
@@ -122,18 +171,27 @@ async function seedMathCurriculum() {
     let totalQuestions = 0;
     let totalEmbeddings = 0;
     
-    // 2. إدخال الوحدات والدروس - بمرونة كاملة
-    const units = curriculumData.units || [];
+    // 2. معالجة كل الوحدات
+    console.log('🔄 بدء معالجة الوحدات والدروس...');
+    console.log('════════════════════════════════════════\n');
     
-    for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
-      const unitData = units[unitIndex];
+    // Loop through ALL units (not just 3!)
+    for (let unitIndex = 0; unitIndex < totalUnits; unitIndex++) {
+      const unitData = curriculumData.units[unitIndex];
       
-      // استخراج بيانات الوحدة بمرونة
-      const unitTitle = unitData.title || unitData.titleAr || unitData.titleEn || `الوحدة ${unitIndex + 1}`;
+      if (!unitData) {
+        console.log(`⚠️ تخطي الوحدة ${unitIndex + 1} - لا توجد بيانات`);
+        continue;
+      }
+      
+      // استخراج بيانات الوحدة
+      const unitTitle = unitData.title || unitData.titleAr || `الوحدة ${unitIndex + 1}`;
       const unitTitleEn = unitData.titleEn || unitData.title || `Unit ${unitIndex + 1}`;
-      const unitOrder = unitData.unitNumber || unitData.order || unitIndex + 1;
+      const unitOrder = unitData.unitNumber || (unitIndex + 1);
       
-      console.log(`\n📂 معالجة الوحدة ${unitOrder}: ${unitTitle}`);
+      console.log(`📂 [${unitIndex + 1}/${totalUnits}] معالجة الوحدة: ${unitTitle}`);
+      console.log(`   ترتيب الوحدة: ${unitOrder}`);
+      console.log(`   عدد الدروس: ${unitData.lessons?.length || 0}`);
       
       // إنشاء الوحدة
       const unit = await prisma.unit.create({
@@ -149,19 +207,25 @@ async function seedMathCurriculum() {
         }
       });
       
-      // إدخال الدروس
+      console.log(`   ✅ تم إنشاء الوحدة\n`);
+      
+      // إدخال دروس الوحدة
       const lessons = unitData.lessons || [];
       
       for (let lessonIndex = 0; lessonIndex < lessons.length; lessonIndex++) {
         const lessonData = lessons[lessonIndex];
         
-        // استخراج بيانات الدرس بمرونة
-        const lessonTitle = lessonData.title || lessonData.titleAr || lessonData.titleEn || `الدرس ${lessonIndex + 1}`;
-        const lessonTitleEn = lessonData.titleEn || lessonData.title || `Lesson ${lessonIndex + 1}`;
-        const lessonOrder = lessonData.lessonNumber || lessonData.order || lessonIndex + 1;
-        const lessonDuration = parseInt(lessonData.duration) || 45;
+        if (!lessonData) {
+          console.log(`   ⚠️ تخطي الدرس ${lessonIndex + 1} - لا توجد بيانات`);
+          continue;
+        }
         
-        console.log(`  📝 إضافة الدرس ${lessonOrder}: ${lessonTitle}`);
+        // استخراج بيانات الدرس
+        const lessonTitle = lessonData.title || lessonData.titleAr || `الدرس ${lessonIndex + 1}`;
+        const lessonTitleEn = lessonData.titleEn || lessonData.title || `Lesson ${lessonIndex + 1}`;
+        const lessonOrder = lessonData.lessonNumber || (lessonIndex + 1);
+        
+        console.log(`   📝 [${lessonIndex + 1}/${lessons.length}] ${lessonTitle}`);
         totalLessons++;
         
         // إنشاء الدرس
@@ -174,16 +238,16 @@ async function seedMathCurriculum() {
             order: lessonOrder,
             unitId: unit.id,
             difficulty: 'MEDIUM',
-            duration: lessonDuration,
+            duration: 45,
             isPublished: true,
             publishedAt: new Date(),
-            description: lessonData.objectives?.[0] || lessonData.content?.introduction || lessonTitle,
-            summary: lessonData.content?.introduction?.substring(0, 500) || lessonData.content?.summary || '',
+            description: lessonData.objectives?.[0] || lessonTitle,
+            summary: lessonData.content?.summary || '',
             keyPoints: JSON.stringify(lessonData.objectives || [])
           }
         });
         
-        // معالجة المحتوى بمرونة كاملة
+        // معالجة المحتوى
         let fullText = '';
         let summary = '';
         let keyPoints: string[] = [];
@@ -191,123 +255,29 @@ async function seedMathCurriculum() {
         let concepts: string[] = [];
         
         if (lessonData.content) {
-          // جمع النص من كل الحقول المتاحة
+          // جمع النصوص
           const textParts: string[] = [];
           
-          // جمع كل النصوص الموجودة
           if (lessonData.content.introduction) textParts.push(lessonData.content.introduction);
           if (lessonData.content.fullText) textParts.push(lessonData.content.fullText);
           if (lessonData.content.summary) textParts.push(lessonData.content.summary);
-          if (lessonData.content.mainContent) textParts.push(lessonData.content.mainContent);
-          if (lessonData.content.text) textParts.push(lessonData.content.text);
-          if (lessonData.content.description) textParts.push(lessonData.content.description);
           
-          // إضافة نصوص من حقول أخرى
-          for (const [key, value] of Object.entries(lessonData.content)) {
-            if (typeof value === 'string' && value.length > 50 && !textParts.includes(value)) {
-              textParts.push(value);
-            } else if (typeof value === 'object' && value && !Array.isArray(value)) {
-              const extracted = extractText(value);
-              if (extracted && extracted.length > 50) {
-                textParts.push(extracted);
-              }
-            }
-          }
+          fullText = textParts.filter(Boolean).join('\n\n') || `محتوى ${lessonTitle}`;
+          summary = lessonData.content.summary || fullText.substring(0, 500);
+          keyPoints = lessonData.objectives || lessonData.content.keyPoints || [];
           
-          fullText = textParts.filter(Boolean).join('\n\n');
-          
-          // إذا لم نجد نص، نبني واحد من المتاح
-          if (!fullText) {
-            const allText: string[] = [lessonTitle];
-            if (lessonData.objectives) allText.push(...lessonData.objectives);
-            if (lessonData.content.keyPoints) allText.push(...lessonData.content.keyPoints);
-            if (lessonData.content.concepts) allText.push(...lessonData.content.concepts);
-            fullText = allText.join('\n');
-          }
-          
-          // الملخص
-          summary = lessonData.content.summary || 
-                   lessonData.content.introduction?.substring(0, 500) ||
-                   fullText.substring(0, 500) ||
-                   `ملخص ${lessonTitle}`;
-          
-          // النقاط الرئيسية
-          keyPoints = lessonData.objectives || 
-                     lessonData.content.keyPoints || 
-                     lessonData.content.mainPoints ||
-                     lessonData.content.bulletPoints ||
-                     [`النقطة الرئيسية في ${lessonTitle}`];
-                     
-          // تأكد أن keyPoints array
-          if (!Array.isArray(keyPoints)) {
-            keyPoints = typeof keyPoints === 'string' ? [keyPoints] : [];
-          }
-          
-          // الأمثلة - من أي مصدر ممكن
+          // الأمثلة
           if (lessonData.content.examples && Array.isArray(lessonData.content.examples)) {
-            examples = lessonData.content.examples.map((ex: any, idx: number) => {
-              if (typeof ex === 'object' && (ex.problem || ex.question)) {
-                return {
-                  problem: ex.problem || ex.question || `مثال ${idx + 1}`,
-                  solution: ex.solution || ex.answer || 'الحل'
-                };
-              } else if (typeof ex === 'string') {
-                return { problem: ex, solution: 'الحل' };
-              } else {
-                return { problem: `مثال ${idx + 1}`, solution: 'الحل' };
-              }
-            });
-          } else if (lessonData.content.practiceProblems) {
-            const problems = Array.isArray(lessonData.content.practiceProblems) 
-              ? lessonData.content.practiceProblems 
-              : [lessonData.content.practiceProblems];
-              
-            examples = problems.map((p: any, i: number) => {
-              if (typeof p === 'string') {
-                return { problem: p, solution: 'الحل' };
-              } else if (p.problems && Array.isArray(p.problems)) {
-                return p.problems.map((prob: string, j: number) => ({
-                  problem: prob,
-                  solution: p.answers?.[j] || p.solutions?.[j] || 'الحل'
-                }));
-              } else {
-                return {
-                  problem: p.problem || p.question || p.text || `مثال ${i + 1}`,
-                  solution: p.solution || p.answer || p.answers?.[0] || 'الحل'
-                };
-              }
-            }).flat();
-          } else {
-            // إذا مافيش أمثلة، نعمل واحد افتراضي
-            examples = [{ 
-              problem: `مثال على ${lessonTitle}`, 
-              solution: `حل المثال` 
-            }];
+            examples = lessonData.content.examples;
           }
           
           // المفاهيم
-          concepts = lessonData.content.concepts || 
-                    lessonData.content.mainConcepts ||
-                    lessonData.content.topics ||
-                    lessonData.content.keywords ||
-                    [lessonTitle];
-                    
-          // تأكد أن concepts array
-          if (!Array.isArray(concepts)) {
-            concepts = typeof concepts === 'string' ? [concepts] : [lessonTitle];
-          }
+          concepts = lessonData.content.concepts || [lessonTitle];
         } else {
-          // إذا مافيش content object خالص
-          fullText = lessonData.text || lessonData.description || `محتوى ${lessonTitle}`;
-          summary = fullText.substring(0, 500);
-          keyPoints = lessonData.objectives || [`نقطة رئيسية في ${lessonTitle}`];
-          examples = [{ problem: `مثال على ${lessonTitle}`, solution: 'الحل' }];
+          fullText = `محتوى ${lessonTitle}`;
+          summary = fullText;
+          keyPoints = lessonData.objectives || [];
           concepts = [lessonTitle];
-        }
-        
-        // تأكد من وجود محتوى على الأقل
-        if (!fullText || fullText.trim().length === 0) {
-          fullText = `${lessonTitle} - ${unitTitle}\n${keyPoints.join('\n')}`;
         }
         
         // إنشاء محتوى الدرس
@@ -323,22 +293,17 @@ async function seedMathCurriculum() {
           }
         });
         
-        // إنشاء ContentEmbedding للبحث
+        // إنشاء ContentEmbedding
         try {
-          console.log('    🤖 إنشاء embeddings للمحتوى...');
-          
           const contentForEmbedding = `
             ${lessonTitle} ${lessonTitleEn}
             ${summary}
             ${keyPoints.join(' ')}
             ${concepts.join(' ')}
-            ${examples.map((e: any) => `${e.problem} ${e.solution}`).join(' ')}
           `.trim().substring(0, 2000);
           
-          // توليد embedding حقيقي
           const embedding = await generateEmbedding(contentForEmbedding);
           
-          // حفظ في جدول ContentEmbedding
           await prisma.contentEmbedding.create({
             data: {
               id: generateUniqueId('EMBED'),
@@ -348,150 +313,68 @@ async function seedMathCurriculum() {
               embedding: JSON.stringify(embedding),
               metadata: JSON.stringify({
                 lessonTitle: lessonTitle,
-                lessonTitleEn: lessonTitleEn,
                 unitTitle: unitTitle,
-                unitTitleEn: unitTitleEn,
                 subject: subject.name,
-                grade: subjectGrade,
-                concepts: concepts,
-                keyPoints: keyPoints
+                grade: subjectGrade
               })
             }
           });
           
           totalEmbeddings++;
-          console.log('    ✅ تم إنشاء embedding');
-          
-        } catch (error: any) {
-          console.log('    ⚠️ فشل إنشاء embedding:', error.message);
+          console.log(`      ✅ تم إنشاء embedding`);
+        } catch (error) {
+          console.log(`      ⚠️ فشل إنشاء embedding`);
         }
         
-        // إضافة المفاهيم (إذا كان النموذج متاحاً)
-        if ((prisma as any).concept) {
-          try {
-            for (const concept of concepts) {
-              await (prisma as any).concept.create({
-                data: {
-                  id: generateUniqueId('CONCEPT'),
-                  name: concept,
-                  nameAr: concept,
-                  description: `مفهوم: ${concept}`,
-                  lessonId: lesson.id
-                }
-              });
-              totalConcepts++;
-            }
-          } catch (error) {
-            // Concept model doesn't exist, skip
-          }
-        }
-        
-        // إضافة الأمثلة (إذا كان النموذج متاحاً)
-        if ((prisma as any).example) {
-          try {
-            let exampleOrder = 1;
-            for (const example of examples) {
-              await (prisma as any).example.create({
-                data: {
-                  id: generateUniqueId('EXAMPLE'),
-                  problem: example.problem || `مثال ${exampleOrder}`,
-                  solution: example.solution || 'الحل',
-                  lessonId: lesson.id,
-                  order: exampleOrder++
-                }
-              });
-              totalExamples++;
-            }
-          } catch (error) {
-            // Example model doesn't exist, skip
-          }
-        }
-        
-        // إضافة الصيغ الرياضية (إذا كانت موجودة)
-        if ((prisma as any).formula && lessonData.content?.formulas) {
-          try {
-            const formulas = Array.isArray(lessonData.content.formulas) 
-              ? lessonData.content.formulas 
-              : [];
-              
-            for (const formula of formulas) {
-              await (prisma as any).formula.create({
-                data: {
-                  id: generateUniqueId('FORMULA'),
-                  expression: formula,
-                  description: `صيغة رياضية`,
-                  lessonId: lesson.id
-                }
-              });
-            }
-          } catch (error) {
-            // Formula model doesn't exist, skip
-          }
-        }
-        
-        // إضافة بعض الأسئلة النموذجية
+        // إضافة بعض الأسئلة
         const sampleQuestions = [
           {
             type: 'MCQ',
             text: `ما هو موضوع درس "${lessonTitle}"؟`,
-            options: [
-              summary.substring(0, 50),
-              'موضوع آخر غير صحيح',
-              'إجابة خاطئة',
-              'خيار رابع'
-            ],
+            options: [summary.substring(0, 50), 'إجابة خاطئة', 'خيار آخر', 'لا شيء'],
             correctAnswer: '0',
-            difficulty: 'EASY',
-            points: 1
+            difficulty: 'EASY'
           },
           {
             type: 'TRUE_FALSE',
-            text: `صح أم خطأ: ${keyPoints[0] || lessonTitle + ' مهم'}؟`,
+            text: `${lessonTitle} من دروس ${unitTitle}`,
             correctAnswer: 'true',
-            difficulty: 'MEDIUM',
-            points: 2
-          },
-          {
-            type: 'FILL_BLANK',
-            text: `أكمل: ${lessonTitle} هو درس يتحدث عن _____.`,
-            correctAnswer: concepts[0] || 'المفهوم الأساسي',
-            difficulty: 'EASY',
-            points: 1
+            difficulty: 'EASY'
           }
         ];
         
         for (const q of sampleQuestions) {
           try {
-            const questionData: any = {
-              id: generateUniqueId('QUESTION'),
-              lessonId: lesson.id,
-              type: q.type as any,
-              difficulty: q.difficulty as any,
-              question: q.text,
-              options: q.type === 'MCQ' ? JSON.stringify(q.options) : null,
-              correctAnswer: q.correctAnswer,
-              explanation: 'شرح تلقائي',
-              points: q.points,
-              order: 0
-            };
-            
             await prisma.question.create({
-              data: questionData
+              data: {
+                id: generateUniqueId('QUESTION'),
+                lessonId: lesson.id,
+                type: q.type as any,
+                difficulty: q.difficulty as any,
+                question: q.text,
+                options: q.type === 'MCQ' ? JSON.stringify(q.options) : null,
+                correctAnswer: q.correctAnswer,
+                explanation: 'شرح تلقائي',
+                points: 1,
+                order: 0
+              }
             });
             totalQuestions++;
           } catch (error) {
-            console.log('    ⚠️ فشل إنشاء سؤال:', error);
+            // تجاهل أخطاء الأسئلة
           }
         }
       }
+      
+      console.log(''); // سطر فارغ بين الوحدات
     }
     
-    console.log('\n' + '='.repeat(50));
-    console.log('✅ تم إدخال البيانات الأساسية بنجاح!');
-    console.log('='.repeat(50));
+    // الإحصائيات النهائية
+    console.log('════════════════════════════════════════');
+    console.log('✅ تم إدخال البيانات بنجاح!');
+    console.log('════════════════════════════════════════\n');
     
-    // إحصائيات
-    const stats: any = {
+    const stats = {
       subjects: await prisma.subject.count(),
       units: await prisma.unit.count(),
       lessons: await prisma.lesson.count(),
@@ -500,115 +383,52 @@ async function seedMathCurriculum() {
       contentEmbeddings: await prisma.contentEmbedding.count()
     };
     
-    console.log('\n📊 الإحصائيات النهائية:');
+    console.log('📊 الإحصائيات النهائية:');
     console.log('------------------------');
     console.log(`📚 المواد: ${stats.subjects}`);
-    console.log(`📂 الوحدات: ${stats.units}`);
-    console.log(`📝 الدروس: ${stats.lessons}`);
+    console.log(`📂 الوحدات: ${stats.units} ${stats.units === totalUnits ? '✅' : `⚠️ (متوقع: ${totalUnits})`}`);
+    console.log(`📝 الدروس: ${stats.lessons} ${stats.lessons === totalLessonsInFile ? '✅' : `⚠️ (متوقع: ${totalLessonsInFile})`}`);
     console.log(`📄 المحتوى: ${stats.content}`);
     console.log(`🧠 Embeddings: ${stats.contentEmbeddings}`);
     console.log(`❓ الأسئلة: ${stats.questions}`);
-    console.log('------------------------');
+    console.log('------------------------\n');
     
-    // تحقق من حالة Embeddings
     if (stats.contentEmbeddings > 0) {
-      console.log('\n✅ النظام جاهز للعمل مع RAG!');
-      console.log(`   تم إنشاء ${stats.contentEmbeddings} embeddings`);
-      if (process.env.OPENAI_API_KEY) {
+      console.log('✅ النظام جاهز للعمل مع RAG!');
+      if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith('sk-')) {
         console.log('   ✨ باستخدام OpenAI embeddings حقيقية');
       } else {
-        console.log('   ⚠️ باستخدام embeddings محلية (Mock)');
+        console.log('   ⚠️ باستخدام embeddings محلية');
       }
-    } else {
-      console.log('\n⚠️ لم يتم إنشاء embeddings!');
-      console.log('   تحقق من:');
-      console.log('   1. وجود جدول ContentEmbedding');
-      console.log('   2. تشغيل migrations');
     }
     
-    console.log('\n✨ يمكنك الآن:');
+    console.log('\n✨ الخطوات التالية:');
     console.log('1. فتح Prisma Studio: npx prisma studio');
-    console.log('2. اختبار البحث في المنهج');
-    console.log('3. طرح الأسئلة والحصول على إجابات من المحتوى');
-    console.log('4. توليد أسئلة ديناميكية');
+    console.log('2. اختبار RAG: npm run test:rag');
+    console.log('3. بدء الخادم: npm run dev');
     
   } catch (error) {
-    console.error('❌ خطأ في إدخال البيانات:', error);
+    console.error('\n❌ خطأ في إدخال البيانات:', error);
     throw error;
-  }
-}
-
-// دالة لحذف البيانات القديمة
-async function cleanDatabase() {
-  console.log('🧹 حذف البيانات القديمة...');
-  
-  try {
-    await prisma.question.deleteMany();
-    await prisma.contentEmbedding.deleteMany();
-    
-    // حذف الجداول الاختيارية إن وجدت
-    if ((prisma as any).rAGContent) {
-      await (prisma as any).rAGContent.deleteMany();
-    }
-    if ((prisma as any).formula) {
-      await (prisma as any).formula.deleteMany();
-    }
-    if ((prisma as any).example) {
-      await (prisma as any).example.deleteMany();
-    }
-    if ((prisma as any).concept) {
-      await (prisma as any).concept.deleteMany();
-    }
-    
-    await prisma.content.deleteMany();
-    await prisma.lesson.deleteMany();
-    await prisma.unit.deleteMany();
-    await prisma.subject.deleteMany();
-    
-    console.log('✅ تم حذف البيانات القديمة');
-  } catch (error) {
-    console.log('⚠️ بعض الجداول غير موجودة، تجاهل...');
-  }
-}
-
-// دالة معالجة المحتوى الإضافية
-async function processAdditionalContent() {
-  console.log('\n🤖 معالجة محتوى إضافي لـ RAG...');
-  
-  try {
-    const documentProcessorModule = await import('../../src/core/rag/document.processor');
-    const { documentProcessor } = documentProcessorModule;
-    
-    await documentProcessor.processAllContent();
-    console.log('✅ اكتملت معالجة المحتوى الإضافية!');
-    return true;
-  } catch (error: any) {
-    console.log('⚠️ لم تتم معالجة إضافية:', error.message);
-    console.log('   يمكن تشغيلها لاحقاً: npm run content:process');
-    return false;
   }
 }
 
 // الدالة الرئيسية
 async function main() {
-  console.log('🔄 بدء عملية إدخال البيانات...\n');
+  console.log('════════════════════════════════════════');
+  console.log('   منصة التعليم الذكية - إدخال البيانات');
+  console.log('════════════════════════════════════════\n');
   
   const args = process.argv.slice(2);
   
+  // حذف البيانات القديمة إذا طُلب
   if (args.includes('--clean')) {
     await cleanDatabase();
+    console.log('');
   }
   
-  // إدخال البيانات الأساسية
+  // إدخال البيانات
   await seedMathCurriculum();
-  
-  // معالجة إضافية (اختيارية)
-  if (args.includes('--process')) {
-    await processAdditionalContent();
-  } else {
-    console.log('\n💡 نصيحة: لمعالجة محتوى إضافي، شغل:');
-    console.log('   npm run content:process');
-  }
 }
 
 // تشغيل البرنامج
@@ -618,7 +438,7 @@ main()
     process.exit(0);
   })
   .catch((error) => {
-    console.error('💥 فشل:', error);
+    console.error('\n💥 فشل:', error);
     process.exit(1);
   })
   .finally(async () => {
