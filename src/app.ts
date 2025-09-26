@@ -28,6 +28,7 @@ import testRoutes from './api/test-routes';
 import studentContextRoutes from './api/rest/student-context.routes';
 import achievementsRoutes from './api/rest/achievements.routes';
 import parentReportsRoutes from './api/rest/parent-reports.routes';
+import educationalContentRoutes from './api/rest/educational-content.routes';
 
 // Create Express app
 const app: Application = express();
@@ -254,6 +255,7 @@ app.use('/api/v1/quiz', quizRoutes);
 app.use('/api/v1/student-context', studentContextRoutes);
 app.use('/api/v1/achievements', achievementsRoutes);
 app.use('/api/v1/parent-reports', parentReportsRoutes);
+app.use('/api/v1/educational', educationalContentRoutes);
 
 // Test routes
 app.use('/api', testRoutes);

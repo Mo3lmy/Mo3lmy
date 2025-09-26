@@ -20,7 +20,12 @@
       "Bash(dir:*)",
       "Bash(tasklist)",
       "Bash(npm run backend:dev:*)",
-      "Bash(node test-all-apis.js)"
+      "Bash(node test-all-apis.js)",
+      "Bash(node:*)",
+      "Bash(sqlite3:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:backend)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

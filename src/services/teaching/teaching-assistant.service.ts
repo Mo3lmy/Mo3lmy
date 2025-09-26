@@ -975,13 +975,14 @@ Return JSON format:
   
   /**
    * Get educational context with enhanced data
+   * 🆕 UPDATED: Better use of enriched content
    */
   private async getEducationalContext(
     lessonId: string,
     slideContent: any,
     studentGrade: number
   ): Promise<EducationalContext> {
-    
+
     try {
       // Get comprehensive lesson data
       const lesson = await prisma.lesson.findUnique({
@@ -1004,7 +1005,7 @@ Return JSON format:
           }
         }
       });
-      
+
       if (!lesson) {
         return {
           enrichedContent: null,
@@ -1014,46 +1015,71 @@ Return JSON format:
           relatedLessons: [],
           learningObjectives: [],
           prerequisites: [],
-          commonMisconceptions: []
+          commonMisconceptions: [],
+          // 🆕 New enriched fields
+          realWorldApplications: [],
+          studentTips: [],
+          educationalStories: [],
+          commonMistakes: [],
+          funFacts: [],
+          challenges: []
         };
       }
-      
+
       // Get student progress
       const studentProgress = await this.getStudentProgress(lessonId, studentGrade);
-      
-      // Process enriched content
-      let enrichedContent = null;
+
+      // 🆕 Process enriched content comprehensively
+      let enrichedData: any = null;
+      let realWorldApplications: any[] = [];
+      let studentTips: string[] = [];
+      let educationalStories: any[] = [];
+      let commonMistakes: any[] = [];
+      let funFacts: any[] = [];
+      let challenges: any[] = [];
+
       if (lesson.content?.enrichedContent) {
         try {
-          const parsed = typeof lesson.content.enrichedContent === 'string' 
+          const parsed = typeof lesson.content.enrichedContent === 'string'
             ? JSON.parse(lesson.content.enrichedContent)
             : lesson.content.enrichedContent;
-          enrichedContent = parsed;
-        } catch {
-          enrichedContent = lesson.content.enrichedContent;
+
+          // Extract all enriched fields
+          enrichedData = parsed;
+          realWorldApplications = parsed.realWorldApplications || [];
+          studentTips = parsed.studentTips || [];
+          educationalStories = parsed.educationalStories || [];
+          commonMistakes = parsed.commonMistakes || [];
+          funFacts = parsed.funFacts || [];
+          challenges = parsed.challenges || [];
+
+          console.log(`✨ Found enriched content with ${realWorldApplications.length} applications, ${educationalStories.length} stories`);
+        } catch (e) {
+          console.error('Error parsing enrichedContent:', e);
+          enrichedData = lesson.content.enrichedContent;
         }
       } else if (lesson.content?.fullText) {
-        enrichedContent = lesson.content.fullText;
+        enrichedData = lesson.content.fullText;
       }
-      
-      // Use RAG for additional context
-      if (!enrichedContent && (slideContent.title || slideContent.content)) {
+
+      // Use RAG for additional context if needed
+      if (!enrichedData && (slideContent.title || slideContent.content)) {
         try {
           const query = `${slideContent.title || ''} ${slideContent.content || ''}`.trim();
           const ragResponse = await ragService.answerQuestion(query, lessonId);
-          enrichedContent = ragResponse.answer;
+          enrichedData = ragResponse.answer;
         } catch (error) {
           console.log('⚠️ RAG search failed');
         }
       }
-      
+
       // 🆕 Extract learning objectives and prerequisites
       const learningObjectives = this.extractLearningObjectives(lesson);
       const prerequisites = this.extractPrerequisites(lesson);
       const commonMisconceptions = this.extractCommonMisconceptions(lesson, slideContent);
-      
+
       return {
-        enrichedContent: enrichedContent || '',
+        enrichedContent: enrichedData || '',
         concepts: lesson.concepts || [],
         examples: lesson.examples || [],
         formulas: lesson.formulas || [],
@@ -1061,7 +1087,14 @@ Return JSON format:
         studentProgress,
         learningObjectives,
         prerequisites,
-        commonMisconceptions
+        commonMisconceptions,
+        // 🆕 Include enriched fields
+        realWorldApplications,
+        studentTips,
+        educationalStories,
+        commonMistakes,
+        funFacts,
+        challenges
       };
       
     } catch (error) {
@@ -2498,6 +2531,78 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
   }
   
   /**
+   * 🆕 Get interactive content from enriched data
+   */
+  async getInteractiveContent(lessonId: string, contentType: string): Promise<any | null> {
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { content: true }
+    });
+
+    if (!lesson?.content?.enrichedContent) {
+      return null;
+    }
+
+    try {
+      const enriched = typeof lesson.content.enrichedContent === 'string'
+        ? JSON.parse(lesson.content.enrichedContent)
+        : lesson.content.enrichedContent;
+
+      switch (contentType) {
+        case 'challenge':
+          if (enriched.challenges && enriched.challenges.length > 0) {
+            return enriched.challenges[Math.floor(Math.random() * enriched.challenges.length)];
+          }
+          break;
+
+        case 'visual':
+          if (enriched.visualAids && enriched.visualAids.length > 0) {
+            return enriched.visualAids[Math.floor(Math.random() * enriched.visualAids.length)];
+          }
+          break;
+
+        case 'funFact':
+          if (enriched.funFacts && enriched.funFacts.length > 0) {
+            return enriched.funFacts[Math.floor(Math.random() * enriched.funFacts.length)];
+          }
+          break;
+
+        case 'story':
+          if (enriched.educationalStories && enriched.educationalStories.length > 0) {
+            return enriched.educationalStories[0]; // Return first story
+          }
+          break;
+
+        case 'application':
+          if (enriched.realWorldApplications && enriched.realWorldApplications.length > 0) {
+            return enriched.realWorldApplications[Math.floor(Math.random() * enriched.realWorldApplications.length)];
+          }
+          break;
+
+        case 'tip':
+          if (enriched.studentTips && enriched.studentTips.length > 0) {
+            return enriched.studentTips[Math.floor(Math.random() * enriched.studentTips.length)];
+          }
+          break;
+
+        case 'mistake':
+          if (enriched.commonMistakes && enriched.commonMistakes.length > 0) {
+            return enriched.commonMistakes[Math.floor(Math.random() * enriched.commonMistakes.length)];
+          }
+          break;
+
+        default:
+          return null;
+      }
+    } catch (error) {
+      console.error('Error getting interactive content:', error);
+      return null;
+    }
+
+    return null;
+  }
+
+  /**
    * Get service health status
    */
   getHealthStatus(): {
@@ -2508,7 +2613,7 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
     lastGeneration?: Date;
   } {
     const cacheStats = this.getCacheStats();
-    
+
     return {
       status: 'healthy',
       cacheStats,

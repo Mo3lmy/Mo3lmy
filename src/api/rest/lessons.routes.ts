@@ -12,11 +12,14 @@ import { slideService, type SlideContent } from '../../services/slides/slide.ser
 import { voiceService } from '../../services/voice/voice.service';
 
 // ============= 🆕 TEACHING ASSISTANT IMPORT =============
-import { 
+import {
   teachingAssistant,
   type InteractionType,
-  createTeachingAPIHandler 
+  createTeachingAPIHandler
 } from '../../services/teaching/teaching-assistant.service';
+
+// ============= 🆕 CACHE IMPORT =============
+import { enrichedContentCache } from '../../services/cache/enriched-content.cache';
 
 import { z } from 'zod';
 
@@ -800,11 +803,81 @@ router.get('/', async (req: Request, res: Response) => {
  * @route   GET /api/v1/lessons/:id
  * @desc    Get lesson details by ID
  * @access  Public
+ * 🆕 UPDATED: Now uses caching for enriched content
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
+    // 🆕 Try to get from cache first
+    const cachedContent = await enrichedContentCache.getEnrichedContent(id);
+
+    if (cachedContent) {
+      // Get lesson metadata (not cached)
+      const lesson = await prisma.lesson.findUnique({
+        where: { id },
+        include: {
+          unit: {
+            include: {
+              subject: true
+            }
+          }
+        }
+      });
+
+      if (!lesson) {
+        return res.status(404).json(
+          errorResponse('LESSON_NOT_FOUND', 'الدرس غير موجود')
+        );
+      }
+
+      // Parse keyPoints from lesson
+      let keyPoints = [];
+      try {
+        keyPoints = JSON.parse(lesson.keyPoints || '[]');
+      } catch (e) {
+        keyPoints = [];
+      }
+
+      return res.json(
+        successResponse({
+          id: lesson.id,
+          title: lesson.title,
+          titleAr: lesson.titleAr,
+          titleEn: lesson.titleEn,
+          description: lesson.description,
+          order: lesson.order,
+          duration: lesson.duration,
+          difficulty: lesson.difficulty,
+          isPublished: lesson.isPublished,
+          publishedAt: lesson.publishedAt,
+          summary: lesson.summary,
+          keyPoints,
+          estimatedMinutes: lesson.estimatedMinutes || 45,
+          unit: {
+            id: lesson.unit.id,
+            title: lesson.unit.title,
+            titleAr: lesson.unit.titleAr,
+            titleEn: lesson.unit.titleEn,
+            subject: {
+              id: lesson.unit.subject.id,
+              name: lesson.unit.subject.name,
+              nameAr: lesson.unit.subject.nameAr,
+              nameEn: lesson.unit.subject.nameEn,
+              grade: lesson.unit.subject.grade
+            }
+          },
+          content: cachedContent,
+          hasSlides: true,
+          hasQuiz: true,
+          hasChat: true,
+          isEnriched: cachedContent.enrichmentLevel > 0,
+          fromCache: true // 🆕 Indicate data is from cache
+        }, 'Lesson retrieved successfully (cached)')
+      );
+    }
+
+    // Fallback to original logic if not cached
     const lesson = await prisma.lesson.findUnique({
       where: { id },
       include: {
@@ -835,6 +908,63 @@ router.get('/:id', async (req: Request, res: Response) => {
       keyPoints = [];
     }
 
+    // Helper function to safely parse JSON
+    const safeParseJSON = (data: any, fallback: any = null) => {
+      if (!data) return fallback;
+      if (typeof data === 'object') return data;
+      try {
+        return JSON.parse(data);
+      } catch {
+        return fallback;
+      }
+    };
+
+    // Process enriched content if available
+    let enrichedData = null;
+    if (lesson.content) {
+      // Parse all JSON fields in content - use 'any' type to allow dynamic properties
+      const parsedContent: any = {
+        id: lesson.content.id,
+        fullText: lesson.content.fullText,
+        summary: lesson.content.summary,
+        keyPoints: safeParseJSON(lesson.content.keyPoints, []),
+        examples: safeParseJSON(lesson.content.examples, []),
+        exercises: safeParseJSON(lesson.content.exercises, []),
+        enrichmentLevel: lesson.content.enrichmentLevel || 0,
+        // Initialize enriched fields with defaults
+        realWorldApplications: [],
+        commonMistakes: [],
+        studentTips: [],
+        educationalStories: [],
+        challenges: [],
+        visualAids: [],
+        funFacts: [],
+        quickReview: null
+      };
+
+      // Parse enrichedContent if it exists
+      if (lesson.content.enrichedContent) {
+        enrichedData = safeParseJSON(lesson.content.enrichedContent, {});
+      }
+
+      // If enriched content exists, use it as the primary source
+      const enrichmentLevel = lesson.content.enrichmentLevel ?? 0;
+      if (enrichedData && enrichmentLevel > 0) {
+        parsedContent.examples = enrichedData.examples || parsedContent.examples;
+        parsedContent.exercises = enrichedData.exercises || parsedContent.exercises;
+        parsedContent.realWorldApplications = enrichedData.realWorldApplications || [];
+        parsedContent.commonMistakes = enrichedData.commonMistakes || [];
+        parsedContent.studentTips = enrichedData.studentTips || [];
+        parsedContent.educationalStories = enrichedData.educationalStories || [];
+        parsedContent.challenges = enrichedData.challenges || [];
+        parsedContent.visualAids = enrichedData.visualAids || [];
+        parsedContent.funFacts = enrichedData.funFacts || [];
+        parsedContent.quickReview = enrichedData.quickReview || null;
+      }
+
+      lesson.content = parsedContent;
+    }
+
     res.json(
       successResponse({
         id: lesson.id,
@@ -863,16 +993,12 @@ router.get('/:id', async (req: Request, res: Response) => {
             grade: lesson.unit.subject.grade
           }
         },
-        content: lesson.content ? {
-          id: lesson.content.id,
-          fullText: lesson.content.fullText,
-          summary: lesson.content.summary,
-          keyPoints: lesson.content.keyPoints,
-          examples: lesson.content.examples
-        } : null,
+        content: lesson.content,
+        enrichedContent: enrichedData, // Include the full enriched content separately
         hasSlides: true,
         hasQuiz: true,
-        hasChat: true
+        hasChat: true,
+        isEnriched: (lesson.content?.enrichmentLevel ?? 0) > 0
       }, 'Lesson retrieved successfully')
     );
   } catch (error: any) {
@@ -882,5 +1008,91 @@ router.get('/:id', async (req: Request, res: Response) => {
     );
   }
 });
+
+// ============= 🆕 CACHE MANAGEMENT ENDPOINTS =============
+
+/**
+ * @route   POST /api/v1/lessons/:id/cache/invalidate
+ * @desc    Invalidate cache for a specific lesson
+ * @access  Private (Admin)
+ */
+router.post(
+  '/:id/cache/invalidate',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const invalidated = enrichedContentCache.invalidateLesson(id);
+
+    res.json(
+      successResponse({
+        lessonId: id,
+        invalidated
+      }, invalidated ? 'Cache invalidated successfully' : 'Cache entry not found')
+    );
+  })
+);
+
+/**
+ * @route   GET /api/v1/lessons/cache/stats
+ * @desc    Get cache statistics
+ * @access  Private
+ */
+router.get(
+  '/cache/stats',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const stats = enrichedContentCache.getStats();
+
+    res.json(
+      successResponse(stats, 'Cache statistics retrieved')
+    );
+  })
+);
+
+/**
+ * @route   POST /api/v1/lessons/cache/clear
+ * @desc    Clear all cache
+ * @access  Private (Admin)
+ */
+router.post(
+  '/cache/clear',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    // In production, check for admin role
+    // if (req.user!.role !== 'ADMIN') {
+    //   return res.status(403).json(
+    //     errorResponse('FORBIDDEN', 'غير مصرح')
+    //   );
+    // }
+
+    enrichedContentCache.clearAll();
+
+    res.json(
+      successResponse({
+        message: 'تم مسح جميع الذاكرة المؤقتة بنجاح'
+      }, 'All cache cleared')
+    );
+  })
+);
+
+/**
+ * @route   POST /api/v1/lessons/cache/warmup
+ * @desc    Warm up cache with popular lessons
+ * @access  Private
+ */
+router.post(
+  '/cache/warmup',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    await enrichedContentCache.warmUpCache();
+
+    res.json(
+      successResponse({
+        message: 'تم تسخين الذاكرة المؤقتة بنجاح'
+      }, 'Cache warmed up successfully')
+    );
+  })
+);
 
 export default router;

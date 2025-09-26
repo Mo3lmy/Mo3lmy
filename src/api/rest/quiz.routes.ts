@@ -6,6 +6,7 @@ import { validateBody, validateParams, validateQuery } from '../middleware/valid
 import { authenticate } from '../middleware/auth.middleware';
 import { successResponse, errorResponse } from '../../utils/response.utils';
 import asyncHandler from 'express-async-handler';
+import { prisma } from '../../config/database.config';
 
 const router = Router();
 
@@ -150,15 +151,92 @@ router.post(
   })),
   asyncHandler(async (req: Request, res: Response) => {
     const { lessonId, count, difficulty } = req.body;
-    
+
     const questions = await quizService.generateQuizQuestions(
       lessonId,
       count,
       difficulty
     );
-    
+
     res.json(
       successResponse(questions, 'Questions generated successfully')
+    );
+  })
+);
+
+/**
+ * @route   GET /api/v1/quiz/lessons/:lessonId/exercises
+ * @desc    Get exercises from enriched content
+ * @access  Private
+ * 🆕 NEW ENDPOINT
+ */
+router.get(
+  '/lessons/:lessonId/exercises',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { lessonId } = req.params;
+    const { difficulty, count = '10' } = req.query as { difficulty?: string; count?: string };
+
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { content: true }
+    });
+
+    if (!lesson?.content) {
+      return res.status(404).json(
+        errorResponse('NO_CONTENT', 'No exercises found for this lesson')
+      );
+    }
+
+    // Parse and return exercises
+    let exercises: any[] = [];
+
+    // Check enrichedContent first
+    if (lesson.content.enrichedContent) {
+      try {
+        const enriched = typeof lesson.content.enrichedContent === 'string'
+          ? JSON.parse(lesson.content.enrichedContent)
+          : lesson.content.enrichedContent;
+        exercises = enriched.exercises || [];
+      } catch (e) {
+        console.error('Error parsing enrichedContent:', e);
+      }
+    }
+
+    // Fallback to exercises field
+    if (exercises.length === 0 && lesson.content.exercises) {
+      try {
+        const parsedExercises = typeof lesson.content.exercises === 'string'
+          ? JSON.parse(lesson.content.exercises)
+          : lesson.content.exercises;
+        if (Array.isArray(parsedExercises)) {
+          exercises = parsedExercises;
+        }
+      } catch (e) {
+        console.error('Error parsing exercises:', e);
+      }
+    }
+
+    // Filter by difficulty if specified
+    if (difficulty && exercises.length > 0) {
+      exercises = exercises.filter(ex =>
+        !ex.difficulty || ex.difficulty.toLowerCase() === difficulty.toLowerCase()
+      );
+    }
+
+    // Limit results
+    const limit = parseInt(count, 10);
+    exercises = exercises.slice(0, limit);
+
+    res.json(
+      successResponse({
+        exercises,
+        total: exercises.length,
+        lessonId,
+        lessonTitle: lesson.titleAr || lesson.title,
+        hasMore: exercises.length === limit,
+        enrichmentLevel: lesson.content.enrichmentLevel || 0
+      }, 'Exercises retrieved successfully')
     );
   })
 );

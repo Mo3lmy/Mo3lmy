@@ -160,6 +160,7 @@ export class QuizService {
 
   /**
    * Generate adaptive quiz questions with student context
+   * 🆕 UPDATED: Priority to use enriched exercises from content
    */
   async generateQuizQuestions(
     lessonId: string,
@@ -168,47 +169,154 @@ export class QuizService {
     userId?: string
   ): Promise<Question[]> {
     console.log(`📝 Generating ${count} adaptive questions`);
-    
+
     // 🆕 Get student context
     const studentContext = userId ? await this.getStudentContext(userId) : null;
-    
+
     // Check lesson exists
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
       include: { content: true },
     });
-    
-    if (!lesson || !lesson.content) {
-      throw new NotFoundError('Lesson or content');
+
+    if (!lesson) {
+      throw new NotFoundError('Lesson not found');
     }
-    
+
+    // 🆕 Use enriched exercises FIRST
+    if (lesson?.content) {
+      // Parse exercises from enrichedContent
+      let availableExercises: any[] = [];
+
+      // Check enrichedContent first
+      if (lesson.content.enrichedContent) {
+        try {
+          const enriched = typeof lesson.content.enrichedContent === 'string'
+            ? JSON.parse(lesson.content.enrichedContent)
+            : lesson.content.enrichedContent;
+          if (enriched.exercises && enriched.exercises.length > 0) {
+            console.log(`✨ Found ${enriched.exercises.length} enriched exercises`);
+            availableExercises = enriched.exercises;
+          }
+        } catch (e) {
+          console.error('Error parsing enrichedContent:', e);
+        }
+      }
+
+      // Fallback to exercises field
+      if (availableExercises.length === 0 && lesson.content.exercises) {
+        try {
+          const exercises = typeof lesson.content.exercises === 'string'
+            ? JSON.parse(lesson.content.exercises)
+            : lesson.content.exercises;
+          if (Array.isArray(exercises)) {
+            console.log(`📚 Found ${exercises.length} regular exercises`);
+            availableExercises = exercises;
+          }
+        } catch (e) {
+          console.error('Error parsing exercises:', e);
+        }
+      }
+
+      // Filter by difficulty if specified
+      if (difficulty && availableExercises.length > 0) {
+        const filtered = availableExercises.filter(ex =>
+          !ex.difficulty || ex.difficulty.toUpperCase() === difficulty
+        );
+        if (filtered.length > 0) {
+          availableExercises = filtered;
+        }
+      }
+
+      // Convert exercises to Question format
+      const questions: Question[] = [];
+      const exercisesToUse = this.shuffleArray(availableExercises).slice(0, count);
+
+      for (const ex of exercisesToUse) {
+        // Determine question type
+        let type: QuestionType = 'MCQ';
+        if (ex.type) {
+          const typeMap: Record<string, QuestionType> = {
+            'multiple_choice': 'MCQ',
+            'mcq': 'MCQ',
+            'true_false': 'TRUE_FALSE',
+            'fill_blank': 'FILL_BLANK',
+            'short_answer': 'SHORT_ANSWER',
+            'problem': 'SHORT_ANSWER', // Map problem to SHORT_ANSWER
+            'essay': 'ESSAY'
+          };
+          type = typeMap[ex.type.toLowerCase()] || 'MCQ';
+        }
+
+        // Create question in database
+        const question = await prisma.question.create({
+          data: {
+            lessonId,
+            type,
+            question: ex.question || ex.text || 'سؤال',
+            options: ex.options ? JSON.stringify(ex.options) : null,
+            correctAnswer: ex.correctAnswer || ex.answer || 'الإجابة',
+            explanation: ex.explanation || ex.hint || null,
+            points: ex.points || (difficulty === 'HARD' ? 3 : difficulty === 'EASY' ? 1 : 2),
+            difficulty: (difficulty || 'MEDIUM') as Difficulty,
+            hints: ex.hints ? JSON.stringify(ex.hints) :
+                  ex.hint ? JSON.stringify([ex.hint]) : null,
+            tags: ex.tags ? JSON.stringify(ex.tags) : null
+          }
+        });
+
+        questions.push(question);
+      }
+
+      if (questions.length >= count) {
+        console.log(`✅ Returned ${questions.length} questions from enriched content`);
+        return questions;
+      }
+
+      // If not enough, complete with dynamic questions
+      console.log(`⚠️ Only ${questions.length} exercises found, generating ${count - questions.length} more`);
+      const remaining = count - questions.length;
+      const dynamicQuestions = await this.generateDynamicQuestions(
+        lesson, remaining, difficulty || 'MEDIUM', userId
+      );
+
+      const savedDynamicQuestions = await this.saveGeneratedQuestions(
+        lessonId, dynamicQuestions, questions.length
+      );
+
+      return [...questions, ...savedDynamicQuestions];
+    }
+
+    // Fallback: Use existing flow if no enriched content
+    console.log('⚠️ No enriched content found, using dynamic generation');
+
     // Get user performance for adaptive difficulty
     const userLevel = userId ? this.getUserLevel(userId) : null;
     const adaptedDifficulty = this.adaptDifficulty(difficulty, userLevel, studentContext);
-    
+
     // 🆕 Adapt question types based on student preference
     const preferredTypes = studentContext?.learningStyle.preferredQuestionTypes || [];
-    
+
     // Check existing questions
     let existingQuestions = await prisma.question.findMany({
-      where: { 
+      where: {
         lessonId,
         ...(adaptedDifficulty && { difficulty: adaptedDifficulty as Difficulty }),
         ...(preferredTypes.length > 0 && { type: { in: preferredTypes as QuestionType[] } })
       },
       take: Math.floor(count / 2),
     });
-    
+
     // 🆕 Avoid questions that caused mistakes before
     if (studentContext && studentContext.quizHistory.commonMistakes.length > 0) {
-      existingQuestions = existingQuestions.filter(q => 
+      existingQuestions = existingQuestions.filter(q =>
         !studentContext.quizHistory.commonMistakes.includes(q.id)
       );
     }
-    
+
     // Shuffle for variety
     existingQuestions = this.shuffleArray(existingQuestions);
-    
+
     // Generate new dynamic questions
     const newCount = count - existingQuestions.length;
     if (newCount > 0) {
@@ -218,17 +326,17 @@ export class QuizService {
         adaptedDifficulty,
         userId
       );
-      
+
       // Save generated questions
       const savedQuestions = await this.saveGeneratedQuestions(
         lessonId,
         generatedQuestions,
         existingQuestions.length
       );
-      
+
       return [...existingQuestions, ...savedQuestions];
     }
-    
+
     return existingQuestions;
   }
   
