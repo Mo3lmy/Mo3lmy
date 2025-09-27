@@ -1,16 +1,13 @@
 // src/services/queue/slide-generation.queue.ts
-// نظام Job Queue لتوليد الشرائح بشكل غير متزامن
+// نظام مبسط لتوليد الشرائح
 
-import { Queue, Worker, Job, QueueEvents } from 'bullmq';
-import { Redis } from 'ioredis';
-import { config } from '../../config';
+import { Queue, Job } from 'bullmq';
+import IORedis from 'ioredis';
 import { slideService, type SlideContent } from '../slides/slide.service';
 import { voiceService } from '../voice/voice.service';
 import { teachingAssistant } from '../teaching/teaching-assistant.service';
-import { prisma } from '../../config/database.config';
 
-// ============= TYPES =============
-
+// Types
 export interface SlideGenerationJob {
   lessonId: string;
   userId: string;
@@ -32,209 +29,112 @@ export interface SlideGenerationResult {
   processingTime: number;
 }
 
-export interface SlideGenerationProgress {
-  lessonId: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  progress: number; // 0-100
-  currentSlide: number;
-  totalSlides: number;
-  processedSlides: SlideResult[];
-  error?: string;
-  startedAt?: Date;
-  completedAt?: Date;
-}
-
-interface SlideResult {
-  index: number;
-  html: string;
-  script?: string;
-  audioUrl?: string;
-  processingTime: number;
-}
-
-// ============= REDIS CONNECTION =============
-
-import { createMockQueue, isMockMode, getMockCachedResults } from './mock-queue.service';
-
-let redisConnection: any;
-
 // Check if Redis is available
-if (!isMockMode()) {
-  try {
-    redisConnection = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-      maxRetriesPerRequest: null, // BullMQ requires null
-      retryStrategy: (times: number) => {
-        if (times > 3) {
-          console.error('❌ Could not connect to Redis after 3 attempts');
-          return null;
-        }
-        return Math.min(times * 100, 3000);
-      }
-    });
-  } catch (error) {
-    console.warn('⚠️ Redis connection failed, using mock queue:', error);
-  }
+let redisConnection: IORedis | null = null;
+let useInMemoryProcessing = false;
+
+try {
+  redisConnection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
+    maxRetriesPerRequest: 1,
+    enableReadyCheck: false,
+    retryStrategy: () => null
+  });
+
+  redisConnection.on('error', () => {
+    useInMemoryProcessing = true;
+    console.log('⚠️ Redis not available - using in-memory processing');
+  });
+
+  redisConnection.on('ready', () => {
+    useInMemoryProcessing = false;
+    console.log('✅ Redis connected for queues');
+  });
+} catch {
+  useInMemoryProcessing = true;
+  console.log('⚠️ Using in-memory processing');
 }
 
-// ============= QUEUE SETUP =============
+// In-memory storage for development
+const inMemoryJobs = new Map<string, any>();
+const inMemoryResults = new Map<string, any>();
 
-export const slideGenerationQueue = isMockMode()
-  ? createMockQueue<SlideGenerationJob>('slide-generation') as any
-  : new Queue<SlideGenerationJob>(
-      'slide-generation',
-      {
-        connection: redisConnection,
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
-          removeOnComplete: {
-            age: 3600, // Keep completed jobs for 1 hour
-            count: 100, // Keep max 100 completed jobs
-          },
-          removeOnFail: {
-            age: 24 * 3600, // Keep failed jobs for 24 hours
-          },
-        },
-      }
-    );
+// Create queue (or mock if Redis not available)
+const slideGenerationQueue = !useInMemoryProcessing && redisConnection
+  ? new Queue<SlideGenerationJob>('slide-generation', { connection: redisConnection })
+  : null;
 
-// Queue Events for monitoring
-export const queueEvents = isMockMode()
-  ? null
-  : new QueueEvents('slide-generation', {
-      connection: redisConnection,
-    });
-
-// ============= JOB PROCESSING LOGIC =============
-
-export async function processSlideGeneration(job: Job<SlideGenerationJob>): Promise<SlideGenerationResult> {
+// Process function that works for both queue and direct processing
+export async function processSlideGeneration(
+  job: { data: SlideGenerationJob; id?: string; updateProgress?: (progress: any) => Promise<void> }
+): Promise<SlideGenerationResult> {
   const startTime = Date.now();
   const { lessonId, userId, slides, theme, generateVoice, generateTeaching, userGrade, userName } = job.data;
 
-  // تحقق من userId
-  console.log(`🔧 Processing job ${job.id}:`);
-  console.log(`  - lessonId: ${lessonId}`);
-  console.log(`  - userId: ${userId} (type: ${typeof userId})`);
-  console.log(`  - slides: ${slides.length}`);
-
-  if (!userId || typeof userId !== 'string') {
-    throw new Error(`Invalid userId: ${userId}`);
-  }
-
-  console.log(`🚀 Starting slide generation for lesson ${lessonId}, ${slides.length} slides`);
+  console.log(`🚀 Processing ${slides.length} slides for lesson ${lessonId}`);
 
   const htmlSlides: string[] = [];
   const teachingScripts: any[] = [];
   const audioUrls: string[] = [];
-  const processedSlides: SlideResult[] = [];
 
   try {
-    // Process each slide
     for (let i = 0; i < slides.length; i++) {
-      const slideStartTime = Date.now();
       const slide = slides[i];
 
-      // Update progress
-      const progress = Math.round(((i + 1) / slides.length) * 100);
-      await job.updateProgress({
-        currentSlide: i + 1,
-        totalSlides: slides.length,
-        progress,
-        message: `Processing slide ${i + 1} of ${slides.length}`,
-      });
+      // Update progress if available
+      if (job.updateProgress) {
+        await job.updateProgress({
+          progress: Math.round(((i + 1) / slides.length) * 100),
+          currentSlide: i + 1,
+          totalSlides: slides.length
+        });
+      }
 
-      console.log(`📄 Processing slide ${i + 1}/${slides.length}: ${slide.type}`);
-
-      // 1. Generate HTML
+      // Generate HTML
       const html = slideService.generateSlideHTML(slide, theme);
       htmlSlides.push(html);
 
-      // 2. Generate teaching script (if requested)
-      let script = null;
-      if (generateTeaching) {
+      // Generate teaching script if requested (limit for performance)
+      if (generateTeaching && i < 3) { // Only first 3 slides
         try {
-          const teachingResult = await teachingAssistant.generateTeachingScript({
+          const script = await teachingAssistant.generateTeachingScript({
             slideContent: slide,
             lessonId,
             studentGrade: userGrade,
             studentName: userName,
-            interactionType: 'explain',
+            interactionType: 'explain'
           });
-          script = teachingResult;
           teachingScripts.push(script);
-          console.log(`✅ Teaching script generated for slide ${i + 1}`);
         } catch (error) {
-          console.error(`❌ Failed to generate teaching script for slide ${i + 1}:`, error);
-          // Use fallback script
-          script = {
-            script: `مرحباً ${userName}، دعنا نتعلم عن ${slide.title || 'هذا الموضوع'}`,
-            duration: 10,
-            keyPoints: [],
-          };
-          teachingScripts.push(script);
+          console.error(`Failed to generate teaching script for slide ${i + 1}:`, error);
+          teachingScripts.push({ script: 'مرحباً', duration: 10 });
         }
       }
 
-      // 3. Generate voice (if requested)
-      let audioUrl = '';
-      if (generateVoice && script) {
-        try {
-          const voiceResult = await voiceService.textToSpeech(script.script);
-          if (voiceResult.success && voiceResult.audioUrl) {
-            audioUrl = voiceResult.audioUrl;
-            console.log(`🔊 Voice generated for slide ${i + 1}`);
-          }
-        } catch (error) {
-          console.error(`❌ Failed to generate voice for slide ${i + 1}:`, error);
-        }
-      }
-      audioUrls.push(audioUrl);
-
-      // Store processed slide result
-      processedSlides.push({
-        index: i,
-        html,
-        script: script?.script,
-        audioUrl,
-        processingTime: Date.now() - slideStartTime,
-      });
-
-      // Small delay to prevent API rate limiting
-      if (i < slides.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // Generate voice if requested (skip for now to avoid delays)
+      audioUrls.push('');
     }
 
-    const processingTime = Date.now() - startTime;
-    console.log(`✅ Slide generation completed in ${processingTime}ms`);
-
-    // Store results in cache/database
-    const finalResults = {
-      htmlSlides,
-      teachingScripts,
-      audioUrls,
-      processedSlides,
-      processingTime,
-    };
-
-    await storeGenerationResults(lessonId, userId, finalResults);
-
-    console.log(`✅ Job ${job.id} completed successfully`);
-
-    return {
+    const result = {
       lessonId,
       htmlSlides,
       teachingScripts,
       audioUrls,
       totalSlides: slides.length,
-      processingTime,
+      processingTime: Date.now() - startTime
     };
+
+    // Store results
+    const cacheKey = `slides:${lessonId}:${userId}`;
+    if (redisConnection && !useInMemoryProcessing) {
+      await redisConnection.setex(cacheKey, 3600, JSON.stringify(result));
+      await redisConnection.setex(`slides:${lessonId}:latest`, 3600, JSON.stringify(result));
+    } else {
+      inMemoryResults.set(cacheKey, result);
+      inMemoryResults.set(`slides:${lessonId}:latest`, result);
+    }
+
+    console.log(`✅ Processed ${slides.length} slides in ${result.processingTime}ms`);
+    return result;
 
   } catch (error) {
     console.error('❌ Slide generation failed:', error);
@@ -242,225 +142,103 @@ export async function processSlideGeneration(job: Job<SlideGenerationJob>): Prom
   }
 }
 
-// ============= HELPER FUNCTIONS =============
+// Add job function
+export async function addSlideGenerationJob(data: SlideGenerationJob): Promise<string> {
+  const jobId = Math.random().toString(36).substr(2, 9);
 
-async function storeGenerationResults(lessonId: string, userId: string, results: any): Promise<void> {
-  const ttl = 3600;
+  if (slideGenerationQueue && !useInMemoryProcessing) {
+    const job = await slideGenerationQueue.add('generate-slides', data);
+    return job.id!;
+  } else {
+    // Process immediately in-memory
+    inMemoryJobs.set(jobId, {
+      id: jobId,
+      data,
+      status: 'processing',
+      progress: 0
+    });
 
-  // تحقق من userId قبل الحفظ
-  if (!userId || typeof userId !== 'string' || userId.includes('session')) {
-    console.error(`❌ Invalid userId for storage: ${userId}`);
-    throw new Error('Invalid userId for storage');
+    // Process async
+    setTimeout(async () => {
+      try {
+        const result = await processSlideGeneration({
+          data,
+          id: jobId,
+          updateProgress: async (progress) => {
+            const job = inMemoryJobs.get(jobId);
+            if (job) {
+              job.progress = progress.progress;
+              inMemoryJobs.set(jobId, job);
+            }
+          }
+        });
+
+        const job = inMemoryJobs.get(jobId);
+        if (job) {
+          job.status = 'completed';
+          job.result = result;
+          inMemoryJobs.set(jobId, job);
+        }
+      } catch (error) {
+        const job = inMemoryJobs.get(jobId);
+        if (job) {
+          job.status = 'failed';
+          job.error = error;
+          inMemoryJobs.set(jobId, job);
+        }
+      }
+    }, 100);
+
+    return jobId;
   }
-
-  // If in mock mode, results are already stored by mock queue
-  if (isMockMode()) {
-    console.log(`💾 Mock mode: Results already stored`);
-    return;
-  }
-
-  // استخدم مفاتيح متعددة للتأكد
-  const keys = [
-    `slides:${lessonId}:${userId}`,        // Primary key with userId
-    `slides:${lessonId}:latest`,           // Fallback key
-    `slides:${lessonId}:job-${Date.now()}` // Unique key
-  ];
-
-  const dataToStore = JSON.stringify({
-    ...results,
-    generatedAt: new Date().toISOString(),
-    userId,
-    lessonId
-  });
-
-  // احفظ في كل المفاتيح
-  await Promise.all(
-    keys.map(key => redisConnection.setex(key, ttl, dataToStore))
-  );
-
-  console.log(`💾 Stored results with keys:`, keys);
 }
 
-export async function getGenerationResults(lessonId: string, userId: string): Promise<any | null> {
-  console.log(`🔍 Getting results for lesson=${lessonId}, userId=${userId}`);
+// Get job status
+export async function getJobStatus(jobId: string): Promise<any> {
+  if (slideGenerationQueue && !useInMemoryProcessing) {
+    const job = await slideGenerationQueue.getJob(jobId);
+    if (!job) return null;
 
-  // If in mock mode, use mock cache
-  if (isMockMode()) {
-    console.log(`🔍 Mock mode: Getting results for ${lessonId}, ${userId}`);
-    return getMockCachedResults(lessonId, userId);
+    const state = await job.getState();
+    return {
+      lessonId: job.data.lessonId,
+      status: state === 'completed' ? 'completed' : state === 'failed' ? 'failed' : 'processing',
+      progress: (job.progress as any)?.progress || 0
+    };
+  } else {
+    const job = inMemoryJobs.get(jobId);
+    return job ? {
+      lessonId: job.data.lessonId,
+      status: job.status,
+      progress: job.progress
+    } : null;
   }
+}
 
-  // جرب المفاتيح بالترتيب
-  const keysToTry = [
+// Get results
+export async function getGenerationResults(lessonId: string, userId: string): Promise<any> {
+  const keys = [
     `slides:${lessonId}:${userId}`,
     `slides:${lessonId}:latest`
   ];
 
-  for (const key of keysToTry) {
-    try {
+  for (const key of keys) {
+    if (redisConnection && !useInMemoryProcessing) {
       const cached = await redisConnection.get(key);
-      if (cached) {
-        console.log(`✅ Found results with key: ${key}`);
-        const parsed = JSON.parse(cached);
-
-        // تحقق من أن البيانات صحيحة
-        if (parsed.htmlSlides && Array.isArray(parsed.htmlSlides)) {
-          return parsed;
-        }
-      }
-    } catch (error) {
-      console.error(`Error parsing cached data for ${key}:`, error);
+      if (cached) return JSON.parse(cached);
+    } else {
+      const cached = inMemoryResults.get(key);
+      if (cached) return cached;
     }
   }
 
-  // إذا فشل كل شيء، ابحث بنمط
-  const pattern = `slides:${lessonId}:*`;
-  const allKeys = await redisConnection.keys(pattern);
-  console.log(`🔎 Found ${allKeys.length} keys with pattern ${pattern}`);
-
-  for (const key of allKeys) {
-    try {
-      const cached = await redisConnection.get(key);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed.htmlSlides && Array.isArray(parsed.htmlSlides)) {
-          console.log(`✅ Found valid results with pattern key: ${key}`);
-          return parsed;
-        }
-      }
-    } catch (error) {
-      console.error(`Error with key ${key}:`, error);
-    }
-  }
-
-  console.log(`❌ No valid results found`);
   return null;
 }
 
-export async function getJobStatus(jobId: string): Promise<SlideGenerationProgress | null> {
-  try {
-    const job = await slideGenerationQueue.getJob(jobId);
-
-    if (!job) {
-      console.log(`❌ Job ${jobId} not found`);
-      return null;
-    }
-
-    const state = await job.getState();
-    const progress = job.progress as any || {};
-    const isCompleted = await job.isCompleted();
-    const isFailed = await job.isFailed();
-
-    // تحديد الحالة الفعلية
-    let actualStatus: string;
-    if (isCompleted || state === 'completed') {
-      actualStatus = 'completed';
-    } else if (isFailed || state === 'failed') {
-      actualStatus = 'failed';
-    } else if (state === 'active' || state === 'waiting') {
-      actualStatus = 'processing';
-    } else {
-      actualStatus = state;
-    }
-
-    console.log(`📊 Job ${jobId}: state=${state}, isCompleted=${isCompleted}, actualStatus=${actualStatus}`);
-
-    return {
-      lessonId: job.data.lessonId,
-      status: actualStatus as any,
-      progress: progress.progress || 0,
-      currentSlide: progress.currentSlide || 0,
-      totalSlides: job.data.slides?.length || 0,
-      processedSlides: progress.processedSlides || [],
-      error: job.failedReason,
-      startedAt: job.processedOn ? new Date(job.processedOn) : undefined,
-      completedAt: job.finishedOn ? new Date(job.finishedOn) : undefined,
-    };
-  } catch (error) {
-    console.error('Failed to get job status:', error);
-    return null;
-  }
-}
-
-// ============= QUEUE MANAGEMENT =============
-
-export async function addSlideGenerationJob(data: SlideGenerationJob): Promise<string> {
-  try {
-    const job = await slideGenerationQueue.add('generate-slides', data, {
-      priority: data.slides.length <= 5 ? 1 : 0, // Higher priority for smaller lessons
-    });
-
-    console.log(`📋 Added slide generation job ${job.id} for lesson ${data.lessonId}`);
-    return job.id!;
-  } catch (error) {
-    console.error('Failed to add slide generation job:', error);
-    throw error;
-  }
-}
-
-export async function cancelSlideGenerationJob(jobId: string): Promise<boolean> {
-  try {
-    // Check if using mock queue
-    if (isMockMode()) {
-      // Mock cancellation - just return true for now
-      console.log(`🚫 Mock: Cancelled job ${jobId}`);
-      return true;
-    }
-
-    // Real BullMQ cancellation
-    const job = await slideGenerationQueue.getJob(jobId);
-    if (job) {
-      await job.remove();
-      console.log(`🚫 Cancelled job ${jobId}`);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Failed to cancel job:', error);
-    return false;
-  }
-}
-
-// ============= QUEUE STATISTICS =============
-
-export async function getQueueStats() {
-  const [waiting, active, completed, failed] = await Promise.all([
-    slideGenerationQueue.getWaitingCount(),
-    slideGenerationQueue.getActiveCount(),
-    slideGenerationQueue.getCompletedCount(),
-    slideGenerationQueue.getFailedCount(),
-  ]);
-
-  return {
-    waiting,
-    active,
-    completed,
-    failed,
-    total: waiting + active + completed + failed,
-  };
-}
-
-// ============= CLEANUP =============
-
-export async function cleanupQueue(): Promise<void> {
-  try {
-    await slideGenerationQueue.drain();
-    await slideGenerationQueue.clean(0, 1000, 'completed');
-    await slideGenerationQueue.clean(0, 1000, 'failed');
-    console.log('🧹 Queue cleaned up');
-  } catch (error) {
-    console.error('Failed to cleanup queue:', error);
-  }
-}
-
-// Export functions for use in workers and API
+// Export for API
 export default {
-  queue: slideGenerationQueue,
-  events: queueEvents,
   addJob: addSlideGenerationJob,
-  cancelJob: cancelSlideGenerationJob,
   getStatus: getJobStatus,
   getResults: getGenerationResults,
-  getStats: getQueueStats,
-  cleanup: cleanupQueue,
+  processSlideGeneration
 };

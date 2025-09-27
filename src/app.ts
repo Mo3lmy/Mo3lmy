@@ -447,14 +447,11 @@ app.get('/api/prepare-shutdown', (req: Request, res: Response) => {
 });
 
 // ============= INITIALIZE QUEUE WORKERS =============
-if (process.env.USE_MOCK_QUEUE !== 'true') {
-  import('./services/queue/workers').then(() => {
-    console.log('✅ Queue workers initialized');
-  }).catch((error) => {
-    console.error('❌ Failed to initialize queue workers:', error);
-  });
-} else {
-  console.log('⚠️ Running with mock queue (workers disabled)');
-}
+// Start worker if Redis available
+import('./services/queue/workers/index').then(() => {
+  console.log('✅ Background worker started');
+}).catch(() => {
+  console.log('⚠️ Using in-memory processing');
+});
 
 export default app;

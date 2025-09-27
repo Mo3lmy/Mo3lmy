@@ -44,7 +44,8 @@
       "Bash(start http://localhost:3000/test-slides-final.html)",
       "Bash(start http://localhost:3000/test-full-integration.html)",
       "Read(//c/**)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(del /f srcservicesqueueworkersslide.worker.ts srcworker.ts)"
     ],
     "deny": [],
     "ask": []

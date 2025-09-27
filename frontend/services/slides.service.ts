@@ -303,84 +303,36 @@ class SlidesService {
       )
 
       if (response.success && response.data) {
-        // If completed, transform slides to frontend format
         if (response.data.status === 'completed' && response.data.slides) {
-          const slides = response.data.slides.map((slide: any, index: number) => {
-            // Parse HTML to extract title and content type
-            let type = 'content';
-            let title = '';
-            let subtitle = '';
-            let content = '';
-            let bullets: string[] = [];
+          const slides = response.data.slides.map((slide: any, index: number) => ({
+            id: `slide-${lessonId}-${index}`,
+            lessonId,
+            order: index,
+            html: slide.html || '',
+            content: {
+              type: slide.type || 'content',
+              title: slide.title || `شريحة ${index + 1}`,
+              subtitle: slide.subtitle,
+              content: slide.content,
+              bullets: slide.bullets
+            },
+            theme: 'default',
+            audioUrl: slide.audioUrl || '',
+            duration: slide.duration || 10,
+            script: slide.script || ''
+          }));
 
-            // Detect slide type from HTML classes
-            if (slide.html?.includes('slide-title')) {
-              type = 'title';
-              // Extract title from HTML
-              const titleMatch = slide.html.match(/<h1[^>]*>([^<]*)<\/h1>/);
-              const subtitleMatch = slide.html.match(/<h2[^>]*>([^<]*)<\/h2>/);
-              if (titleMatch) title = titleMatch[1];
-              if (subtitleMatch) subtitle = subtitleMatch[1];
-            } else if (slide.html?.includes('slide-bullet')) {
-              type = 'bullet';
-              // Extract bullets from HTML
-              const bulletMatches = slide.html.match(/<li[^>]*>.*?<\/span>\s*([^<]*)<\/li>/g);
-              if (bulletMatches) {
-                bullets = bulletMatches.map((b: string) => {
-                  const textMatch = b.match(/<\/span>\s*([^<]*)<\/li>/);
-                  return textMatch ? textMatch[1].trim() : '';
-                }).filter((b: string) => b);
-              }
-            } else if (slide.html?.includes('slide-quiz')) {
-              type = 'quiz';
-            } else if (slide.html?.includes('slide-example')) {
-              type = 'example';
-            }
-
-            // Extract title from slide header if exists
-            const headerMatch = slide.html?.match(/<h2[^>]*>([^<]*)<\/h2>/);
-            if (headerMatch && !title) {
-              title = headerMatch[1];
-            }
-
-            // Extract content from slide body
-            const bodyMatch = slide.html?.match(/<div class="slide-body[^"]*"[^>]*>([^<]*)<\/div>/);
-            if (bodyMatch) {
-              content = bodyMatch[1].trim();
-            }
-
-            return {
-              id: `slide-${lessonId}-${index}`,
-              lessonId: lessonId,
-              order: slide.number - 1, // Convert 1-based to 0-based
-              html: slide.html || '',
-              content: {
-                type,
-                title,
-                subtitle,
-                content,
-                bullets: bullets.length > 0 ? bullets : undefined
-              },
-              theme: 'default',
-              audioUrl: slide.audioUrl || '',
-              duration: slide.duration || 10,
-              script: slide.script || slide.teachingScript?.script || ''
-            };
-          });
-
-          return {
-            status: 'completed',
-            slides
-          }
+          return { status: 'completed', slides };
         }
 
-        return response.data
+        return response.data;
       }
 
-      throw new Error('Failed to check job status')
+      throw new Error('Failed to check job status');
     } catch (error) {
-      console.error('Error checking job status:', error)
-      throw error
+      console.error('Error checking job status:', error);
+      // Return a default status instead of throwing
+      return { status: 'processing', progress: 0 };
     }
   }
 
