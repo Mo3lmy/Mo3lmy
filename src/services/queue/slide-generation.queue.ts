@@ -89,8 +89,20 @@ export async function processSlideGeneration(
         });
       }
 
-      // Generate HTML
-      const html = slideService.generateSlideHTML(slide, theme);
+      // Generate HTML - تأكد من تمرير الشريحة بشكل صحيح
+      const slideData = {
+        type: slide.type || 'content',
+        title: slide.title,
+        subtitle: slide.subtitle,
+        content: slide.content,  // هذا يجب أن يكون string
+        bullets: slide.bullets,
+        imageUrl: slide.imageUrl,
+        equation: slide.equation,
+        quiz: slide.quiz,
+        metadata: slide.metadata
+      };
+
+      const html = slideService.generateSlideHTML(slideData, theme);
       htmlSlides.push(html);
 
       // Generate teaching script if requested (limit for performance)
@@ -120,7 +132,15 @@ export async function processSlideGeneration(
       teachingScripts,
       audioUrls,
       totalSlides: slides.length,
-      processingTime: Date.now() - startTime
+      processingTime: Date.now() - startTime,
+      processedSlides: slides.map((slide, idx) => ({
+        type: slide.type,
+        title: slide.title,
+        subtitle: slide.subtitle,
+        content: slide.content,
+        bullets: slide.bullets,
+        html: htmlSlides[idx]
+      }))
     };
 
     // Store results

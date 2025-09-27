@@ -232,6 +232,9 @@ export class SlideService {
   }
 
   private generateContentSlide(content: SlideContent, theme: SlideTheme): string {
+    // تحقق من وجود المحتوى
+    const displayContent = content.content || content.title || 'محتوى الشريحة';
+
     return `
       <div class="slide slide-content" style="
         background: ${theme.backgroundColor};
@@ -247,7 +250,7 @@ export class SlideService {
           ${content.title ? `<h2 style="color: ${theme.primaryColor}; font-size: 2.5em; margin: 0;">${content.title}</h2>` : ''}
         </div>
         <div class="slide-body animate-slide-up" style="flex: 1; font-size: 1.4em; line-height: 1.8;">
-          ${content.content || ''}
+          ${typeof displayContent === 'string' ? displayContent : ''}
         </div>
       </div>
     `;

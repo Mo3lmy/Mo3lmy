@@ -304,23 +304,36 @@ class SlidesService {
 
       if (response.success && response.data) {
         if (response.data.status === 'completed' && response.data.slides) {
-          const slides = response.data.slides.map((slide: any, index: number) => ({
-            id: `slide-${lessonId}-${index}`,
-            lessonId,
-            order: index,
-            html: slide.html || '',
-            content: {
-              type: slide.type || 'content',
-              title: slide.title || `شريحة ${index + 1}`,
-              subtitle: slide.subtitle,
-              content: slide.content,
-              bullets: slide.bullets
-            },
-            theme: 'default',
-            audioUrl: slide.audioUrl || '',
-            duration: slide.duration || 10,
-            script: slide.script || ''
-          }));
+          const slides = response.data.slides.map((slide: any, index: number) => {
+            // تحديد نوع الشريحة بذكاء
+            let slideType = slide.type || 'content';
+            if (slide.number === 1 && slide.title && !slide.content) {
+              slideType = 'title';
+            } else if (slide.bullets && slide.bullets.length > 0) {
+              slideType = 'bullet';
+            }
+
+            return {
+              id: `slide-${lessonId}-${index}`,
+              lessonId,
+              order: index,
+              html: slide.html || '',
+              content: {
+                type: slideType,
+                title: slide.title,
+                subtitle: slide.subtitle,
+                content: slide.content,  // النص المباشر
+                bullets: slide.bullets,
+                imageUrl: slide.imageUrl,
+                equation: slide.equation,
+                quiz: slide.quiz
+              },
+              theme: 'default',
+              audioUrl: slide.audioUrl || '',
+              duration: slide.duration || 10,
+              script: slide.script || slide.teachingScript?.script || ''
+            }
+          });
 
           return { status: 'completed', slides };
         }
@@ -331,7 +344,6 @@ class SlidesService {
       throw new Error('Failed to check job status');
     } catch (error) {
       console.error('Error checking job status:', error);
-      // Return a default status instead of throwing
       return { status: 'processing', progress: 0 };
     }
   }

@@ -1710,18 +1710,25 @@ router.get(
       if (results) {
         console.log(`✅ Found results with ${results.htmlSlides?.length} slides`);
 
-        const slides = results.htmlSlides.map((html: string, index: number) => ({
-          number: index + 1,
-          type: results.processedSlides?.[index]?.type || 'content',
-          title: results.processedSlides?.[index]?.title || `شريحة ${index + 1}`,
-          subtitle: results.processedSlides?.[index]?.subtitle,
-          content: results.processedSlides?.[index]?.content,
-          bullets: results.processedSlides?.[index]?.bullets,
-          html,
-          audioUrl: results.audioUrls?.[index],
-          script: results.teachingScripts?.[index]?.script,
-          duration: results.teachingScripts?.[index]?.duration || 10
-        }));
+        const slides = results.htmlSlides.map((html: string, index: number) => {
+          const originalSlide = results.processedSlides?.[index] || {};
+
+          return {
+            number: index + 1,
+            type: originalSlide.type || (index === 0 ? 'title' : 'content'),
+            title: originalSlide.title || `شريحة ${index + 1}`,
+            subtitle: originalSlide.subtitle,
+            content: originalSlide.content || originalSlide.text || '',
+            bullets: originalSlide.bullets || [],
+            imageUrl: originalSlide.imageUrl,
+            equation: originalSlide.equation,
+            quiz: originalSlide.quiz,
+            html,
+            audioUrl: results.audioUrls?.[index],
+            script: results.teachingScripts?.[index]?.script,
+            duration: results.teachingScripts?.[index]?.duration || 10
+          };
+        });
 
         res.json(
           successResponse({
