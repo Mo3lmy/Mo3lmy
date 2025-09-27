@@ -1069,22 +1069,29 @@ router.get(
     const shouldUseQueue = slides.length > 5 || shouldGenerateVoice || shouldGenerateTeaching;
 
     if (shouldUseQueue) {
-      // Add job to queue for async processing
+      // Debug: Print req.user to see what it contains
+      console.log('🔍 req.user content:', JSON.stringify(req.user, null, 2));
+
+      // Get the actual user ID from JWT token
+      const actualUserId = req.user!.userId; // هذا الـ ID الصحيح من الـ token
+
+      console.log('🔍 actualUserId from req.user:', actualUserId);
+
+      // Add job to queue with correct user ID
       const jobId = await slideQueue.addJob({
         lessonId: id,
-        userId: req.user!.userId,  // ✅ استخدم userId من JWT token
+        userId: actualUserId, // ✅ استخدم الـ ID الصحيح
         slides,
         theme,
         generateVoice: shouldGenerateVoice,
         generateTeaching: shouldGenerateTeaching,
         userGrade: user?.grade || 6,
         userName: user?.firstName || 'الطالب',
-        sessionId: req.headers['x-session-id'] as string || req.user!.userId
+        sessionId: req.headers['x-session-id'] as string || actualUserId
       });
 
-      console.log(`📋 Queued slide generation job ${jobId} for lesson ${id}`);
+      console.log(`📋 Queued slide generation job ${jobId} for lesson ${id}, user ${actualUserId}`);
 
-      // Return immediate response with job ID
       res.json(
         successResponse({
           jobId,
@@ -1736,6 +1743,9 @@ router.get(
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { jobId } = req.params;
+    const userId = req.user!.userId;
+
+    console.log(`📋 Checking job ${jobId} for user ${userId}`);
 
     const status = await slideQueue.getStatus(jobId);
 
@@ -1746,35 +1756,55 @@ router.get(
       return;
     }
 
-    // If completed, get cached results
+    console.log(`📊 Job ${jobId} status: ${status.status}`);
+
+    // If completed, get cached results with fallback
     if (status.status === 'completed' && status.lessonId) {
-      const results = await slideQueue.getResults(status.lessonId, req.user!.userId);
+      console.log(`🔍 Looking for results: lesson=${status.lessonId}, user=${userId}`);
+
+      const results = await slideQueue.getResults(status.lessonId, userId);
 
       if (results) {
+        console.log(`✅ Found results with ${results.htmlSlides?.length} slides`);
+
+        const slides = results.htmlSlides.map((html: string, index: number) => ({
+          number: index + 1,
+          type: results.processedSlides?.[index]?.type || 'content',
+          title: results.processedSlides?.[index]?.title || `شريحة ${index + 1}`,
+          subtitle: results.processedSlides?.[index]?.subtitle,
+          content: results.processedSlides?.[index]?.content,
+          bullets: results.processedSlides?.[index]?.bullets,
+          html,
+          audioUrl: results.audioUrls?.[index],
+          script: results.teachingScripts?.[index]?.script,
+          duration: results.teachingScripts?.[index]?.duration || 10
+        }));
+
         res.json(
           successResponse({
             jobId,
             lessonId: status.lessonId,
             status: 'completed',
-            slides: results.htmlSlides.map((html: string, index: number) => ({
-              number: index + 1,
-              html,
-              audioUrl: results.audioUrls?.[index],
-              script: results.teachingScripts?.[index]?.script,
-              duration: results.teachingScripts?.[index]?.duration || 10
-            })),
-            totalSlides: results.htmlSlides.length,
+            slides,
+            totalSlides: slides.length,
             processingTime: results.processingTime
           }, 'Slides ready')
         );
         return;
+      } else {
+        console.log('❌ No cached results found, even with fallback');
       }
     }
 
+    // Return current status
     res.json(
       successResponse({
         jobId,
-        ...status
+        lessonId: status.lessonId,
+        status: status.status,
+        progress: status.progress,
+        currentSlide: status.currentSlide,
+        totalSlides: status.totalSlides
       }, 'Job status retrieved')
     );
   })

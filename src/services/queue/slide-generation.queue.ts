@@ -265,38 +265,49 @@ async function storeGenerationResults(lessonId: string, userId: string, results:
 }
 
 export async function getGenerationResults(lessonId: string, userId: string): Promise<any | null> {
-  // Try multiple keys for better compatibility
-  const keys = [
-    `slides:${lessonId}:${userId}`,  // Primary key
-    `slides:${lessonId}:latest`,      // Fallback key
-  ];
-
   try {
-    for (const key of keys) {
-      const cached = await redisConnection.get(key);
-      if (cached) {
-        console.log(`📦 Found cached results with key: ${key}`);
-        return JSON.parse(cached);
+    // First, try exact match
+    const exactKey = `slides:${lessonId}:${userId}`;
+    let cached = await redisConnection.get(exactKey);
+
+    if (cached) {
+      console.log(`✅ Found exact match: ${exactKey}`);
+      return JSON.parse(cached);
+    }
+
+    // Second, try latest key
+    const latestKey = `slides:${lessonId}:latest`;
+    cached = await redisConnection.get(latestKey);
+
+    if (cached) {
+      console.log(`✅ Found latest: ${latestKey}`);
+      return JSON.parse(cached);
+    }
+
+    // Third, find ANY key for this lesson (fallback)
+    const pattern = `slides:${lessonId}:*`;
+    const keys = await redisConnection.keys(pattern);
+
+    if (keys && keys.length > 0) {
+      console.log(`🔍 Found ${keys.length} keys matching pattern`);
+
+      // Get the most recent one
+      for (const key of keys) {
+        const data = await redisConnection.get(key);
+        if (data) {
+          console.log(`✅ Using fallback key: ${key}`);
+          return JSON.parse(data);
+        }
       }
     }
 
-    // If not found with exact keys, try pattern search (for old jobs)
-    const pattern = `slides:${lessonId}:*`;
-    const matchingKeys = await redisConnection.keys(pattern);
-    if (matchingKeys && matchingKeys.length > 0) {
-      console.log(`🔍 Found ${matchingKeys.length} matching keys for pattern: ${pattern}`);
-      // Get the most recent one
-      const cached = await redisConnection.get(matchingKeys[0]);
-      if (cached) {
-        console.log(`📦 Found cached results with pattern key: ${matchingKeys[0]}`);
-        return JSON.parse(cached);
-      }
-    }
+    console.log(`❌ No results found for lesson ${lessonId}, user ${userId}`);
+    return null;
+
   } catch (error) {
     console.error('Failed to get generation results:', error);
+    return null;
   }
-
-  return null;
 }
 
 export async function getJobStatus(jobId: string): Promise<SlideGenerationProgress | null> {
@@ -304,18 +315,27 @@ export async function getJobStatus(jobId: string): Promise<SlideGenerationProgre
     const job = await slideGenerationQueue.getJob(jobId);
 
     if (!job) {
+      console.log(`❌ Job ${jobId} not found`);
       return null;
     }
 
     const state = await job.getState();
     const progress = job.progress as any || {};
 
+    // IMPORTANT: Return actual state, not 'processing' when completed
+    const actualStatus = state === 'completed' ? 'completed' :
+                        state === 'failed' ? 'failed' :
+                        state === 'active' ? 'processing' :
+                        state as any;
+
+    console.log(`📊 Job ${jobId} state: ${state}, status: ${actualStatus}`);
+
     return {
       lessonId: job.data.lessonId,
-      status: state === 'active' ? 'processing' : state as any,
+      status: actualStatus, // ✅ Return correct status
       progress: progress.progress || 0,
       currentSlide: progress.currentSlide || 0,
-      totalSlides: job.data.slides.length,
+      totalSlides: job.data.slides?.length || 0,
       processedSlides: progress.processedSlides || [],
       error: job.failedReason,
       startedAt: job.processedOn ? new Date(job.processedOn) : undefined,
