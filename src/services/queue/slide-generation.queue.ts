@@ -230,33 +230,67 @@ export async function processSlideGeneration(job: Job<SlideGenerationJob>): Prom
 // ============= HELPER FUNCTIONS =============
 
 async function storeGenerationResults(lessonId: string, userId: string, results: any): Promise<void> {
-  const cacheKey = `slides:${lessonId}:${userId}`;
+  // استخدم multiple cache keys للتأكد
+  const primaryKey = `slides:${lessonId}:${userId}`;
+  const lessonKey = `slides:${lessonId}:latest`; // Fallback key
   const ttl = 3600; // 1 hour
 
   try {
-    // Store in Redis for quick retrieval
+    // Store with primary key
     await redisConnection.setex(
-      cacheKey,
+      primaryKey,
       ttl,
       JSON.stringify({
         ...results,
         generatedAt: new Date(),
+        userId  // أضف userId للتأكد
       })
     );
 
-    console.log(`💾 Stored generation results for ${cacheKey}`);
+    // Also store with lesson-only key as fallback
+    await redisConnection.setex(
+      lessonKey,
+      ttl,
+      JSON.stringify({
+        ...results,
+        generatedAt: new Date(),
+        userId
+      })
+    );
+
+    console.log(`💾 Stored generation results for ${primaryKey} and ${lessonKey}`);
   } catch (error) {
     console.error('Failed to store generation results:', error);
   }
 }
 
 export async function getGenerationResults(lessonId: string, userId: string): Promise<any | null> {
-  const cacheKey = `slides:${lessonId}:${userId}`;
+  // Try multiple keys for better compatibility
+  const keys = [
+    `slides:${lessonId}:${userId}`,  // Primary key
+    `slides:${lessonId}:latest`,      // Fallback key
+  ];
 
   try {
-    const cached = await redisConnection.get(cacheKey);
-    if (cached) {
-      return JSON.parse(cached);
+    for (const key of keys) {
+      const cached = await redisConnection.get(key);
+      if (cached) {
+        console.log(`📦 Found cached results with key: ${key}`);
+        return JSON.parse(cached);
+      }
+    }
+
+    // If not found with exact keys, try pattern search (for old jobs)
+    const pattern = `slides:${lessonId}:*`;
+    const matchingKeys = await redisConnection.keys(pattern);
+    if (matchingKeys && matchingKeys.length > 0) {
+      console.log(`🔍 Found ${matchingKeys.length} matching keys for pattern: ${pattern}`);
+      // Get the most recent one
+      const cached = await redisConnection.get(matchingKeys[0]);
+      if (cached) {
+        console.log(`📦 Found cached results with pattern key: ${matchingKeys[0]}`);
+        return JSON.parse(cached);
+      }
     }
   } catch (error) {
     console.error('Failed to get generation results:', error);

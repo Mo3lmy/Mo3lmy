@@ -1072,14 +1072,14 @@ router.get(
       // Add job to queue for async processing
       const jobId = await slideQueue.addJob({
         lessonId: id,
-        userId,
+        userId: req.user!.userId,  // ✅ استخدم userId من JWT token
         slides,
         theme,
         generateVoice: shouldGenerateVoice,
         generateTeaching: shouldGenerateTeaching,
         userGrade: user?.grade || 6,
         userName: user?.firstName || 'الطالب',
-        sessionId: req.headers['x-session-id'] as string
+        sessionId: req.headers['x-session-id'] as string || req.user!.userId
       });
 
       console.log(`📋 Queued slide generation job ${jobId} for lesson ${id}`);
