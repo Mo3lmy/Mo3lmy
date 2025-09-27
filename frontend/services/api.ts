@@ -33,6 +33,16 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error: any) => {
+    // Log للـ development
+    if (process.env.NODE_ENV === 'development') {
+      console.error('API Error:', {
+        url: error.config?.url,
+        method: error.config?.method,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+    }
+
     if (error.response?.status === 401) {
       // Token expired or invalid
       localStorage.removeItem("token");
@@ -146,6 +156,37 @@ export const achievementAPI = {
     const response = await api.post<{ data: any }>(`/achievements/${achievementId}/claim`);
     return response.data.data;
   },
+};
+
+// Teaching API calls
+export const teachingAPI = {
+  generateScript: async (lessonId: string, slideContent: any, options?: any) => {
+    const response = await api.post(`/lessons/${lessonId}/teaching/script`, {
+      slideContent,
+      generateVoice: true,
+      options
+    });
+    return response.data;
+  },
+
+  handleInteraction: async (lessonId: string, type: string, context?: any) => {
+    const response = await api.post(`/lessons/${lessonId}/teaching/interaction`, {
+      type,
+      slideContent: context?.currentSlide,
+      context
+    });
+    return response.data;
+  },
+
+  generateSmartLesson: async (lessonId: string) => {
+    const response = await api.post(`/lessons/${lessonId}/teaching/generate-smart`);
+    return response.data;
+  },
+
+  getStatus: async (lessonId: string) => {
+    const response = await api.get(`/lessons/${lessonId}/teaching/status`);
+    return response.data;
+  }
 };
 
 export default api;

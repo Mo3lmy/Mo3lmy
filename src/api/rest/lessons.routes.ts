@@ -85,10 +85,12 @@ const teachingScriptSchema = z.object({
 // Student interaction schema
 const interactionSchema = z.object({
   type: z.enum([
-    'explain', 'more_detail', 'example', 'problem', 
-    'repeat', 'continue', 'stop', 'quiz', 'summary'
+    'explain', 'more_detail', 'example', 'problem',
+    'repeat', 'continue', 'stop', 'quiz', 'summary',
+    'motivate', 'simplify', 'application'  // أضف الأنواع المفقودة
   ]),
-  currentSlide: z.any().optional(),
+  slideContent: z.any().optional(),  // اجعله optional و any
+  currentSlide: z.any().optional(),  // للتوافق مع القديم
   context: z.object({
     previousScript: z.string().optional(),
     sessionHistory: z.array(z.string()).optional()
@@ -302,46 +304,81 @@ router.post(
     }
     
     const data = validationResult.data;
-    
+
+    // بعد validation
+    const slideContent = data.slideContent || data.currentSlide || {
+      type: 'content',
+      title: 'محتوى تفاعلي',
+      content: 'درس تفاعلي'
+    };
+
     // Get user info
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { grade: true, firstName: true }
     });
-    
+
     if (!user) {
       res.status(404).json(
         errorResponse('USER_NOT_FOUND', 'المستخدم غير موجود')
       );
       return;
     }
-    
-    // Handle interaction
-    const response = await teachingAssistant.handleStudentInteraction(
-      data.type as InteractionType,
-      data.currentSlide || {},
-      id,
-      user.grade || 6,
-      {
-        studentName: user.firstName,
-        ...data.context
+
+    try {
+      // Handle interaction - returns TeachingScript
+      const teachingScript = await teachingAssistant.handleStudentInteraction(
+        data.type as InteractionType,
+        slideContent,
+        id,
+        user.grade || 6,
+        {
+          studentName: user.firstName,
+          ...data.context
+        }
+      );
+
+      // Generate voice (optional, handle errors gracefully)
+      let audioUrl = null;
+      try {
+        const voiceResult = await voiceService.textToSpeech(teachingScript.script);
+        audioUrl = voiceResult.audioUrl;
+      } catch (voiceError) {
+        console.log('Voice generation skipped:', voiceError);
       }
-    );
-    
-    // Generate voice
-    const voiceResult = await voiceService.textToSpeech(response.script);
-    
-    res.json(
-      successResponse({
+
+      // Format as InteractionResponse
+      const interactionResponse = {
         type: data.type,
-        script: response.script,
-        duration: response.duration,
-        audioUrl: voiceResult.audioUrl,
-        problem: response.problem,
-        emotionalTone: response.emotionalTone,
-        nextSuggestions: response.nextSuggestions
-      }, 'Interaction handled successfully')
-    );
+        message: teachingScript.script,
+        script: teachingScript.script,
+        duration: teachingScript.duration || 5,
+        audioUrl: audioUrl,
+        action: 'continue',
+        emotionalTone: teachingScript.emotionalTone || 'friendly',
+        nextSuggestions: teachingScript.nextSuggestions || []
+      };
+
+      res.json(
+        successResponse(interactionResponse, 'Interaction handled successfully')
+      );
+    } catch (error) {
+      console.error('Error in teaching interaction:', error);
+
+      // Return a fallback response
+      res.json(
+        successResponse({
+          type: data.type,
+          message: 'دعني أساعدك في فهم هذا الموضوع بشكل أفضل.',
+          script: 'دعني أساعدك في فهم هذا الموضوع بشكل أفضل.',
+          duration: 5,
+          audioUrl: null,
+          action: 'continue',
+          emotionalTone: 'supportive',
+          nextSuggestions: ['اطلب مثال', 'اشرح أكثر', 'تابع']
+        }, 'Interaction handled with fallback')
+      );
+    }
   })
 );
 

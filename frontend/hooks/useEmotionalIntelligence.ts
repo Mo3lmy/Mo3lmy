@@ -47,6 +47,13 @@ export function useEmotionalIntelligence(userId: string) {
   const [sessionStartTime] = useState(Date.now());
   const [recentIndicators, setRecentIndicators] = useState<EmotionalIndicator[]>([]);
 
+  // Validate userId early
+  useEffect(() => {
+    if (!userId || userId === '') {
+      console.warn('useEmotionalIntelligence: No valid userId provided');
+    }
+  }, [userId]);
+
   // Track session duration
   useEffect(() => {
     const interval = setInterval(() => {
@@ -215,19 +222,20 @@ export function useEmotionalIntelligence(userId: string) {
 
   // Get suggestions based on current state
   const getSuggestions = useCallback(async () => {
-    try {
-      const response = await api.get<{ success: boolean; data: any[] }>(`/student-context/${userId}/recommendations`);
+    // تأكد من وجود userId أولاً
+    if (!userId || userId.trim() === '') {
+      console.warn('No userId available for getting suggestions');
+      return;
+    }
 
+    try {
+      const response = await api.get(`/student-context/${userId}/recommendations`);
       if (response.data?.success) {
-        const recommendations = response.data.data;
-        const newSuggestions: SupportSuggestion[] = recommendations.map((rec: any) => ({
-          type: rec.type || 'help',
-          message: rec.message
-        }));
-        setSuggestions(newSuggestions);
+        setSuggestions(response.data.data.suggestions || []);
       }
     } catch (error) {
       console.error('Failed to get suggestions:', error);
+      // لا تظهر خطأ للمستخدم، فقط log
     }
   }, [userId]);
 

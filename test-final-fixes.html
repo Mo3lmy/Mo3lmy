@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار الإصلاحات النهائية</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1e1e1e;
+            color: #fff;
+        }
+        .test {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background: #2a2a2a;
+        }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .pending { color: #fbbf24; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #1a1a1a;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <h1>اختبار الإصلاحات النهائية</h1>
+    <p>افتح الموقع http://localhost:3003 وسجل الدخول أولاً للحصول على Token</p>
+
+    <div class="test">
+        <h2>1. اختبار student-context/progress</h2>
+        <button onclick="testProgress()">اختبار</button>
+        <div id="test1" class="result"></div>
+    </div>
+
+    <div class="test">
+        <h2>2. اختبار student-context/recommendations</h2>
+        <button onclick="testRecommendations()">اختبار</button>
+        <div id="test2" class="result"></div>
+    </div>
+
+    <div class="test">
+        <h2>3. اختبار teaching/interaction</h2>
+        <button onclick="testInteraction()">اختبار</button>
+        <div id="test3" class="result"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001/api/v1';
+
+        function getToken() {
+            return localStorage.getItem('token') || prompt('أدخل Token من localStorage:');
+        }
+
+        function getUserId() {
+            const user = localStorage.getItem('user');
+            if (user) {
+                try {
+                    return JSON.parse(user).id;
+                } catch (e) {
+                    return '94a09d58-d1e3-49d8-be6e-51c45b450d58';
+                }
+            }
+            return '94a09d58-d1e3-49d8-be6e-51c45b450d58';
+        }
+
+        async function testProgress() {
+            const token = getToken();
+            const userId = getUserId();
+            const result = document.getElementById('test1');
+            result.textContent = 'جاري الاختبار...';
+            result.className = 'result pending';
+
+            try {
+                const response = await fetch(`${API_URL}/student-context/${userId}/progress`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    result.textContent = `✅ نجح! Status: ${response.status}
+البيانات:
+${JSON.stringify(data, null, 2)}`;
+                    result.className = 'result success';
+                } else {
+                    result.textContent = `❌ خطأ: ${response.status}
+${JSON.stringify(data, null, 2)}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ خطأ: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+
+        async function testRecommendations() {
+            const token = getToken();
+            const userId = getUserId();
+            const result = document.getElementById('test2');
+            result.textContent = 'جاري الاختبار...';
+            result.className = 'result pending';
+
+            try {
+                const response = await fetch(`${API_URL}/student-context/${userId}/recommendations`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.data?.suggestions) {
+                    result.textContent = `✅ نجح! Status: ${response.status}
+يحتوي على suggestions: ${data.data.suggestions.length} اقتراحات
+${JSON.stringify(data.data.suggestions, null, 2)}`;
+                    result.className = 'result success';
+                } else {
+                    result.textContent = `❌ خطأ: ${response.status}
+${JSON.stringify(data, null, 2)}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ خطأ: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+
+        async function testInteraction() {
+            const token = getToken();
+            const result = document.getElementById('test3');
+            result.textContent = 'جاري الاختبار...';
+            result.className = 'result pending';
+
+            try {
+                const response = await fetch(`${API_URL}/lessons/LESSON_1758905299464_qjan5xlid/teaching/interaction`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        type: 'explain',
+                        slideContent: {
+                            type: 'content',
+                            title: 'اختبار',
+                            content: 'محتوى اختباري'
+                        },
+                        context: {
+                            previousScript: 'سكريبت سابق',
+                            sessionHistory: []
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    result.textContent = `✅ نجح! Status: ${response.status}
+البيانات:
+- message: ${data.data?.message?.substring(0, 100)}...
+- type: ${data.data?.type}
+- action: ${data.data?.action}`;
+                    result.className = 'result success';
+                } else {
+                    result.textContent = `❌ خطأ: ${response.status}
+${JSON.stringify(data, null, 2)}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ خطأ: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+
+        // Show current token status
+        window.onload = () => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                console.log('Token found in localStorage');
+            } else {
+                console.log('No token found. Please login first at http://localhost:3003');
+            }
+        };
+    </script>
+</body>
+</html>

@@ -132,7 +132,12 @@ export function useTeachingAssistant(lessonId: string) {
         `/lessons/${lessonId}/teaching/interaction`,
         {
           type,
-          currentSlide: context?.currentSlide,
+          // تغيير مهم: استخدم slideContent بدلاً من currentSlide
+          slideContent: context?.currentSlide || {
+            type: 'content',
+            title: 'محتوى الدرس',
+            content: 'شرح تفاعلي'
+          },
           context: {
             previousScript: context?.previousScript || currentScript?.script,
             sessionHistory: interactionHistory.slice(-5) // Last 5 interactions

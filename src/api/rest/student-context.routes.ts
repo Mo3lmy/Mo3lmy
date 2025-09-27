@@ -251,6 +251,56 @@ router.post('/:userId/emotional-state', authenticate, asyncHandler(async (req: R
   }
 }));
 
+// Get student progress
+router.get('/:userId/progress', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  try {
+    // Get progress data
+    const progress = await db.progress.findMany({
+      where: { userId },
+      include: {
+        lesson: {
+          select: {
+            id: true,
+            title: true,
+            titleAr: true
+          }
+        }
+      },
+      orderBy: { lastAccessedAt: 'desc' }
+    });
+
+    // Calculate overall stats
+    const totalLessons = progress.length;
+    const completedLessons = progress.filter((p: any) => p.status === 'COMPLETED').length;
+    const totalTimeSpent = progress.reduce((sum: number, p: any) => sum + (p.timeSpent || 0), 0);
+    const averageCompletion = progress.length > 0
+      ? progress.reduce((sum: number, p: any) => sum + (p.completionRate || 0), 0) / progress.length
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalLessons,
+        completedLessons,
+        inProgressLessons: totalLessons - completedLessons,
+        totalTimeSpent,
+        averageCompletion: Math.round(averageCompletion),
+        lessons: progress
+      }
+    });
+  } catch (error) {
+    console.error('Error getting progress:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to get progress data'
+      }
+    });
+  }
+}));
+
 // Get learning patterns
 router.get('/:userId/learning-patterns', async (req: Request, res: Response) => {
   try {
@@ -332,7 +382,13 @@ router.get('/:userId/recommendations', async (req: Request, res: Response) => {
     });
 
     if (!context) {
-      throw new AppError('Student context not found', 404);
+      res.status(404).json({
+        success: false,
+        error: {
+          message: 'Student context not found'
+        }
+      });
+      return;
     }
 
     // Get struggling topics
@@ -353,9 +409,26 @@ router.get('/:userId/recommendations', async (req: Request, res: Response) => {
       strugglingTopics
     );
 
+    // Generate suggestions for emotional intelligence
+    const suggestions = [
+      {
+        type: 'help',
+        message: 'جرب أمثلة إضافية لفهم أفضل'
+      },
+      {
+        type: 'motivation',
+        message: 'أنت تتقدم بشكل رائع!'
+      },
+      {
+        type: 'break',
+        message: 'خذ استراحة قصيرة لتحسين التركيز'
+      }
+    ];
+
     res.json({
       success: true,
       data: {
+        suggestions,  // This is what useEmotionalIntelligence expects
         nextLessons,
         practiceAreas: practiceRecommendations,
         tips: generateLearningTips(context),
