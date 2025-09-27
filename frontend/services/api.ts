@@ -37,6 +37,10 @@ class ApiService {
         if (this.token) {
           config.headers.Authorization = `Bearer ${this.token}`
         }
+        // Add session ID if not present
+        if (!config.headers['X-Session-Id']) {
+          config.headers['X-Session-Id'] = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        }
         return config
       },
       (error: any) => Promise.reject(this.formatError(error))

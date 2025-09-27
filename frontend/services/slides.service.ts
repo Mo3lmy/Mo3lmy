@@ -106,8 +106,17 @@ class SlidesService {
       params.append('generateTeaching', 'true') // مهم!
 
       const queryString = params.toString()
+
+      // Generate a session ID for WebSocket tracking
+      const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
       const response = await apiService.get(
-        `${this.baseUrl}/${lessonId}/slides${queryString ? '?' + queryString : ''}`
+        `${this.baseUrl}/${lessonId}/slides${queryString ? '?' + queryString : ''}`,
+        {
+          headers: {
+            'X-Session-Id': sessionId
+          }
+        }
       )
 
       if (response.success && response.data) {
@@ -298,28 +307,74 @@ class SlidesService {
   }> {
     try {
       const response = await apiService.get(
-        `${this.baseUrl}/${lessonId}/slides/status/${jobId}`
+        `/api/v1/lessons/slides/job/${jobId}`
       )
 
       if (response.success && response.data) {
         // If completed, transform slides to frontend format
         if (response.data.status === 'completed' && response.data.slides) {
-          const slides = response.data.slides.map((slide: any, index: number) => ({
-            id: `slide-${lessonId}-${index}`,
-            lessonId: lessonId,
-            order: index,
-            html: slide.html || '',
-            content: {
-              type: slide.type || 'content',
-              title: slide.title,
-              content: slide.content,
-              bullets: slide.bullets
-            },
-            theme: 'default',
-            audioUrl: slide.audioUrl,
-            duration: slide.duration || 10,
-            script: slide.script
-          }))
+          const slides = response.data.slides.map((slide: any, index: number) => {
+            // Parse HTML to extract title and content type
+            let type = 'content';
+            let title = '';
+            let subtitle = '';
+            let content = '';
+            let bullets: string[] = [];
+
+            // Detect slide type from HTML classes
+            if (slide.html?.includes('slide-title')) {
+              type = 'title';
+              // Extract title from HTML
+              const titleMatch = slide.html.match(/<h1[^>]*>([^<]*)<\/h1>/);
+              const subtitleMatch = slide.html.match(/<h2[^>]*>([^<]*)<\/h2>/);
+              if (titleMatch) title = titleMatch[1];
+              if (subtitleMatch) subtitle = subtitleMatch[1];
+            } else if (slide.html?.includes('slide-bullet')) {
+              type = 'bullet';
+              // Extract bullets from HTML
+              const bulletMatches = slide.html.match(/<li[^>]*>.*?<\/span>\s*([^<]*)<\/li>/g);
+              if (bulletMatches) {
+                bullets = bulletMatches.map((b: string) => {
+                  const textMatch = b.match(/<\/span>\s*([^<]*)<\/li>/);
+                  return textMatch ? textMatch[1].trim() : '';
+                }).filter((b: string) => b);
+              }
+            } else if (slide.html?.includes('slide-quiz')) {
+              type = 'quiz';
+            } else if (slide.html?.includes('slide-example')) {
+              type = 'example';
+            }
+
+            // Extract title from slide header if exists
+            const headerMatch = slide.html?.match(/<h2[^>]*>([^<]*)<\/h2>/);
+            if (headerMatch && !title) {
+              title = headerMatch[1];
+            }
+
+            // Extract content from slide body
+            const bodyMatch = slide.html?.match(/<div class="slide-body[^"]*"[^>]*>([^<]*)<\/div>/);
+            if (bodyMatch) {
+              content = bodyMatch[1].trim();
+            }
+
+            return {
+              id: `slide-${lessonId}-${index}`,
+              lessonId: lessonId,
+              order: slide.number - 1, // Convert 1-based to 0-based
+              html: slide.html || '',
+              content: {
+                type,
+                title,
+                subtitle,
+                content,
+                bullets: bullets.length > 0 ? bullets : undefined
+              },
+              theme: 'default',
+              audioUrl: slide.audioUrl || '',
+              duration: slide.duration || 10,
+              script: slide.script || slide.teachingScript?.script || ''
+            };
+          });
 
           return {
             status: 'completed',
@@ -348,8 +403,14 @@ class SlidesService {
       )
 
       return response.success
-    } catch (error) {
-      console.error('Error cancelling job:', error)
+    } catch (error: any) {
+      // If job is already completed or not found, that's okay
+      if (error.message?.includes('not found') || error.message?.includes('already completed')) {
+        console.log(`Job ${jobId} already completed or not found (this is normal)`)
+        return true // Consider it successful since job is done
+      }
+
+      console.error('Error cancelling job:', error.message)
       return false
     }
   }

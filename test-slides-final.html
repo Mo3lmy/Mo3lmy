@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار الشرائح - النهائي</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .slide-container {
+            background: white;
+            color: black;
+            min-height: 500px;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .log {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .progress {
+            width: 100%;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 اختبار نظام الشرائح - النسخة النهائية</h1>
+
+        <div class="status">
+            <h2>حالة النظام</h2>
+            <p>حالة الاتصال: <span id="status">غير متصل</span></p>
+            <p>Job ID: <span id="jobId">-</span></p>
+            <div class="progress">
+                <div class="progress-bar" id="progressBar">0%</div>
+            </div>
+            <p>عدد الشرائح: <span id="slideCount">0</span></p>
+            <p>الشريحة الحالية: <span id="currentSlide">0</span></p>
+        </div>
+
+        <div class="controls">
+            <button onclick="testSlides()">🚀 ابدأ توليد الشرائح</button>
+            <button onclick="checkStatus()">🔄 فحص الحالة</button>
+            <button onclick="clearLogs()">🗑️ مسح السجلات</button>
+        </div>
+
+        <div class="slide-container" id="slideContainer">
+            <p style="text-align: center; color: #666;">اضغط على "ابدأ توليد الشرائح" للبدء</p>
+        </div>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJmN2YzNzI0ZC00NWRhLTQ3MjYtOTllZC05MzI2ZGZmNTk0NGEiLCJlbWFpbCI6InRlc3RAdGVzdC5jb20iLCJyb2xlIjoiU1RVREVOVCIsImdyYWRlIjo2LCJpYXQiOjE3NTg5NjczNDMsImV4cCI6MTc1OTU3MjE0M30.Yyb9Xr9tjgMRy68vU5qejyJqf1_n-Cp82MbMaH8XdHA';
+        const LESSON_ID = 'LESSON_1758905299464_qjan5xlid';
+
+        let currentJobId = null;
+        let pollingInterval = null;
+        let slides = [];
+        let currentSlideIndex = 0;
+
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#51cf66' : '#74c0fc';
+            logEl.innerHTML += `<div style="color: ${color}">[${time}] ${message}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus() {
+            document.getElementById('status').textContent = currentJobId ? 'جاري المعالجة...' : 'جاهز';
+            document.getElementById('jobId').textContent = currentJobId || '-';
+            document.getElementById('slideCount').textContent = slides.length;
+            document.getElementById('currentSlide').textContent = slides.length > 0 ? currentSlideIndex + 1 : 0;
+        }
+
+        function updateProgress(progress) {
+            const bar = document.getElementById('progressBar');
+            bar.style.width = progress + '%';
+            bar.textContent = progress + '%';
+        }
+
+        async function testSlides() {
+            try {
+                log('🚀 بدء توليد الشرائح...', 'info');
+
+                // Request slides generation
+                const response = await fetch(`${API_URL}/api/v1/lessons/${LESSON_ID}/slides?theme=primary-male&generateVoice=true&generateTeaching=true`, {
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error?.message || 'فشل الطلب');
+                }
+
+                if (data.jobId) {
+                    currentJobId = data.jobId;
+                    log(`✅ تم بدء Job: ${currentJobId}`, 'success');
+                    updateStatus();
+                    startPolling();
+                } else if (data.slides) {
+                    // Direct slides response
+                    slides = data.slides;
+                    log(`✅ تم تحميل ${slides.length} شريحة مباشرة`, 'success');
+                    displaySlide(0);
+                    updateStatus();
+                }
+            } catch (error) {
+                log(`❌ خطأ: ${error.message}`, 'error');
+            }
+        }
+
+        function startPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            log('🔄 بدء مراقبة الحالة...', 'info');
+
+            // Poll immediately
+            checkJobStatus();
+
+            // Then poll every 2 seconds
+            pollingInterval = setInterval(checkJobStatus, 2000);
+        }
+
+        async function checkJobStatus() {
+            if (!currentJobId) return;
+
+            try {
+                const response = await fetch(`${API_URL}/api/v1/lessons/slides/job/${currentJobId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error?.message || 'فشل فحص الحالة');
+                }
+
+                log(`📊 الحالة: ${data.status} - التقدم: ${data.progress || 0}%`);
+                updateProgress(data.progress || 0);
+
+                if (data.status === 'completed') {
+                    log('✅ اكتمل التوليد!', 'success');
+
+                    if (data.slides && data.slides.length > 0) {
+                        slides = data.slides;
+                        log(`✅ تم تحميل ${slides.length} شريحة`, 'success');
+                        displaySlide(0);
+                    } else {
+                        // Fetch slides directly
+                        await fetchSlidesDirectly();
+                    }
+
+                    currentJobId = null;
+                    clearInterval(pollingInterval);
+                    updateStatus();
+                } else if (data.status === 'failed') {
+                    log('❌ فشل توليد الشرائح', 'error');
+                    currentJobId = null;
+                    clearInterval(pollingInterval);
+                    updateStatus();
+                }
+            } catch (error) {
+                log(`⚠️ خطأ في فحص الحالة: ${error.message}`, 'error');
+            }
+        }
+
+        async function fetchSlidesDirectly() {
+            try {
+                log('📥 جلب الشرائح مباشرة...', 'info');
+
+                const response = await fetch(`${API_URL}/api/v1/lessons/${LESSON_ID}/slides?theme=primary-male`, {
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.slides) {
+                    slides = data.slides;
+                    log(`✅ تم جلب ${slides.length} شريحة`, 'success');
+                    displaySlide(0);
+                }
+            } catch (error) {
+                log(`❌ فشل جلب الشرائح: ${error.message}`, 'error');
+            }
+        }
+
+        function displaySlide(index) {
+            if (index < 0 || index >= slides.length) return;
+
+            currentSlideIndex = index;
+            const slide = slides[index];
+            const container = document.getElementById('slideContainer');
+
+            if (slide.html) {
+                container.innerHTML = slide.html;
+            } else {
+                container.innerHTML = `
+                    <h2>شريحة ${index + 1}</h2>
+                    <p>النوع: ${slide.type || 'غير محدد'}</p>
+                    <p>المحتوى: ${JSON.stringify(slide, null, 2)}</p>
+                `;
+            }
+
+            // Add navigation
+            container.innerHTML += `
+                <div class="controls" style="margin-top: 30px;">
+                    <button onclick="displaySlide(${index - 1})" ${index === 0 ? 'disabled' : ''}>السابق</button>
+                    <span>${index + 1} / ${slides.length}</span>
+                    <button onclick="displaySlide(${index + 1})" ${index === slides.length - 1 ? 'disabled' : ''}>التالي</button>
+                </div>
+            `;
+
+            updateStatus();
+            log(`📄 عرض الشريحة ${index + 1} من ${slides.length}`);
+        }
+
+        function checkStatus() {
+            if (currentJobId) {
+                checkJobStatus();
+            } else {
+                log('⚠️ لا يوجد job نشط', 'info');
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('log').innerHTML = '';
+            log('تم مسح السجلات', 'info');
+        }
+
+        // Initial status update
+        updateStatus();
+    </script>
+</body>
+</html>

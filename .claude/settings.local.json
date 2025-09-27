@@ -38,7 +38,10 @@
       "Bash(npm run typecheck:*)",
       "Bash(npm install:*)",
       "Bash(start http://localhost:3001/test-frontend-integration.html)",
-      "Bash(redis-cli:*)"
+      "Bash(redis-cli:*)",
+      "Bash(start http://localhost:3000/test-slides-direct.html)",
+      "Bash(start http://localhost:3000/classroom/LESSON_1758905299464_qjan5xlid)",
+      "Bash(start http://localhost:3000/test-slides-final.html)"
     ],
     "deny": [],
     "ask": []

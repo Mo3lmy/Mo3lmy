@@ -30,6 +30,7 @@ export function useSlides(
   const [jobId, setJobId] = useState<string | null>(null)
   const [generationProgress, setGenerationProgress] = useState(0)
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const isLoadingRef = useRef(false)
   const { socket, connected } = useWebSocket()
 
   // Determine user theme
@@ -42,7 +43,14 @@ export function useSlides(
   const loadSlides = useCallback(async () => {
     if (!lessonId) return
 
+    // Don't start new job if one is already running
+    if (isLoadingRef.current) {
+      console.log('⚠️ Already loading slides, skipping...')
+      return
+    }
+
     try {
+      isLoadingRef.current = true
       setLoading(true)
       setError(null)
 
@@ -55,14 +63,16 @@ export function useSlides(
         setJobId(result.jobId)
         setGenerationProgress(0)
 
-        // Start polling for job status or listen to WebSocket
+        // Setup WebSocket listeners if available
         if (socket && connected) {
-          // Use WebSocket for real-time updates
+          console.log('📡 Setting up WebSocket listeners for job updates')
           setupWebSocketListeners(result.jobId)
-        } else {
-          // Fallback to polling
-          startPollingJobStatus(result.jobId)
         }
+
+        // ALWAYS start polling as primary mechanism
+        console.log('🔄 Starting polling for job:', result.jobId)
+        startPollingJobStatus(result.jobId)
+
         return
       }
 
@@ -130,6 +140,7 @@ export function useSlides(
       console.error('Error loading slides:', err)
       setError('فشل تحميل الشرائح')
     } finally {
+      isLoadingRef.current = false
       setLoading(false)
     }
   }, [lessonId, theme, preloadNext, socket, connected])
@@ -192,26 +203,44 @@ export function useSlides(
     }
   }, [socket, lessonId, theme])
 
-  // Poll job status (fallback when WebSocket not available)
-  const startPollingJobStatus = useCallback((jobId: string) => {
-    if (checkIntervalRef.current) {
-      clearInterval(checkIntervalRef.current)
-    }
-
-    checkIntervalRef.current = setInterval(async () => {
-      await checkJobStatus(jobId)
-    }, 2000) // Check every 2 seconds
-  }, [lessonId])
-
-  // Check job status
+  // Check job status - defined first to avoid circular dependency
   const checkJobStatus = useCallback(async (jobId: string) => {
+    console.log('🔍 Checking status for job:', jobId)
     try {
       const status = await slidesService.checkJobStatus(lessonId, jobId)
+      console.log('📊 Job status response:', status)
+      console.log('Status is:', status.status)
+      console.log('Has slides?', !!status.slides)
+      console.log('Slides count:', status.slides?.length)
 
-      if (status.status === 'completed' && status.slides) {
-        console.log('✅ Slides loaded from job:', status.slides.length)
-        setSlides(status.slides)
+      if (status.status === 'completed') {
+        // If status is completed, fetch the slides again
+        if (status.slides && status.slides.length > 0) {
+          console.log('✅ Slides loaded from job:', status.slides.length)
+          console.log('First slide:', status.slides[0])
+          setSlides(status.slides)
+        } else {
+          // Fallback: fetch slides directly
+          console.log('📥 Fetching slides directly after job completion...')
+          const fetchedSlides = await slidesService.getLessonSlides(lessonId, theme)
+
+          // Make sure it's not a job response
+          if (Array.isArray(fetchedSlides)) {
+            console.log('✅ Slides fetched directly:', fetchedSlides.length)
+            setSlides(fetchedSlides)
+
+            // Preload next slides
+            if (preloadNext > 0 && fetchedSlides.length > 1) {
+              const slideIdsToPreload = fetchedSlides
+                .slice(1, preloadNext + 1)
+                .map(s => s.id)
+              slidesService.preloadSlides(lessonId, slideIdsToPreload)
+            }
+          }
+        }
+
         setGenerationProgress(100)
+        isLoadingRef.current = false
         setLoading(false)
         setJobId(null)
 
@@ -219,14 +248,6 @@ export function useSlides(
         if (checkIntervalRef.current) {
           clearInterval(checkIntervalRef.current)
           checkIntervalRef.current = null
-        }
-
-        // Preload next slides
-        if (preloadNext > 0 && status.slides.length > 1) {
-          const slideIdsToPreload = status.slides
-            .slice(1, preloadNext + 1)
-            .map(s => s.id)
-          slidesService.preloadSlides(lessonId, slideIdsToPreload)
         }
       } else if (status.status === 'failed') {
         setError('فشل توليد الشرائح')
@@ -238,13 +259,35 @@ export function useSlides(
           clearInterval(checkIntervalRef.current)
           checkIntervalRef.current = null
         }
-      } else if (status.progress) {
+      } else if (status.progress !== undefined) {
+        console.log('📈 Progress update:', status.progress)
         setGenerationProgress(status.progress)
+      } else {
+        console.log('⏳ Job still processing, status:', status.status)
       }
     } catch (error) {
-      console.error('Error checking job status:', error)
+      console.error('❌ Error checking job status:', error)
+      // Don't stop polling on error - job might still be processing
     }
-  }, [lessonId, preloadNext])
+  }, [lessonId, theme, preloadNext])
+
+  // Poll job status (fallback when WebSocket not available)
+  const startPollingJobStatus = useCallback((jobId: string) => {
+    console.log('🔄 Starting polling for job:', jobId)
+    if (checkIntervalRef.current) {
+      clearInterval(checkIntervalRef.current)
+    }
+
+    // Start polling immediately
+    checkJobStatus(jobId)
+
+    checkIntervalRef.current = setInterval(() => {
+      console.log('⏰ Polling interval triggered for job:', jobId)
+      checkJobStatus(jobId).catch(err => {
+        console.error('❌ Error in polling:', err)
+      })
+    }, 2000) // Check every 2 seconds
+  }, [checkJobStatus])
 
   // Generate a new slide dynamically
   const generateSlide = useCallback(async (
@@ -355,12 +398,16 @@ export function useSlides(
         clearInterval(checkIntervalRef.current)
       }
 
-      // Cancel job if still running
-      if (jobId) {
-        slidesService.cancelJob(lessonId, jobId)
+      // Cancel job ONLY if still loading (not completed)
+      if (jobId && loading) {
+        slidesService.cancelJob(lessonId, jobId).catch((error) => {
+          // Ignore error if job already completed or not found
+          // This is expected behavior when job finishes before component unmounts
+          console.log(`Job ${jobId} cancellation skipped (likely already completed)`)
+        })
       }
     }
-  }, [jobId, lessonId])
+  }, [jobId, lessonId, loading])
 
   // Track view when unmounting
   useEffect(() => {
