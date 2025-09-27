@@ -1112,10 +1112,22 @@ router.get(
           number: index + 1,
           type: slides[index].type,
           title: slides[index].title,
+          subtitle: slides[index].subtitle,
+          content: slides[index].content,
+          bullets: slides[index].bullets,
+          imageUrl: slides[index].imageUrl,
+          equation: slides[index].equation,
+          quiz: slides[index].quiz,
+          interactive: slides[index].interactive,
+          video: slides[index].video,
+          code: slides[index].code,
+          metadata: slides[index].metadata,
           duration: slides[index].metadata?.duration || 10,
           html,
           audioUrl: shouldGenerateVoice ? audioUrls[index] : undefined,
-          teachingScript: shouldGenerateTeaching ? teachingScripts[index] : undefined // 🆕
+          teachingScript: shouldGenerateTeaching ? teachingScripts[index] : undefined,
+          syncTimestamps: slides[index].syncTimestamps,
+          personalization: slides[index].personalization
         }))
       }, 'Slides generated successfully')
     );

@@ -90,8 +90,16 @@ class SlidesService {
    */
   async getLessonSlides(lessonId: string, theme?: string): Promise<Slide[]> {
     try {
-      const params = theme ? `?theme=${theme}` : ''
-      const response = await apiService.get(`${this.baseUrl}/${lessonId}/slides${params}`)
+      // أضف generateVoice و generateTeaching للـ query
+      const params = new URLSearchParams()
+      if (theme) params.append('theme', theme)
+      params.append('generateVoice', 'true')  // مهم!
+      params.append('generateTeaching', 'true') // مهم!
+
+      const queryString = params.toString()
+      const response = await apiService.get(
+        `${this.baseUrl}/${lessonId}/slides${queryString ? '?' + queryString : ''}`
+      )
 
       if (response.success && response.data) {
         // Transform backend slides to frontend format

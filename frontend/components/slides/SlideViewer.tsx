@@ -88,6 +88,17 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
     const topic = currentSlide?.content?.title || currentSlide?.content?.type || ''
     onSlideChange?.(currentSlideIndex, topic)
     setViewStartTime(Date.now())
+
+    // تشخيص بيانات الشريحة
+    console.log('Current slide data:', {
+      slide: currentSlide,
+      hasHtml: !!currentSlide?.html,
+      hasContent: !!currentSlide?.content,
+      hasAudio: !!currentSlide?.audioUrl,
+      contentType: currentSlide?.content?.type,
+      contentTitle: currentSlide?.content?.title,
+      contentBullets: currentSlide?.content?.bullets
+    })
   }, [currentSlideIndex, currentSlide, onSlideChange])
 
   // Handle slide interactions

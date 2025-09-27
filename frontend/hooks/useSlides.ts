@@ -44,7 +44,10 @@ export function useSlides(
       const fetchedSlides = await slidesService.getLessonSlides(lessonId, theme)
       console.log('Fetched slides:', fetchedSlides)
 
+      // تحقق من وجود الشرائح
       if (fetchedSlides.length === 0) {
+        console.warn('No slides received from backend')
+
         // Create a default welcome slide if no slides exist
         const defaultSlide: Slide = {
           id: 'default-1',
@@ -74,7 +77,21 @@ export function useSlides(
           console.warn('Could not generate slide:', genError)
         }
       } else {
-        setSlides(fetchedSlides)
+        // تحقق من وجود audioUrl لكل شريحة
+        const slidesWithAudio = fetchedSlides.map((slide, index) => {
+          if (!slide.audioUrl) {
+            console.warn(`Slide ${slide.id || index} has no audio`)
+          }
+          console.log(`Slide ${index}:`, {
+            hasContent: !!slide.content,
+            hasBullets: !!(slide.content?.bullets),
+            hasAudio: !!slide.audioUrl,
+            contentType: slide.content?.type
+          })
+          return slide
+        })
+
+        setSlides(slidesWithAudio)
 
         // Preload next slides
         if (preloadNext > 0 && fetchedSlides.length > 1) {

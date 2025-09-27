@@ -39,14 +39,27 @@ export const SlideRenderer: React.FC<SlideRendererProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  // Check if slide and content exist
-  if (!slide || !slide.content) {
+  // Check if slide exists
+  if (!slide) {
     return <EmptySlide message="لا توجد بيانات للعرض" />
   }
 
   // Render slide based on type
   const renderSlideContent = () => {
     const { content } = slide
+
+    // إذا لم يكن هناك محتوى، استخدم HTML مباشرة
+    if (!content || (!content.title && !content.content && !content.bullets && content.type !== 'quiz')) {
+      if (slide.html) {
+        return (
+          <div
+            className="slide-html-content w-full h-full"
+            dangerouslySetInnerHTML={{ __html: slide.html }}
+          />
+        )
+      }
+      return <EmptySlide message="لا توجد بيانات للعرض" />
+    }
 
     switch (content.type) {
       case 'title':
