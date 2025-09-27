@@ -65,8 +65,47 @@ export class ChatService {
 
       // Use RAG if lesson context is available
       let ragContext = '';
+      let lessonContent = '';
+
       if (context?.lessonId) {
         try {
+          // Get lesson content from database
+          const lesson = await prisma.lesson.findUnique({
+            where: { id: context.lessonId },
+            include: {
+              content: true,
+              unit: {
+                include: {
+                  subject: true
+                }
+              }
+            }
+          });
+
+          if (lesson) {
+            // Build lesson content context
+            if (lesson.content?.fullText) {
+              lessonContent = `محتوى الدرس: ${lesson.content.fullText.substring(0, 500)}...\n`;
+            }
+            if (lesson.content?.summary) {
+              lessonContent += `ملخص الدرس: ${lesson.content.summary}\n`;
+            }
+            if (lesson.content?.keyPoints) {
+              const keyPoints = typeof lesson.content.keyPoints === 'string'
+                ? JSON.parse(lesson.content.keyPoints)
+                : lesson.content.keyPoints;
+              if (Array.isArray(keyPoints)) {
+                lessonContent += `النقاط الرئيسية:\n${keyPoints.map((p, i) => `${i+1}. ${p}`).join('\n')}\n`;
+              }
+            }
+
+            // Update context with lesson info
+            context.lessonTitle = lesson.titleAr || lesson.title;
+            context.subject = lesson.unit?.subject?.nameAr || lesson.unit?.subject?.name || '';
+            context.unit = (lesson.unit as any)?.nameAr || (lesson.unit as any)?.name || '';
+          }
+
+          // Try RAG service
           const ragResponse = await ragService.answerQuestion(
             message,
             context.lessonId,
@@ -81,8 +120,8 @@ ${ragResponse.sources.map((source, i) => `${i+1}. ${source.chunk?.text || source
 إجابة مقترحة من المحتوى: ${ragResponse.answer}
 `;
           }
-        } catch (ragError) {
-          console.warn('RAG service error:', ragError);
+        } catch (error) {
+          console.warn('Context retrieval error:', error);
         }
       }
 
@@ -96,13 +135,16 @@ ${ragResponse.sources.map((source, i) => `${i+1}. ${source.chunk?.text || source
 - الدرس: ${context?.lesson || context?.lessonTitle || 'غير محدد'}
 - الصف: ${context?.grade || 6}
 
+${lessonContent}
+
 ${ragContext}
 
 تعليمات:
-1. استخدم المصادر المتاحة من الدرس عند الإجابة
+1. استخدم محتوى الدرس المتاح عند الإجابة
 2. أجب بطريقة بسيطة ومناسبة لمستوى الطالب
 3. احتفظ بالسياق من المحادثة السابقة
-4. إذا لم تجد إجابة في المصادر، قدم مساعدة عامة مفيدة`;
+4. اربط إجابتك بالمحتوى الفعلي للدرس
+5. إذا السؤال خارج نطاق الدرس، اذكر ذلك واعرض مساعدة في الدرس الحالي`;
 
         const messages = [
           { role: 'system', content: systemPrompt },

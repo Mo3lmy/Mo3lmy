@@ -27,7 +27,7 @@ const safeParseJSON = (data: any, fallback: any = null) => {
  */
 router.get(
   '/lessons/:lessonId/tips',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -36,9 +36,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let tips: string[] = [];
@@ -67,7 +68,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/stories',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -76,9 +77,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let stories: any[] = [];
@@ -107,7 +109,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/mistakes',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -116,9 +118,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let mistakes: any[] = [];
@@ -147,7 +150,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/applications',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -156,9 +159,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let applications: any[] = [];
@@ -187,7 +191,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/fun-facts',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -196,9 +200,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let funFacts: any[] = [];
@@ -227,7 +232,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/challenges',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -236,9 +241,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let challenges: any[] = [];
@@ -267,7 +273,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/visual-aids',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -276,9 +282,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let visualAids: any[] = [];
@@ -307,7 +314,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/all',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
 
     const lesson = await prisma.lesson.findUnique({
@@ -316,9 +323,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let educationalContent: any = {
@@ -374,7 +382,7 @@ router.get(
  */
 router.get(
   '/lessons/:lessonId/random',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
     const { type } = req.query as { type?: string };
 
@@ -384,9 +392,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No content found for this lesson')
       );
+      return;
     }
 
     let randomItem: any = null;
@@ -427,9 +436,10 @@ router.get(
     }
 
     if (!randomItem) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No educational content available')
       );
+      return;
     }
 
     res.json(

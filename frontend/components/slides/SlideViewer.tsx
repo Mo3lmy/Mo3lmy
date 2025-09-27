@@ -23,7 +23,7 @@ interface SlideViewerProps {
     gender?: string
     theme?: string
   }
-  onSlideChange?: (slideIndex: number) => void
+  onSlideChange?: (slideIndex: number, topic?: string) => void
   onComplete?: () => void
   onInteraction?: (type: string, data: any) => void
   className?: string
@@ -85,9 +85,10 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
 
   // Track slide changes
   useEffect(() => {
-    onSlideChange?.(currentSlideIndex)
+    const topic = currentSlide?.content?.title || currentSlide?.content?.type || ''
+    onSlideChange?.(currentSlideIndex, topic)
     setViewStartTime(Date.now())
-  }, [currentSlideIndex, onSlideChange])
+  }, [currentSlideIndex, currentSlide, onSlideChange])
 
   // Handle slide interactions
   const handleSlideInteraction = (type: string, data: any) => {

@@ -9,13 +9,13 @@ interface VoiceWaveformProps {
 
 export function VoiceWaveform({ isActive, className }: VoiceWaveformProps) {
   const bars = 20
-  const barVariants = {
+  const barVariants: any = {
     active: {
       height: [10, 40, 10],
       transition: {
         duration: 1,
         repeat: Infinity,
-        repeatType: 'reverse' as const,
+        repeatType: 'reverse',
         ease: 'easeInOut'
       }
     },

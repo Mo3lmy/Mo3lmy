@@ -1014,11 +1014,27 @@ export class StudentProgressService {
     });
     
     if (!existing) {
+      // Get achievement details if table exists
+      let achievement: any = null;
+      try {
+        achievement = await (prisma as any).achievement?.findUnique({
+          where: { id: achievementId }
+        });
+      } catch (e) {
+        // Achievement table might not exist
+        console.warn('Achievement table not found:', e);
+      }
+
       await prisma.userAchievement.create({
         data: {
           userId,
           achievementId,
-          points: 100, // Default points
+          points: achievement?.points || 100,
+          title: achievement?.nameAr || achievement?.name || 'إنجاز جديد',
+          description: achievement?.descriptionAr || achievement?.description || 'لقد حققت إنجازًا رائعًا!',
+          icon: achievement?.icon,
+          category: achievement?.category,
+          rarity: achievement?.rarity || 'common',
           unlockedAt: new Date()
         }
       });

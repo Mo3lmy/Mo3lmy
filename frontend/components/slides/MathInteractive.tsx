@@ -235,7 +235,7 @@ export const MathInteractive: React.FC<MathInteractiveProps> = ({
             className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             title="آلة حاسبة"
           >
-            <Calculator className="w-5 h-5" />
+            <Calculator className="w-5 h-5" {...({} as any)} />
           </button>
 
           {isCorrect === null && (

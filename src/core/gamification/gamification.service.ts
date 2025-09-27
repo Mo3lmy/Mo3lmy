@@ -561,6 +561,8 @@ export class GamificationService {
           userId,
           achievementId: badgeId,
           points: 100, // Default points for badges
+          title: 'إنجاز جديد',
+          description: 'لقد حصلت على إنجاز جديد!',
           unlockedAt: new Date(),
         }
       });

@@ -74,7 +74,7 @@ export const validateQuery = (schema: ZodSchema) => {
     try {
       const validated = await schema.parseAsync(req.query);
       // Instead of replacing req.query, merge the validated values
-      Object.keys(validated).forEach(key => {
+      Object.keys(validated as object).forEach(key => {
         (req.query as any)[key] = (validated as any)[key];
       });
       next();

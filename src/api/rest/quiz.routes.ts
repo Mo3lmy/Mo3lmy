@@ -32,7 +32,7 @@ router.post(
   '/start',
   authenticate,
   validateBody(startQuizSchema),
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId, questionCount } = req.body;
     
     const session = await quizService.startQuizAttempt(
@@ -56,7 +56,7 @@ router.post(
   '/answer',
   authenticate,
   validateBody(submitAnswerSchema),
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { attemptId, questionId, answer, timeSpent } = req.body;
     
     const isCorrect = await quizService.submitAnswer(
@@ -84,7 +84,7 @@ router.post(
   '/complete/:attemptId',
   authenticate,
   validateParams(z.object({ attemptId: z.string().min(1) })),  // ✅ تم التعديل
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const result = await quizService.completeQuiz(req.params.attemptId);
     
     res.json(
@@ -104,7 +104,7 @@ router.get(
   validateQuery(z.object({
     lessonId: z.string().optional(),  // ✅ تم التعديل - أزلت .uuid()
   })),
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.query as any;
     
     const history = await quizService.getUserQuizHistory(
@@ -127,7 +127,7 @@ router.get(
   '/statistics/:lessonId',
   authenticate,
   validateParams(z.object({ lessonId: z.string().min(1) })),  // ✅ تم التعديل
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const stats = await quizService.getQuizStatistics(req.params.lessonId);
     
     res.json(
@@ -149,7 +149,7 @@ router.post(
     count: z.number().min(1).max(20).default(5),
     difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']).optional(),
   })),
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId, count, difficulty } = req.body;
 
     const questions = await quizService.generateQuizQuestions(
@@ -173,7 +173,7 @@ router.post(
 router.get(
   '/lessons/:lessonId/exercises',
   authenticate,
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { lessonId } = req.params;
     const { difficulty, count = '10' } = req.query as { difficulty?: string; count?: string };
 
@@ -183,9 +183,10 @@ router.get(
     });
 
     if (!lesson?.content) {
-      return res.status(404).json(
+      res.status(404).json(
         errorResponse('NO_CONTENT', 'No exercises found for this lesson')
       );
+      return;
     }
 
     // Parse and return exercises
@@ -251,7 +252,7 @@ router.get(
 router.get(
   '/progress',
   authenticate,
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const progress = await progressService.getUserProgress(req.user!.userId);
     
     res.json(
@@ -271,7 +272,7 @@ router.get(
   validateQuery(z.object({
     subjectId: z.string().optional(),  // ✅ تم التعديل - أزلت .uuid()
   })),
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     console.log('[ANALYTICS] Request received');
     const { subjectId } = req.query as any;
     console.log('[ANALYTICS] Parameters:', { userId: req.user!.userId, subjectId });
@@ -301,7 +302,7 @@ router.get(
     grade: z.string().transform(Number).optional(),
     limit: z.string().default('10').transform(Number).pipe(z.number()),
   })),
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
     console.log('[LEADERBOARD] Request received');
     const { subjectId, grade, limit } = req.query as any;
     console.log('[LEADERBOARD] Parameters:', { subjectId, grade: grade, gradeType: typeof grade, limit, limitType: typeof limit });

@@ -591,7 +591,7 @@ export class TeachingAssistantService {
       
       'repeat': () => ({
         script: this.rephraseConcept(
-          options.previousScript || options.slideContent.content,
+          options.previousScript || options.slideContent?.content || '',
           level,
           profile.learningStyle
         ),
@@ -731,7 +731,7 @@ export class TeachingAssistantService {
     profile: StudentProfile
   ): Promise<string> {
     const questions = [
-      `إيه اللي تعرفه عن ${slideContent.title}؟`,
+      `إيه اللي تعرفه عن ${slideContent?.title || 'الموضوع ده'}؟`,
       `ليه تفتكر ده مهم؟`,
       `ممكن تديني مثال من حياتك؟`,
       `إيه اللي ممكن يحصل لو...؟`,
@@ -799,7 +799,7 @@ export class TeachingAssistantService {
     const hintLevel = Math.min(mistakeHistory.length, 3);
     
     const hints = [
-      `تلميح بسيط: فكر في ${slideContent.title} كأنه...`,
+      `تلميح بسيط: فكر في ${slideContent?.title || 'الموضوع'} كأنه...`,
       `تلميح أوضح: الخطوة الأولى هي...`,
       `تلميح مباشر: استخدم القاعدة دي...`
     ];
@@ -816,10 +816,10 @@ export class TeachingAssistantService {
     profile: StudentProfile
   ): Promise<string> {
     const checks = [
-      `ممكن تشرحلي ${slideContent.title} بكلماتك؟`,
-      `لو صاحبك سألك عن ${slideContent.title}، هتقوله إيه؟`,
+      `ممكن تشرحلي ${slideContent?.title || 'ده'} بكلماتك؟`,
+      `لو صاحبك سألك عن ${slideContent?.title || 'الموضوع ده'}، هتقوله إيه؟`,
       `إيه أهم حاجة فهمتها؟`,
-      `فين ممكن نستخدم ${slideContent.title}؟`
+      `فين ممكن نستخدم ${slideContent?.title || 'اللي تعلمناه'}؟`
     ];
     
     const selected = checks[Math.floor(Math.random() * checks.length)];
@@ -843,7 +843,7 @@ export class TeachingAssistantService {
     const adjustedDifficulty = this.adjustDifficultyForStudent(difficulty, profile);
     
     const prompt = `Generate a ${adjustedDifficulty} math problem for a ${level} student.
-Topic: ${slideContent.title || slideContent.content}
+Topic: ${slideContent?.title || slideContent?.content || 'math topic'}
 Student strengths: ${profile.strengths.join(', ')}
 Student weaknesses: ${profile.weaknesses.join(', ')}
 Learning style: Visual=${profile.learningStyle.visual}, Kinesthetic=${profile.learningStyle.kinesthetic}
@@ -900,7 +900,7 @@ Return JSON format:
       };
       
     } catch (error) {
-      return this.createAdaptiveFallbackProblem(slideContent.title, level, adjustedDifficulty, profile);
+      return this.createAdaptiveFallbackProblem(slideContent?.title || 'المسألة', level, adjustedDifficulty, profile);
     }
   }
   
@@ -1016,13 +1016,13 @@ Return JSON format:
           learningObjectives: [],
           prerequisites: [],
           commonMisconceptions: [],
-          // 🆕 New enriched fields
-          realWorldApplications: [],
-          studentTips: [],
-          educationalStories: [],
-          commonMistakes: [],
-          funFacts: [],
-          challenges: []
+          // 🆕 New enriched fields (commented out - not in interface)
+          // realWorldApplications: [],
+          // studentTips: [],
+          // educationalStories: [],
+          // commonMistakes: [],
+          // funFacts: [],
+          // challenges: []
         };
       }
 
@@ -1063,9 +1063,9 @@ Return JSON format:
       }
 
       // Use RAG for additional context if needed
-      if (!enrichedData && (slideContent.title || slideContent.content)) {
+      if (!enrichedData && (slideContent?.title || slideContent?.content)) {
         try {
-          const query = `${slideContent.title || ''} ${slideContent.content || ''}`.trim();
+          const query = `${slideContent?.title || ''} ${slideContent?.content || ''}`.trim();
           const ragResponse = await ragService.answerQuestion(query, lessonId);
           enrichedData = ragResponse.answer;
         } catch (error) {
@@ -1088,13 +1088,13 @@ Return JSON format:
         learningObjectives,
         prerequisites,
         commonMisconceptions,
-        // 🆕 Include enriched fields
-        realWorldApplications,
-        studentTips,
-        educationalStories,
-        commonMistakes,
-        funFacts,
-        challenges
+        // 🆕 Include enriched fields (commented out - not in interface)
+        // realWorldApplications,
+        // studentTips,
+        // educationalStories,
+        // commonMistakes,
+        // funFacts,
+        // challenges
       };
       
     } catch (error) {
@@ -1164,10 +1164,10 @@ Return JSON format:
     const misconceptions = [];
     
     // Math-specific misconceptions
-    if (slideContent.title?.includes('كسور')) {
+    if (slideContent?.title?.includes('كسور')) {
       misconceptions.push('الكسر الأكبر في البسط هو الأكبر دائماً');
     }
-    if (slideContent.title?.includes('معادلة')) {
+    if (slideContent?.title?.includes('معادلة')) {
       misconceptions.push('نقل الأعداد بدون تغيير الإشارة');
     }
     
@@ -1244,10 +1244,10 @@ ${context.studentProgress ? `التقدم: ${context.studentProgress.averageScor
 
 📚 محتوى الشريحة:
 ================
-العنوان: ${slideContent.title || 'بدون عنوان'}
-المحتوى: ${slideContent.content || 'محتوى الدرس'}
-${slideContent.bullets ? `النقاط: ${slideContent.bullets.join(', ')}` : ''}
-${slideContent.equation ? `المعادلة: ${slideContent.equation}` : ''}
+العنوان: ${slideContent?.title || 'بدون عنوان'}
+المحتوى: ${slideContent?.content || 'محتوى الدرس'}
+${slideContent?.bullets ? `النقاط: ${slideContent.bullets.join(', ')}` : ''}
+${slideContent?.equation ? `المعادلة: ${slideContent.equation}` : ''}
 
 🎯 الأهداف التعليمية:
 ================
@@ -1839,7 +1839,7 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
       script,
       duration: Math.ceil(script.split(/\s+/).length / 2) + 3,
       emotionalTone: 'encouraging',
-      keyPoints: slideContent.bullets || [],
+      keyPoints: slideContent?.bullets || [],
       nextSuggestions: ['example', 'more_detail', 'motivate'],
       adaptiveElements: {
         emotionalSupport: ['أنت قادر', 'معاك خطوة بخطوة']
@@ -1936,9 +1936,9 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
     const interest = profile.interests[0] || 'الرياضة';
     
     const examples = {
-      'primary': `تخيل لو ${slideContent.title} ده زي ${interest}...`,
-      'prep': `مثال من ${interest}: ${slideContent.title}...`,
-      'secondary': `تطبيق ${slideContent.title} في ${interest}:`
+      'primary': `تخيل لو ${slideContent?.title || 'الموضوع'} ده زي ${interest}...`,
+      'prep': `مثال من ${interest}: ${slideContent?.title || 'الدرس'}...`,
+      'secondary': `تطبيق ${slideContent?.title || 'المفهوم'} في ${interest}:`
     };
     
     return examples[level];
@@ -1956,7 +1956,7 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
       ? 'medium' : 'easy';
     
     return {
-      question: `${profile.name ? `يا ${profile.name}، ` : ''}لو عندك ${slideContent.title || 'المسألة دي'}، إيه الحل؟`,
+      question: `${profile.name ? `يا ${profile.name}، ` : ''}لو عندك ${slideContent?.title || 'المسألة دي'}، إيه الحل؟`,
       hints: ['فكر في القاعدة', 'جرب خطوة خطوة', 'راجع المثال'],
       difficulty: difficulty as any
     };
@@ -1971,9 +1971,9 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
     profile: StudentProfile
   ): string {
     const questions = {
-      'primary': `سؤال سريع ${profile.name ? `يا ${profile.name}` : ''}: إيه اللي فهمته عن ${slideContent.title}؟`,
-      'prep': `اختبر نفسك: ${slideContent.title} بيستخدم في إيه؟`,
-      'secondary': `تحليل: كيف يمكن تطوير ${slideContent.title}؟`
+      'primary': `سؤال سريع ${profile.name ? `يا ${profile.name}` : ''}: إيه اللي فهمته عن ${slideContent?.title || 'الدرس'}؟`,
+      'prep': `اختبر نفسك: ${slideContent?.title || 'هذا'} بيستخدم في إيه؟`,
+      'secondary': `تحليل: كيف يمكن تطوير ${slideContent?.title || 'هذا المفهوم'}؟`
     };
     
     return questions[level];

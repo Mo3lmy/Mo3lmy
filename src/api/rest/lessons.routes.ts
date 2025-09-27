@@ -57,7 +57,15 @@ const voiceGenerationSchema = z.object({
 
 // Teaching script generation schema
 const teachingScriptSchema = z.object({
-  slideContent: z.any(),
+  slideContent: z.object({
+    type: z.string().optional(),
+    title: z.string().optional(),
+    subtitle: z.string().optional(),
+    content: z.string().optional(),
+    bullets: z.array(z.string()).optional(),
+    quiz: z.any().optional(),
+    metadata: z.any().optional()
+  }).optional(),
   generateVoice: z.boolean().optional(),
   options: z.object({
     voiceStyle: z.enum(['friendly', 'formal', 'energetic']).optional(),
@@ -142,21 +150,73 @@ router.post(
       return;
     }
     
+    // Check if slideContent is provided, if not try to get it from slideId or slideIndex
+    let slideContent = data.slideContent;
+
+    // If slideId or slideIndex is provided instead of slideContent, create default content
+    if (!slideContent && (req.body.slideId || req.body.slideIndex !== undefined)) {
+      try {
+        // Get lesson with content to extract slides
+        const lesson = await prisma.lesson.findUnique({
+          where: { id },
+          include: { content: true }
+        });
+
+        if (!lesson?.content) {
+          res.status(404).json(
+            errorResponse('LESSON_NOT_FOUND', 'الدرس غير موجود')
+          );
+          return;
+        }
+
+        // Create a default slide content based on lesson
+        slideContent = {
+          type: 'content',
+          title: lesson.titleAr || lesson.title,
+          content: lesson.content.summary || lesson.description || 'محتوى الدرس',
+          bullets: []
+        };
+
+        // Try to get key points
+        if (lesson.keyPoints) {
+          try {
+            const keyPoints = typeof lesson.keyPoints === 'string'
+              ? JSON.parse(lesson.keyPoints)
+              : lesson.keyPoints;
+            if (Array.isArray(keyPoints)) {
+              slideContent.bullets = keyPoints;
+            }
+          } catch (e) {
+            console.warn('Failed to parse key points:', e);
+          }
+        }
+
+      } catch (error) {
+        console.error('Error fetching slide content:', error);
+        slideContent = {
+          type: 'content',
+          title: 'محتوى الدرس',
+          content: 'شرح الدرس',
+          bullets: []
+        };
+      }
+    }
+
     // Validate slideContent exists
-    if (!data.slideContent) {
+    if (!slideContent) {
       res.status(400).json(
         errorResponse('MISSING_SLIDE_CONTENT', 'محتوى الشريحة مطلوب')
       );
       return;
     }
 
-    console.log('🎓 Generating teaching script for lesson:', id, 'with content:', JSON.stringify(data.slideContent, null, 2));
+    console.log('🎓 Generating teaching script for lesson:', id, 'with content:', JSON.stringify(slideContent, null, 2));
 
     // Generate teaching script with error handling
     let teachingScript;
     try {
       teachingScript = await teachingAssistant.generateTeachingScript({
-        slideContent: data.slideContent,
+        slideContent,
         lessonId: id,
         studentGrade: user.grade || 6,
         studentName: user.firstName || 'الطالب',
@@ -177,7 +237,7 @@ router.post(
 
       // Return a fallback script
       teachingScript = {
-        script: `مرحباً ${user.firstName || 'بالطالب'}، دعنا نتعلم عن ${data.slideContent.title || 'هذا الموضوع'}`,
+        script: `مرحباً ${user.firstName || 'بالطالب'}، دعنا نتعلم عن ${slideContent?.title || 'هذا الموضوع'}`,
         duration: 10,
         keyPoints: [],
         examples: [],
@@ -870,17 +930,22 @@ router.get(
       });
     }
 
-    // 5. Examples slide (using new example type)
+    // 5. Examples slides - create a slide for each example
     if (enrichedData?.examples && enrichedData.examples.length > 0) {
-      const examples = enrichedData.examples.slice(0, 5);
-      slides.push({
-        type: 'example',
-        title: 'أمثلة تطبيقية',
-        bullets: examples.map((ex: any) =>
-          typeof ex === 'string' ? ex : ex.title || ex.description || 'مثال تطبيقي'
-        ),
-        metadata: { duration: 12 },
-        personalization
+      enrichedData.examples.slice(0, 3).forEach((example: any, index: number) => {
+        if (example.problem && example.solution) {
+          slides.push({
+            type: 'example',
+            title: example.type || `مثال ${index + 1}`,
+            content: example.problem,
+            bullets: [
+              `الحل: ${example.solution}`,
+              example.explanation ? `الشرح: ${example.explanation}` : null
+            ].filter(Boolean) as string[],
+            metadata: { duration: 10 },
+            personalization
+          });
+        }
       });
     }
 
@@ -907,31 +972,40 @@ router.get(
       });
     }
 
-    // 8. Practice exercise/quiz
+    // 8. Practice exercises/quiz slides
     if (enrichedData?.exercises && enrichedData.exercises.length > 0) {
-      const exercise = enrichedData.exercises[0];
-      if (exercise.type === 'multiple_choice' && exercise.options) {
-        slides.push({
-          type: 'quiz',
-          title: 'تمرين تطبيقي',
-          quiz: {
-            question: exercise.question,
-            options: exercise.options,
-            correctIndex: exercise.correctAnswer || 0,
-            explanation: exercise.explanation
-          },
-          metadata: { duration: 20 },
-          personalization
-        });
-      } else {
-        slides.push({
-          type: 'content',
-          title: 'تمرين تطبيقي',
-          content: exercise.question || exercise.description || 'تمرين للتطبيق',
-          metadata: { duration: 15 },
-          personalization
-        });
-      }
+      enrichedData.exercises.slice(0, 2).forEach((exercise: any, index: number) => {
+        if (exercise.type === 'MCQ' && exercise.options) {
+          // Extract clean options without أ) ب) ج) د)
+          const cleanOptions = exercise.options.map((opt: string) =>
+            opt.replace(/^[أ-د]\)\s*/, '')
+          );
+
+          // Convert Arabic letter answer to index
+          const answerIndex = ['أ', 'ب', 'ج', 'د'].indexOf(exercise.correctAnswer?.charAt(0) || 'أ');
+
+          slides.push({
+            type: 'quiz',
+            title: `تمرين ${index + 1}`,
+            quiz: {
+              question: exercise.question,
+              options: cleanOptions,
+              correctIndex: answerIndex >= 0 ? answerIndex : 0,
+              explanation: exercise.explanation
+            },
+            metadata: { duration: 20 },
+            personalization
+          });
+        } else {
+          slides.push({
+            type: 'content',
+            title: `تمرين ${index + 1}`,
+            content: exercise.question || 'تمرين تطبيقي',
+            metadata: { duration: 15 },
+            personalization
+          });
+        }
+      });
     }
 
     // 9. Student tips (using new tips type)
