@@ -24,10 +24,12 @@ interface AssistantPanelProps {
   lessonTitle?: string
   subject?: string
   grade?: number
+  currentSlideIndex?: number
+  currentTopic?: string
   onNewMessage?: () => void
 }
 
-export function AssistantPanel({ lessonId, onClose, lessonTitle, subject, grade, onNewMessage }: AssistantPanelProps) {
+export function AssistantPanel({ lessonId, onClose, lessonTitle, subject, grade, currentSlideIndex, currentTopic, onNewMessage }: AssistantPanelProps) {
   const [activeTab, setActiveTab] = useState<'chat' | 'qa' | 'notes' | 'resources'>('chat')
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium')
   const [messages, setMessages] = useState<Message[]>([
@@ -43,18 +45,45 @@ export function AssistantPanel({ lessonId, onClose, lessonTitle, subject, grade,
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
-  const [suggestions] = useState([
+  const [suggestions, setSuggestions] = useState([
     'اشرح لي الدرس',
     'أعطني مثال',
     'اختبرني',
     'ما هي النقاط المهمة؟'
   ])
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Update suggestions when slide context changes
+  useEffect(() => {
+    if (lessonId && (currentSlideIndex !== undefined || currentTopic)) {
+      loadSmartSuggestions()
+    }
+  }, [lessonId, currentSlideIndex, currentTopic])
+
+  const loadSmartSuggestions = async () => {
+    try {
+      setLoadingSuggestions(true)
+      const params = new URLSearchParams()
+      if (lessonId) params.append('lessonId', lessonId)
+      if (currentSlideIndex !== undefined) params.append('slideIndex', currentSlideIndex.toString())
+      if (currentTopic) params.append('currentTopic', currentTopic)
+
+      const response = await apiService.getChatSuggestions(params.toString())
+      if (response?.data && Array.isArray(response.data)) {
+        setSuggestions(response.data)
+      }
+    } catch (error) {
+      console.error('Failed to load smart suggestions:', error)
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }
 
   useEffect(() => {
     // Connect to WebSocket
@@ -410,28 +439,50 @@ export function AssistantPanel({ lessonId, onClose, lessonTitle, subject, grade,
 
               {/* Input */}
               <div className="border-t border-white/10 p-4">
-                {/* Quick Suggestions */}
-                {messages.length === 1 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {suggestions.map((suggestion, index) => (
-                      <motion.button
-                        key={index}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        onClick={() => {
-                          setInputValue(suggestion)
-                          inputRef.current?.focus()
-                        }}
-                        className="px-3 py-1.5 text-sm bg-primary-500/20 hover:bg-primary-500/30
-                                 text-primary-300 border border-primary-500/30 rounded-full
-                                 transition-all hover:scale-105"
-                      >
-                        {suggestion}
-                      </motion.button>
-                    ))}
+                {/* Smart Suggestions */}
+                <div className="mb-3">
+                  {/* Context info */}
+                  {(currentSlideIndex !== undefined || currentTopic) && (
+                    <div className="flex items-center gap-2 mb-2 text-xs text-gray-400">
+                      {currentSlideIndex !== undefined && (
+                        <span>شريحة {currentSlideIndex + 1}</span>
+                      )}
+                      {currentTopic && (
+                        <span className="bg-primary-500/20 px-2 py-1 rounded-full">
+                          {currentTopic}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Suggestions */}
+                  <div className="flex flex-wrap gap-2">
+                    {loadingSuggestions ? (
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <div className="w-4 h-4 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+                        جاري تحديث الاقتراحات...
+                      </div>
+                    ) : (
+                      suggestions.map((suggestion, index) => (
+                        <motion.button
+                          key={`${suggestion}-${index}`}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          onClick={() => {
+                            setInputValue(suggestion)
+                            inputRef.current?.focus()
+                          }}
+                          className="px-3 py-1.5 text-sm bg-primary-500/20 hover:bg-primary-500/30
+                                   text-primary-300 border border-primary-500/30 rounded-full
+                                   transition-all hover:scale-105"
+                        >
+                          {suggestion}
+                        </motion.button>
+                      ))
+                    )}
                   </div>
-                )}
+                </div>
 
                 <div className="flex gap-2">
                   <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">

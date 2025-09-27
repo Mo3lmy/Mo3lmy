@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار الشرائح</title>
+    <style>
+        body {
+            font-family: 'Cairo', 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f7f7f7;
+            border-radius: 10px;
+        }
+        .test-section h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .slide-preview {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+            height: 400px;
+            position: relative;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #5a67d8;
+        }
+        #slideContent {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 اختبار نظام الشرائح التفاعلية</h1>
+
+        <div class="test-section">
+            <h2>1. اختبار الاتصال بـ Backend</h2>
+            <button onclick="testBackend()">اختبار Backend</button>
+            <div id="backendStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. اختبار جلب الشرائح</h2>
+            <button onclick="testSlides()">جلب الشرائح</button>
+            <div id="slidesStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. معاينة الشريحة</h2>
+            <div id="slideInfo"></div>
+            <div class="slide-preview">
+                <div id="slideContent"></div>
+            </div>
+            <div style="margin-top: 10px;">
+                <button onclick="previousSlide()">السابق</button>
+                <button onclick="nextSlide()">التالي</button>
+                <span id="slideCounter"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let slides = [];
+        let currentSlideIndex = 0;
+        let token = '';
+
+        // الحصول على Token
+        async function getToken() {
+            try {
+                const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'slidetest@example.com',
+                        password: 'Test123!@#'
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    token = data.data.token;
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Login error:', error);
+                return false;
+            }
+        }
+
+        // اختبار Backend
+        async function testBackend() {
+            const statusDiv = document.getElementById('backendStatus');
+            statusDiv.innerHTML = '<div class="status">جاري الاختبار...</div>';
+
+            try {
+                // Login first
+                const loginSuccess = await getToken();
+                if (!loginSuccess) {
+                    throw new Error('فشل تسجيل الدخول');
+                }
+
+                const response = await fetch('http://localhost:3001/api/v1/lessons/test');
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Backend يعمل بنجاح!<br>
+                            عدد الدروس: ${data.data.length}
+                        </div>
+                    `;
+                } else {
+                    throw new Error('فشل في الاتصال');
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ خطأ: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // اختبار جلب الشرائح
+        async function testSlides() {
+            const statusDiv = document.getElementById('slidesStatus');
+            statusDiv.innerHTML = '<div class="status">جاري جلب الشرائح...</div>';
+
+            try {
+                if (!token) {
+                    const loginSuccess = await getToken();
+                    if (!loginSuccess) {
+                        throw new Error('يجب تسجيل الدخول أولاً');
+                    }
+                }
+
+                const response = await fetch('http://localhost:3001/api/v1/lessons/LESSON_1758905299464_qjan5xlid/slides', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+                console.log('Slides response:', data);
+
+                if (data.success && data.data.slides) {
+                    slides = data.data.slides;
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ تم جلب الشرائح بنجاح!<br>
+                            عدد الشرائح: ${slides.length}<br>
+                            الدرس: ${data.data.lessonTitle}
+                        </div>
+                    `;
+
+                    // عرض الشريحة الأولى
+                    displaySlide(0);
+                } else {
+                    throw new Error('لا توجد شرائح');
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ خطأ: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // عرض الشريحة
+        function displaySlide(index) {
+            if (slides.length === 0) {
+                document.getElementById('slideContent').innerHTML = '<p>لا توجد شرائح للعرض</p>';
+                return;
+            }
+
+            if (index < 0 || index >= slides.length) return;
+
+            currentSlideIndex = index;
+            const slide = slides[index];
+
+            // عرض معلومات الشريحة
+            document.getElementById('slideInfo').innerHTML = `
+                <strong>النوع:</strong> ${slide.type} |
+                <strong>العنوان:</strong> ${slide.title || 'بدون عنوان'} |
+                <strong>المدة:</strong> ${slide.duration} ثانية
+            `;
+
+            // عرض محتوى الشريحة
+            document.getElementById('slideContent').innerHTML = slide.html;
+
+            // تحديث العداد
+            document.getElementById('slideCounter').textContent =
+                `${index + 1} / ${slides.length}`;
+        }
+
+        // التنقل بين الشرائح
+        function nextSlide() {
+            if (currentSlideIndex < slides.length - 1) {
+                displaySlide(currentSlideIndex + 1);
+            }
+        }
+
+        function previousSlide() {
+            if (currentSlideIndex > 0) {
+                displaySlide(currentSlideIndex - 1);
+            }
+        }
+
+        // تشغيل الاختبار عند التحميل
+        window.onload = async () => {
+            await testBackend();
+            await testSlides();
+        };
+    </script>
+</body>
+</html>

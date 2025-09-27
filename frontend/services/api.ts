@@ -127,6 +127,23 @@ class ApiService {
     // Note: localStorage cleanup is primarily handled by authStore
   }
 
+  // HTTP methods helpers
+  async get(url: string, config?: any) {
+    return this.api.get(url, config)
+  }
+
+  async post(url: string, data?: any, config?: any) {
+    return this.api.post(url, data, config)
+  }
+
+  async put(url: string, data?: any, config?: any) {
+    return this.api.put(url, data, config)
+  }
+
+  async delete(url: string, config?: any) {
+    return this.api.delete(url, config)
+  }
+
   // Auth endpoints
   async register(data: {
     email: string
@@ -344,8 +361,9 @@ class ApiService {
     return await this.api.get('/api/v1/chat/history', { params: { sessionId } })
   }
 
-  async getChatSuggestions(context?: string) {
-    return await this.api.get('/api/v1/chat/suggestions', { params: { context } })
+  async getChatSuggestions(params?: string) {
+    const url = params ? `/api/v1/chat/suggestions?${params}` : '/api/v1/chat/suggestions'
+    return await this.api.get(url)
   }
 }
 

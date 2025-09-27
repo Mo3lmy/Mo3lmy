@@ -20,6 +20,7 @@ const sendMessageSchema = z.object({
 
 const chatHistorySchema = z.object({
   lessonId: z.string().optional(),
+  sessionId: z.string().optional(),
   limit: z.string().default('50').transform(Number).pipe(z.number().min(1).max(100)),
 });
 
@@ -36,9 +37,10 @@ router.post(
     const response = await chatService.processMessage(
       req.body.message,
       req.body.context || {},
-      req.user!.userId
+      req.user!.userId,
+      req.body.sessionId
     );
-    
+
     res.json(
       successResponse(response, 'Message processed successfully')
     );
@@ -55,14 +57,15 @@ router.get(
   authenticate,
   validateQuery(chatHistorySchema),
   asyncHandler(async (req: Request, res: Response) => {
-    const { lessonId, limit } = req.query as any;
-    
+    const { lessonId, sessionId, limit } = req.query as any;
+
     const history = await chatService.getChatHistory(
       req.user!.userId,
       lessonId,
-      limit
+      limit,
+      sessionId
     );
-    
+
     res.json(
       successResponse(history, 'Chat history retrieved')
     );
@@ -129,23 +132,21 @@ router.get(
   authenticate,
   validateQuery(z.object({
     lessonId: z.string().optional(),
+    slideIndex: z.string().optional().transform(Number),
+    currentTopic: z.string().optional(),
   })),
   asyncHandler(async (req: Request, res: Response) => {
-    const { lessonId } = req.query as any;
-    
-    // Generate contextual suggestions
-    // cspell:disable
-    const suggestions = [
-      'ما هو موضوع الدرس؟',
-      'هل يمكنك شرح هذا بطريقة أبسط؟',
-      'أعطني مثال على هذا',
-      'هل هناك تمارين للممارسة؟',
-      'ما هي النقاط المهمة في هذا الدرس؟',
-    ];
-    // cspell:enable
-    
+    const { lessonId, slideIndex, currentTopic } = req.query as any;
+
+    const suggestions = await chatService.generateSmartSuggestions(
+      req.user!.userId,
+      lessonId,
+      slideIndex,
+      currentTopic
+    );
+
     res.json(
-      successResponse(suggestions, 'Suggestions retrieved')
+      successResponse(suggestions, 'Smart suggestions retrieved')
     );
   })
 );

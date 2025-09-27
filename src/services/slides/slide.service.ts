@@ -2,7 +2,7 @@
 // الوظيفة: توليد شرائح HTML جميلة وسريعة بدون puppeteer
 
 export interface SlideContent {
-  type: 'title' | 'content' | 'bullet' | 'image' | 'equation' | 'quiz' | 'summary' | 'interactive' | 'video' | 'code';
+  type: 'title' | 'content' | 'bullet' | 'image' | 'equation' | 'quiz' | 'summary' | 'interactive' | 'video' | 'code' | 'tips' | 'story' | 'example';
   title?: string;
   subtitle?: string;
   content?: string;
@@ -38,6 +38,30 @@ export interface SlideContent {
     adaptiveDifficulty?: boolean;
     voiceScript?: string;
     teachingNotes?: string;
+  };
+
+  // إضافات جديدة للتزامن الصوتي
+  syncTimestamps?: {
+    start: number;          // بداية الشريحة في الصوت
+    end: number;            // نهاية الشريحة في الصوت
+    words?: Array<{         // تزامن على مستوى الكلمات
+      word: string;
+      start: number;
+      end: number;
+    }>;
+    highlights?: Array<{    // نقاط للتركيز أثناء الشرح
+      elementId: string;
+      start: number;
+      end: number;
+    }>;
+  };
+
+  // معلومات التخصيص حسب العمر والجنس
+  personalization?: {
+    ageGroup: 'primary' | 'preparatory' | 'secondary';
+    gender: 'male' | 'female' | 'neutral';
+    learningStyle?: 'visual' | 'auditory' | 'kinesthetic';
+    difficultyLevel?: 'easy' | 'medium' | 'hard';
   };
 }
 
@@ -76,6 +100,60 @@ export class SlideService {
       backgroundColor: '#fef5e7',
       fontFamily: 'Comic Sans MS, Cairo',
       rtl: true
+    }],
+
+    // ثيمات المرحلة الابتدائية (6-12 سنة)
+    ['primary-male', {
+      name: 'primary-male',
+      primaryColor: '#4A90E2',
+      secondaryColor: '#50C878',
+      backgroundColor: '#E8F4FD',
+      fontFamily: 'Comic Sans MS, Cairo',
+      rtl: true
+    }],
+    ['primary-female', {
+      name: 'primary-female',
+      primaryColor: '#FF69B4',
+      secondaryColor: '#9370DB',
+      backgroundColor: '#FFE4F1',
+      fontFamily: 'Comic Sans MS, Cairo',
+      rtl: true
+    }],
+
+    // ثيمات المرحلة الإعدادية (13-15 سنة)
+    ['preparatory-male', {
+      name: 'preparatory-male',
+      primaryColor: '#2563EB',
+      secondaryColor: '#10B981',
+      backgroundColor: '#F0F9FF',
+      fontFamily: 'Cairo, sans-serif',
+      rtl: true
+    }],
+    ['preparatory-female', {
+      name: 'preparatory-female',
+      primaryColor: '#EC4899',
+      secondaryColor: '#8B5CF6',
+      backgroundColor: '#FDF4FF',
+      fontFamily: 'Cairo, sans-serif',
+      rtl: true
+    }],
+
+    // ثيمات المرحلة الثانوية (16-18 سنة)
+    ['secondary-male', {
+      name: 'secondary-male',
+      primaryColor: '#1F2937',
+      secondaryColor: '#059669',
+      backgroundColor: '#F9FAFB',
+      fontFamily: 'Inter, Cairo',
+      rtl: true
+    }],
+    ['secondary-female', {
+      name: 'secondary-female',
+      primaryColor: '#4B5563',
+      secondaryColor: '#BE185D',
+      backgroundColor: '#FAFAFA',
+      fontFamily: 'Inter, Cairo',
+      rtl: true
     }]
   ]);
 
@@ -106,6 +184,12 @@ export class SlideService {
         return this.generateVideoSlide(content, theme);
       case 'code':
         return this.generateCodeSlide(content, theme);
+      case 'tips':
+        return this.generateTipsSlide(content, theme);
+      case 'story':
+        return this.generateStorySlide(content, theme);
+      case 'example':
+        return this.generateExampleSlide(content, theme);
       default:
         return this.generateContentSlide(content, theme);
     }
@@ -819,6 +903,259 @@ export class SlideService {
       "'": '&#039;'
     };
     return text.replace(/[&<>"']/g, m => map[m]);
+  }
+
+  private generateTipsSlide(content: SlideContent, theme: SlideTheme): string {
+    const tips = content.bullets || [];
+    const tipHTML = tips.map((tip, index) => `
+      <div class="tip-card animate-slide-up" style="
+        animation-delay: ${index * 0.2}s;
+        background: white;
+        padding: 20px;
+        margin: 15px 0;
+        border-radius: 15px;
+        border-${theme.rtl ? 'right' : 'left'}: 5px solid ${theme.primaryColor};
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      ">
+        <div style="
+          width: 40px;
+          height: 40px;
+          background: linear-gradient(135deg, ${theme.primaryColor}, ${theme.secondaryColor});
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: 1.2em;
+        ">💡</div>
+        <div style="flex: 1; color: #2d3748; line-height: 1.6;">
+          ${tip}
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="slide slide-tips" style="
+        background: linear-gradient(135deg, ${theme.backgroundColor} 0%, white 100%);
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+      ">
+        <div style="text-align: center; margin-bottom: 40px;">
+          <div style="
+            display: inline-block;
+            background: ${theme.primaryColor};
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            margin-bottom: 20px;
+          ">
+            <span style="font-size: 2em;">💡</span>
+          </div>
+          <h2 style="
+            color: ${theme.primaryColor};
+            font-size: 2.5em;
+            margin: 0;
+          ">${content.title || 'نصائح مفيدة'}</h2>
+          ${content.subtitle ? `<p style="font-size: 1.3em; opacity: 0.8; margin-top: 10px;">${content.subtitle}</p>` : ''}
+        </div>
+        <div style="max-width: 800px; margin: 0 auto;">
+          ${tipHTML}
+        </div>
+      </div>
+    `;
+  }
+
+  private generateStorySlide(content: SlideContent, theme: SlideTheme): string {
+    return `
+      <div class="slide slide-story" style="
+        background: linear-gradient(135deg, ${theme.primaryColor}15 0%, ${theme.secondaryColor}15 100%);
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+        display: flex;
+        align-items: center;
+      ">
+        <div style="max-width: 900px; margin: 0 auto; width: 100%;">
+          <div style="
+            background: white;
+            padding: 40px;
+            border-radius: 25px;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+          ">
+            <div style="
+              position: absolute;
+              top: 0;
+              ${theme.rtl ? 'right' : 'left'}: 0;
+              width: 100%;
+              height: 5px;
+              background: linear-gradient(90deg, ${theme.primaryColor}, ${theme.secondaryColor});
+            "></div>
+
+            <div style="text-align: center; margin-bottom: 30px;">
+              <span style="font-size: 3em;">📚</span>
+              <h2 style="
+                color: ${theme.primaryColor};
+                font-size: 2.2em;
+                margin: 10px 0;
+              ">${content.title || 'قصة تعليمية'}</h2>
+            </div>
+
+            <div style="
+              font-size: 1.3em;
+              line-height: 1.8;
+              color: #4a5568;
+              text-align: justify;
+            ">
+              ${content.content || ''}
+            </div>
+
+            <div style="
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 2px dashed ${theme.primaryColor}30;
+              text-align: center;
+            ">
+              <div style="
+                background: ${theme.primaryColor}10;
+                padding: 15px;
+                border-radius: 15px;
+                font-style: italic;
+                color: ${theme.primaryColor};
+              ">
+                💭 ما الدرس المستفاد من هذه القصة؟
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private generateExampleSlide(content: SlideContent, theme: SlideTheme): string {
+    const examples = content.bullets || [];
+    const exampleHTML = examples.map((example, index) => `
+      <div class="example-card animate-fade-in" style="
+        animation-delay: ${index * 0.3}s;
+        background: white;
+        padding: 25px;
+        margin: 20px 0;
+        border-radius: 20px;
+        border: 2px solid ${theme.primaryColor}30;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+        position: relative;
+        overflow: hidden;
+      ">
+        <div style="
+          position: absolute;
+          top: 0;
+          ${theme.rtl ? 'right' : 'left'}: 0;
+          width: 4px;
+          height: 100%;
+          background: linear-gradient(180deg, ${theme.primaryColor}, ${theme.secondaryColor});
+        "></div>
+
+        <div style="
+          display: flex;
+          align-items: center;
+          gap: 15px;
+          margin-bottom: 15px;
+        ">
+          <div style="
+            background: ${theme.primaryColor};
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+          ">${index + 1}</div>
+          <h4 style="
+            color: ${theme.primaryColor};
+            margin: 0;
+            font-size: 1.2em;
+          ">مثال ${index + 1}</h4>
+        </div>
+
+        <div style="
+          color: #4a5568;
+          line-height: 1.7;
+          font-size: 1.1em;
+          margin-${theme.rtl ? 'right' : 'left'}: 50px;
+        ">
+          ${example}
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="slide slide-example" style="
+        background: ${theme.backgroundColor};
+        color: #2d3748;
+        font-family: ${theme.fontFamily};
+        direction: ${theme.rtl ? 'rtl' : 'ltr'};
+        min-height: 100vh;
+        padding: 60px;
+      ">
+        <div style="text-align: center; margin-bottom: 40px;">
+          <div style="
+            display: inline-block;
+            background: linear-gradient(135deg, ${theme.primaryColor}, ${theme.secondaryColor});
+            color: white;
+            padding: 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+          ">
+            <span style="font-size: 2.5em;">💡</span>
+          </div>
+          <h2 style="
+            color: ${theme.primaryColor};
+            font-size: 2.5em;
+            margin: 0;
+          ">${content.title || 'أمثلة تطبيقية'}</h2>
+          ${content.subtitle ? `
+            <p style="
+              font-size: 1.3em;
+              opacity: 0.8;
+              margin-top: 10px;
+              color: #6b7280;
+            ">${content.subtitle}</p>
+          ` : ''}
+        </div>
+
+        <div style="max-width: 900px; margin: 0 auto;">
+          ${exampleHTML}
+        </div>
+
+        ${content.content ? `
+          <div style="
+            margin-top: 40px;
+            padding: 25px;
+            background: linear-gradient(135deg, ${theme.primaryColor}10, ${theme.secondaryColor}10);
+            border-radius: 20px;
+            text-align: center;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+          ">
+            <h3 style="color: ${theme.primaryColor}; margin-bottom: 15px;">💭 ملاحظة مهمة</h3>
+            <p style="color: #4a5568; line-height: 1.6; margin: 0;">${content.content}</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
   }
 
   /**

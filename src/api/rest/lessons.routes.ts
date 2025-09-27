@@ -142,17 +142,52 @@ router.post(
       return;
     }
     
-    // Generate teaching script
-    const teachingScript = await teachingAssistant.generateTeachingScript({
-      slideContent: data.slideContent,
-      lessonId: id,
-      studentGrade: user.grade || 6,
-      studentName: user.firstName,
-      interactionType: data.options?.needExample ? 'example' : 
-                      data.options?.needProblem ? 'problem' : 
-                      data.options?.needMoreDetail ? 'more_detail' : undefined,
-      ...data.options
-    });
+    // Validate slideContent exists
+    if (!data.slideContent) {
+      res.status(400).json(
+        errorResponse('MISSING_SLIDE_CONTENT', 'محتوى الشريحة مطلوب')
+      );
+      return;
+    }
+
+    console.log('🎓 Generating teaching script for lesson:', id, 'with content:', JSON.stringify(data.slideContent, null, 2));
+
+    // Generate teaching script with error handling
+    let teachingScript;
+    try {
+      teachingScript = await teachingAssistant.generateTeachingScript({
+        slideContent: data.slideContent,
+        lessonId: id,
+        studentGrade: user.grade || 6,
+        studentName: user.firstName || 'الطالب',
+        interactionType: data.options?.needExample ? 'example' :
+                        data.options?.needProblem ? 'problem' :
+                        data.options?.needMoreDetail ? 'more_detail' : 'explain',
+        ...data.options
+      });
+
+      console.log('✅ Teaching script generated successfully:', {
+        duration: teachingScript.duration,
+        scriptLength: teachingScript.script?.length || 0,
+        hasExamples: !!teachingScript.examples,
+        hasProblem: !!teachingScript.problem
+      });
+    } catch (scriptError) {
+      console.error('❌ Teaching script generation failed:', scriptError);
+
+      // Return a fallback script
+      teachingScript = {
+        script: `مرحباً ${user.firstName || 'بالطالب'}، دعنا نتعلم عن ${data.slideContent.title || 'هذا الموضوع'}`,
+        duration: 10,
+        keyPoints: [],
+        examples: [],
+        problem: null,
+        visualCues: [],
+        interactionPoints: [],
+        emotionalTone: 'encouraging',
+        nextSuggestions: ['المتابعة للشريحة التالية']
+      };
+    }
     
     // Generate voice if requested
     let audioUrl: string | null = null;
@@ -365,38 +400,150 @@ router.post(
       return;
     }
     
-    // Build slides
+    // Build dynamic slides based on enriched content
     const slides: SlideContent[] = [];
     const keyPoints = JSON.parse(lesson.keyPoints || '[]');
-    
-    // Title slide
+
+    // Get enriched content
+    let enrichedData: any = null;
+    if (lesson.content?.enrichedContent) {
+      try {
+        enrichedData = typeof lesson.content.enrichedContent === 'string'
+          ? JSON.parse(lesson.content.enrichedContent)
+          : lesson.content.enrichedContent;
+      } catch (e) {
+        console.warn('Failed to parse enriched content:', e);
+      }
+    }
+
+    // 1. Title slide
     slides.push({
       type: 'title',
       title: lesson.titleAr || lesson.title,
       subtitle: lesson.unit.subject.nameAr || lesson.unit.subject.name
     });
-    
-    // Content slides
-    if (lesson.content) {
+
+    // 2. Introduction slide (if description exists)
+    if (lesson.description) {
       slides.push({
         type: 'content',
-        title: 'محتوى الدرس',
-        content: lesson.content.summary || 'محتوى الدرس'
+        title: 'مقدمة الدرس',
+        content: lesson.description
       });
-      
-      if (keyPoints.length > 0) {
+    }
+
+    // 3. Main content slide
+    if (lesson.content?.summary) {
+      slides.push({
+        type: 'content',
+        title: 'شرح المفهوم الأساسي',
+        content: lesson.content.summary
+      });
+    }
+
+    // 4. Key points slide
+    if (keyPoints.length > 0) {
+      slides.push({
+        type: 'bullet',
+        title: 'النقاط الرئيسية',
+        bullets: keyPoints
+      });
+    }
+
+    // 5. Examples slide (from enriched content)
+    if (enrichedData?.examples && enrichedData.examples.length > 0) {
+      const examples = enrichedData.examples.slice(0, 5);
+      slides.push({
+        type: 'bullet',
+        title: 'أمثلة تطبيقية',
+        bullets: examples.map((ex: any) =>
+          typeof ex === 'string' ? ex : ex.title || ex.description || 'مثال تطبيقي'
+        )
+      });
+    }
+
+    // 6. Real world applications (from enriched content)
+    if (enrichedData?.realWorldApplications && enrichedData.realWorldApplications.length > 0) {
+      slides.push({
+        type: 'bullet',
+        title: 'التطبيقات العملية',
+        bullets: enrichedData.realWorldApplications.slice(0, 4)
+      });
+    }
+
+    // 7. Student tips slide (using new tips type)
+    if (enrichedData?.studentTips && enrichedData.studentTips.length > 0) {
+      slides.push({
+        type: 'tips',
+        title: 'نصائح للطلاب',
+        bullets: enrichedData.studentTips.slice(0, 4)
+      });
+    }
+
+    // 8. Educational story slide (using new story type)
+    if (enrichedData?.educationalStories && enrichedData.educationalStories.length > 0) {
+      const story = enrichedData.educationalStories[0];
+      slides.push({
+        type: 'story',
+        title: 'قصة تعليمية',
+        content: typeof story === 'string' ? story : story.story || story.content
+      });
+    }
+
+    // 9. Common mistakes slide
+    if (enrichedData?.commonMistakes && enrichedData.commonMistakes.length > 0) {
+      slides.push({
+        type: 'bullet',
+        title: 'الأخطاء الشائعة وكيفية تجنبها',
+        bullets: enrichedData.commonMistakes.slice(0, 4)
+      });
+    }
+
+    // 10. Practice exercise slide
+    if (enrichedData?.exercises && enrichedData.exercises.length > 0) {
+      const exercise = enrichedData.exercises[0];
+      if (exercise.type === 'multiple_choice' && exercise.options) {
         slides.push({
-          type: 'bullet',
-          title: 'النقاط الرئيسية',
-          bullets: keyPoints
+          type: 'quiz',
+          title: 'تمرين تطبيقي',
+          quiz: {
+            question: exercise.question,
+            options: exercise.options,
+            correctIndex: exercise.correctAnswer || 0,
+            explanation: exercise.explanation
+          }
+        });
+      } else {
+        slides.push({
+          type: 'content',
+          title: 'تمرين تطبيقي',
+          content: exercise.question || exercise.description || 'تمرين للتطبيق'
         });
       }
     }
-    
-    // Summary slide
+
+    // 11. Fun facts slide (if available)
+    if (enrichedData?.funFacts && enrichedData.funFacts.length > 0) {
+      slides.push({
+        type: 'bullet',
+        title: 'هل تعلم؟',
+        bullets: enrichedData.funFacts.slice(0, 3)
+      });
+    }
+
+    // 12. Quick review slide
+    if (enrichedData?.quickReview) {
+      slides.push({
+        type: 'content',
+        title: 'مراجعة سريعة',
+        content: enrichedData.quickReview
+      });
+    }
+
+    // 13. Summary slide (always last)
     slides.push({
       type: 'summary',
-      title: 'الخلاصة',
+      title: 'خلاصة الدرس',
       subtitle: lesson.titleAr || lesson.title,
       bullets: keyPoints.slice(0, 5)
     });
@@ -657,41 +804,188 @@ router.get(
     // Parse JSON fields
     const keyPoints = JSON.parse(lesson.keyPoints || '[]');
     
-    // Build slide content
+    // Build dynamic slide content based on enriched data
     const slides: SlideContent[] = [];
-    
-    // [Same slide building logic as before...]
+
+    // Get enriched content
+    let enrichedData: any = null;
+    if (lesson.content?.enrichedContent) {
+      try {
+        enrichedData = typeof lesson.content.enrichedContent === 'string'
+          ? JSON.parse(lesson.content.enrichedContent)
+          : lesson.content.enrichedContent;
+      } catch (e) {
+        console.warn('Failed to parse enriched content in slides endpoint:', e);
+      }
+    }
+
+    // Determine user theme for personalization
+    const userGrade = user?.grade || 6;
+    const ageGroup = userGrade <= 6 ? 'primary' : userGrade <= 9 ? 'preparatory' : 'secondary';
+    const personalization = {
+      ageGroup: ageGroup as 'primary' | 'preparatory' | 'secondary',
+      gender: 'neutral' as const,
+      learningStyle: 'visual' as const
+    };
+
+    // 1. Title slide
     slides.push({
       type: 'title',
       title: lesson.titleAr || lesson.title,
       subtitle: lesson.unit.subject.nameAr || lesson.unit.subject.name,
-      metadata: { duration: 5 }
+      metadata: { duration: 5 },
+      personalization
     });
-    
+
+    // 2. Introduction slide
     if (lesson.description) {
       slides.push({
         type: 'content',
-        title: 'مقدمة',
+        title: 'مقدمة الدرس',
         content: lesson.description,
-        metadata: { duration: 10 }
+        metadata: { duration: 10 },
+        personalization
       });
     }
-    
+
+    // 3. Main content slide
+    if (lesson.content?.summary) {
+      slides.push({
+        type: 'content',
+        title: 'شرح المفهوم الأساسي',
+        content: lesson.content.summary,
+        metadata: { duration: 15 },
+        personalization
+      });
+    }
+
+    // 4. Key points slide
     if (keyPoints.length > 0) {
       slides.push({
         type: 'bullet',
         title: 'النقاط الرئيسية',
         bullets: keyPoints,
-        metadata: { duration: 10 }
+        metadata: { duration: 12 },
+        personalization
       });
     }
-    
+
+    // 5. Examples slide (using new example type)
+    if (enrichedData?.examples && enrichedData.examples.length > 0) {
+      const examples = enrichedData.examples.slice(0, 5);
+      slides.push({
+        type: 'example',
+        title: 'أمثلة تطبيقية',
+        bullets: examples.map((ex: any) =>
+          typeof ex === 'string' ? ex : ex.title || ex.description || 'مثال تطبيقي'
+        ),
+        metadata: { duration: 12 },
+        personalization
+      });
+    }
+
+    // 6. Real world applications
+    if (enrichedData?.realWorldApplications && enrichedData.realWorldApplications.length > 0) {
+      slides.push({
+        type: 'bullet',
+        title: 'التطبيقات العملية في الحياة',
+        bullets: enrichedData.realWorldApplications.slice(0, 4),
+        metadata: { duration: 10 },
+        personalization
+      });
+    }
+
+    // 7. Educational story (using new story type)
+    if (enrichedData?.educationalStories && enrichedData.educationalStories.length > 0) {
+      const story = enrichedData.educationalStories[0];
+      slides.push({
+        type: 'story',
+        title: 'قصة تعليمية',
+        content: typeof story === 'string' ? story : story.story || story.content,
+        metadata: { duration: 15 },
+        personalization
+      });
+    }
+
+    // 8. Practice exercise/quiz
+    if (enrichedData?.exercises && enrichedData.exercises.length > 0) {
+      const exercise = enrichedData.exercises[0];
+      if (exercise.type === 'multiple_choice' && exercise.options) {
+        slides.push({
+          type: 'quiz',
+          title: 'تمرين تطبيقي',
+          quiz: {
+            question: exercise.question,
+            options: exercise.options,
+            correctIndex: exercise.correctAnswer || 0,
+            explanation: exercise.explanation
+          },
+          metadata: { duration: 20 },
+          personalization
+        });
+      } else {
+        slides.push({
+          type: 'content',
+          title: 'تمرين تطبيقي',
+          content: exercise.question || exercise.description || 'تمرين للتطبيق',
+          metadata: { duration: 15 },
+          personalization
+        });
+      }
+    }
+
+    // 9. Student tips (using new tips type)
+    if (enrichedData?.studentTips && enrichedData.studentTips.length > 0) {
+      slides.push({
+        type: 'tips',
+        title: 'نصائح للطلاب',
+        bullets: enrichedData.studentTips.slice(0, 4),
+        metadata: { duration: 8 },
+        personalization
+      });
+    }
+
+    // 10. Common mistakes
+    if (enrichedData?.commonMistakes && enrichedData.commonMistakes.length > 0) {
+      slides.push({
+        type: 'bullet',
+        title: 'الأخطاء الشائعة وكيفية تجنبها',
+        bullets: enrichedData.commonMistakes.slice(0, 4),
+        metadata: { duration: 10 },
+        personalization
+      });
+    }
+
+    // 11. Fun facts
+    if (enrichedData?.funFacts && enrichedData.funFacts.length > 0) {
+      slides.push({
+        type: 'bullet',
+        title: 'هل تعلم؟ - حقائق مثيرة',
+        bullets: enrichedData.funFacts.slice(0, 3),
+        metadata: { duration: 8 },
+        personalization
+      });
+    }
+
+    // 12. Quick review
+    if (enrichedData?.quickReview) {
+      slides.push({
+        type: 'content',
+        title: 'مراجعة سريعة',
+        content: enrichedData.quickReview,
+        metadata: { duration: 10 },
+        personalization
+      });
+    }
+
+    // 13. Summary slide (always last)
     slides.push({
       type: 'summary',
-      title: 'الخلاصة',
+      title: 'خلاصة الدرس',
       subtitle: lesson.titleAr || lesson.title,
       bullets: keyPoints.slice(0, 5),
-      metadata: { duration: 10 }
+      metadata: { duration: 10 },
+      personalization
     });
     
     // Generate HTML for all slides
@@ -1116,6 +1410,296 @@ router.post(
         message: 'تم تسخين الذاكرة المؤقتة بنجاح'
       }, 'Cache warmed up successfully')
     );
+  })
+);
+
+/**
+ * @route   POST /api/v1/lessons/:id/slides/generate-single
+ * @desc    Generate a single slide on demand (for chat integration)
+ * @access  Private
+ */
+router.post(
+  '/:id/slides/generate-single',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { topic, context, type = 'explanation' } = req.body;
+    const userId = req.user!.userId;
+
+    // الحصول على بيانات المستخدم
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { grade: true, firstName: true }
+    });
+
+    if (!user) {
+      res.status(404).json(
+        errorResponse('USER_NOT_FOUND', 'المستخدم غير موجود')
+      );
+      return;
+    }
+
+    // تحديد الثيم المناسب حسب العمر (نستخدم ثيم محايد حالياً)
+    const determineTheme = (grade: number | null): string => {
+      const ageGroup = !grade ? 'primary' :
+                       grade <= 6 ? 'primary' :
+                       grade <= 9 ? 'preparatory' :
+                       'secondary';
+      // نستخدم ثيم الذكور كثيم افتراضي حالياً
+      // يمكن إضافة حقل gender في قاعدة البيانات لاحقاً
+      return `${ageGroup}-male`;
+    };
+
+    const theme = determineTheme(user.grade);
+
+    // بناء محتوى الشريحة حسب النوع
+    let slideContent: SlideContent;
+
+    switch (type) {
+      case 'explanation':
+        slideContent = {
+          type: 'content',
+          title: topic,
+          content: context?.content || '',
+          personalization: {
+            ageGroup: !user.grade || user.grade <= 6 ? 'primary' :
+                     user.grade <= 9 ? 'preparatory' : 'secondary',
+            gender: 'neutral' // استخدم قيمة محايدة حالياً
+          }
+        };
+        break;
+
+      case 'example':
+        slideContent = {
+          type: 'bullet',
+          title: `أمثلة على ${topic}`,
+          bullets: context?.examples || [],
+          personalization: {
+            ageGroup: !user.grade || user.grade <= 6 ? 'primary' :
+                     user.grade <= 9 ? 'preparatory' : 'secondary',
+            gender: 'neutral' // استخدم قيمة محايدة حالياً
+          }
+        };
+        break;
+
+      case 'quiz':
+        slideContent = {
+          type: 'quiz',
+          title: topic,
+          quiz: context?.quiz || {
+            question: `سؤال حول ${topic}`,
+            options: ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4']
+          },
+          personalization: {
+            ageGroup: !user.grade || user.grade <= 6 ? 'primary' :
+                     user.grade <= 9 ? 'preparatory' : 'secondary',
+            gender: 'neutral' // استخدم قيمة محايدة حالياً
+          }
+        };
+        break;
+
+      default:
+        slideContent = {
+          type: 'content',
+          title: topic,
+          content: '',
+          personalization: {
+            ageGroup: !user.grade || user.grade <= 6 ? 'primary' :
+                     user.grade <= 9 ? 'preparatory' : 'secondary',
+            gender: 'neutral' // استخدم قيمة محايدة حالياً
+          }
+        };
+    }
+
+    // توليد HTML للشريحة
+    const slideHtml = slideService.generateSlideHTML(slideContent, theme);
+
+    // توليد الأسكريبت التعليمي مع معالجة الأخطاء
+    let script;
+    try {
+      script = await teachingAssistant.generateTeachingScript({
+        slideContent,
+        lessonId: id,
+        studentGrade: user.grade || 6,
+        studentName: user.firstName || 'الطالب',
+        interactionType: type === 'example' ? 'example' : 'explain'
+      });
+
+      console.log(`✅ Generated script for single slide: ${script.script?.length || 0} characters`);
+    } catch (scriptError) {
+      console.error('❌ Single slide script generation failed:', scriptError);
+
+      // Fallback script
+      script = {
+        script: `مرحباً ${user.firstName || 'بالطالب'}، دعنا نتعلم عن ${topic}. سأشرح لك هذا الموضوع بطريقة مبسطة وممتعة.`,
+        duration: 15,
+        keyPoints: [],
+        examples: [],
+        problem: null,
+        visualCues: [],
+        interactionPoints: [],
+        emotionalTone: 'encouraging',
+        nextSuggestions: []
+      };
+    }
+
+    // توليد الصوت
+    const voiceResult = await voiceService.textToSpeech(script.script);
+
+    // إنشاء بيانات التزامن البسيطة (مؤقتاً)
+    const generateBasicSyncData = (duration: number) => ({
+      start: 0,
+      end: duration || 10,
+      words: [], // يمكن إضافة تحليل أعمق لاحقاً
+      highlights: []
+    });
+
+    res.json(
+      successResponse({
+        lessonId: id,
+        slide: {
+          html: slideHtml,
+          content: slideContent,
+          theme
+        },
+        script: script.script,
+        audioUrl: voiceResult.audioUrl,
+        duration: script.duration,
+        syncTimestamps: generateBasicSyncData(script.duration || 10)
+      }, 'Slide generated successfully')
+    );
+  })
+);
+
+// ============= SLIDE TRACKING ENDPOINTS =============
+
+/**
+ * @route   POST /api/v1/lessons/:id/slides/:slideId/track
+ * @desc    Track slide view progress
+ * @access  Private
+ */
+router.post(
+  '/:id/slides/:slideId/track',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id, slideId } = req.params;
+    const { duration, completed } = req.body;
+    const userId = req.user!.userId;
+
+    try {
+      // Store slide tracking data - in production use database
+      // For now, just log the tracking
+      console.log(`📊 Slide tracking - User: ${userId}, Lesson: ${id}, Slide: ${slideId}, Duration: ${duration}s, Completed: ${completed}`);
+
+      // Here you would typically store this in a slide_views table
+      // await prisma.slideView.create({
+      //   data: {
+      //     userId,
+      //     lessonId: id,
+      //     slideId,
+      //     duration,
+      //     completed,
+      //     viewedAt: new Date()
+      //   }
+      // });
+
+      res.json(
+        successResponse({
+          slideId,
+          duration,
+          completed,
+          tracked: true
+        }, 'Slide view tracked successfully')
+      );
+    } catch (error) {
+      console.error('Error tracking slide view:', error);
+      res.status(500).json(
+        errorResponse('TRACKING_FAILED', 'Failed to track slide view')
+      );
+    }
+  })
+);
+
+/**
+ * @route   POST /api/v1/lessons/:id/slides/:slideId/answer
+ * @desc    Submit quiz answer for a slide
+ * @access  Private
+ */
+router.post(
+  '/:id/slides/:slideId/answer',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id, slideId } = req.params;
+    const { answer } = req.body;
+    const userId = req.user!.userId;
+
+    try {
+      // In a real implementation, you would:
+      // 1. Get the correct answer from the database
+      // 2. Compare with user's answer
+      // 3. Store the result
+      // 4. Update user's progress/points
+
+      // For now, simulate a correct answer check
+      const isCorrect = Math.random() > 0.3; // 70% chance of being correct for testing
+      const points = isCorrect ? 10 : 0;
+
+      console.log(`✅ Quiz answer - User: ${userId}, Lesson: ${id}, Slide: ${slideId}, Answer: ${answer}, Correct: ${isCorrect}`);
+
+      res.json(
+        successResponse({
+          correct: isCorrect,
+          points,
+          explanation: isCorrect ? 'إجابة صحيحة! أحسنت.' : 'إجابة غير صحيحة. حاول مرة أخرى.',
+          slideId,
+          answer
+        }, isCorrect ? 'Correct answer!' : 'Incorrect answer')
+      );
+    } catch (error) {
+      console.error('Error submitting quiz answer:', error);
+      res.status(500).json(
+        errorResponse('ANSWER_SUBMISSION_FAILED', 'Failed to submit answer')
+      );
+    }
+  })
+);
+
+/**
+ * @route   GET /api/v1/lessons/:id/slides/progress
+ * @desc    Get user's progress through lesson slides
+ * @access  Private
+ */
+router.get(
+  '/:id/slides/progress',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const userId = req.user!.userId;
+
+    try {
+      // In a real implementation, you would query slide_views table
+      // For now, return mock progress data
+      const totalSlides = 10; // This would come from counting actual slides
+      const viewedSlides = 7;  // This would come from database
+      const completedSlides = 5;
+
+      res.json(
+        successResponse({
+          lessonId: id,
+          totalSlides,
+          viewedSlides,
+          completedSlides,
+          progressPercentage: Math.round((completedSlides / totalSlides) * 100),
+          currentSlide: viewedSlides,
+          nextSlide: viewedSlides < totalSlides ? viewedSlides + 1 : null
+        }, 'Progress retrieved successfully')
+      );
+    } catch (error) {
+      console.error('Error getting slide progress:', error);
+      res.status(500).json(
+        errorResponse('PROGRESS_FETCH_FAILED', 'Failed to get progress')
+      );
+    }
   })
 );
 

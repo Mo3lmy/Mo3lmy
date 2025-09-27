@@ -627,9 +627,11 @@ const getChatSuggestions = async (lessonId) => {
 ### الحصول على سياق الطالب
 ```javascript
 // GET /api/v1/student-context/:userId
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const getStudentContext = async (userId) => {
-  const response = await fetch(`${API_URL}/student-context/${userId}`);
+  const response = await fetch(`${API_URL}/student-context/${userId}`, {
+    headers: getAuthHeaders()
+  });
   return await response.json();
 };
 ```
@@ -637,11 +639,11 @@ const getStudentContext = async (userId) => {
 ### تحديث سياق الطالب
 ```javascript
 // PUT /api/v1/student-context/:userId
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const updateStudentContext = async (userId, updates) => {
   const response = await fetch(`${API_URL}/student-context/${userId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(updates)
   });
 
@@ -652,18 +654,20 @@ const updateStudentContext = async (userId, updates) => {
 ### الحالة العاطفية
 ```javascript
 // GET /api/v1/student-context/:userId/emotional-state
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const getEmotionalState = async (userId) => {
-  const response = await fetch(`${API_URL}/student-context/${userId}/emotional-state`);
+  const response = await fetch(`${API_URL}/student-context/${userId}/emotional-state`, {
+    headers: getAuthHeaders()
+  });
   return await response.json();
 };
 
 // POST /api/v1/student-context/:userId/emotional-state
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const updateEmotionalState = async (userId, state) => {
   const response = await fetch(`${API_URL}/student-context/${userId}/emotional-state`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(state)
   });
 
@@ -674,18 +678,20 @@ const updateEmotionalState = async (userId, state) => {
 ### الإنجازات
 ```javascript
 // GET /api/v1/achievements/:userId
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const getUserAchievements = async (userId) => {
-  const response = await fetch(`${API_URL}/achievements/${userId}`);
+  const response = await fetch(`${API_URL}/achievements/${userId}`, {
+    headers: getAuthHeaders()
+  });
   return await response.json();
 };
 
 // POST /api/v1/achievements/:userId/unlock
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const unlockAchievement = async (userId, achievementData) => {
   const response = await fetch(`${API_URL}/achievements/${userId}/unlock`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(achievementData)
   });
 
@@ -693,9 +699,11 @@ const unlockAchievement = async (userId, achievementData) => {
 };
 
 // GET /api/v1/achievements/:userId/progress
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const getAchievementProgress = async (userId) => {
-  const response = await fetch(`${API_URL}/achievements/${userId}/progress`);
+  const response = await fetch(`${API_URL}/achievements/${userId}/progress`, {
+    headers: getAuthHeaders()
+  });
   return await response.json();
 };
 
@@ -714,9 +722,11 @@ const getLeaderboardTop = async () => {
 ### الحصول على آخر تقرير
 ```javascript
 // GET /api/v1/parent-reports/:userId/latest
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث - فقط للوالدين/المعلمين)
 const getLatestReport = async (userId) => {
-  const response = await fetch(`${API_URL}/parent-reports/${userId}/latest`);
+  const response = await fetch(`${API_URL}/parent-reports/${userId}/latest`, {
+    headers: getAuthHeaders()
+  });
   return await response.json();
 };
 ```
@@ -724,9 +734,11 @@ const getLatestReport = async (userId) => {
 ### الحصول على سجل التقارير
 ```javascript
 // GET /api/v1/parent-reports/:userId/history
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const getReportHistory = async (userId) => {
-  const response = await fetch(`${API_URL}/parent-reports/${userId}/history`);
+  const response = await fetch(`${API_URL}/parent-reports/${userId}/history`, {
+    headers: getAuthHeaders()
+  });
   return await response.json();
 };
 ```
@@ -734,11 +746,11 @@ const getReportHistory = async (userId) => {
 ### توليد تقرير جديد
 ```javascript
 // POST /api/v1/parent-reports/:userId/generate
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const generateNewReport = async (userId) => {
   const response = await fetch(`${API_URL}/parent-reports/${userId}/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
+    headers: getAuthHeaders()
   });
 
   return await response.json();
@@ -748,11 +760,11 @@ const generateNewReport = async (userId) => {
 ### إرسال التقرير بالبريد الإلكتروني
 ```javascript
 // POST /api/v1/parent-reports/:userId/send-email
-// يحتاج Authentication: لا
+// يحتاج Authentication: نعم ✅ (تم التحديث)
 const sendReportByEmail = async (userId, email) => {
   const response = await fetch(`${API_URL}/parent-reports/${userId}/send-email`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ email })
   });
 
@@ -911,15 +923,26 @@ const chat = await sdk.chat.sendMessage('سؤالي هو...');
 
 ## 📝 ملاحظات التحديث
 
-### التحديثات الرئيسية في هذا الدليل:
-1. ✅ إضافة جميع Content و Subjects endpoints المفقودة
-2. ✅ تصحيح Parent Reports endpoints
+### 🔄 التحديثات الأخيرة (تم التنفيذ):
+1. ✅ **تحديث أمني حرج**: تم إضافة Authentication لجميع student-context, achievements, parent-reports
+2. ✅ **تصحيح الدليل**: تحديث جميع متطلبات Authentication
+3. ✅ **إضافة Authorization**: التحقق من الصلاحيات في جميع endpoints
+
+### ⚠️ Endpoints غير موجودة (من الفحص):
+- `GET /api/v1/auth/profile` - استخدم `/api/v1/auth/me` بدلاً منها
+- `POST /api/v1/chat/start` - غير موجود (لا يوجد endpoint لبدء جلسة)
+- `GET /api/v1/progress/overall` - استخدم `/api/v1/quiz/progress`
+- `GET /api/v1/progress/lesson/:lessonId` - غير موجود
+
+### ✅ التحديثات الرئيسية في هذا الدليل:
+1. ✅ إضافة جميع Content و Subjects endpoints
+2. ✅ تصحيح Parent Reports endpoints وإضافة Authentication
 3. ✅ إضافة Chat endpoints بالكامل
-4. ✅ توضيح متطلبات Authentication لكل endpoint
+4. ✅ تحديث متطلبات Authentication لكل endpoint
 5. ✅ إضافة Progress و Analytics و Leaderboard endpoints
 6. ✅ إضافة معلومات Rate Limiting و Error Codes
 7. ✅ تحديث Response formats بناءً على الكود الفعلي
-8. ✅ إضافة Achievement leaderboard endpoint الصحيح
+8. ✅ إضافة Teaching Assistant endpoints الكاملة
 
 ### Endpoints المهمة المضافة:
 - `/api/v1/content/*` - إدارة المحتوى التعليمي
@@ -953,4 +976,4 @@ const chat = await sdk.chat.sendMessage('سؤالي هو...');
 
 تم التحديث بواسطة: فريق Backend
 التاريخ: ${new Date().toLocaleDateString('ar-EG')}
-الإصدار: 2.0.0
+الإصدار: 3.0.0 - مع التحديثات الأمنية الحرجة

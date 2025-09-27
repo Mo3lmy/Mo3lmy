@@ -1,25 +1,32 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../config/database.config';
 import { AppError } from '../../utils/errors';
+import { authenticate, authorize } from '../middleware/auth.middleware';
+import { successResponse, errorResponse } from '../../utils/response.utils';
+import asyncHandler from 'express-async-handler';
 
 // Type assertion for Prisma client with all models
 const db = prisma as any;
 
 const router = Router();
 
-// Temporary auth middleware - replace with actual auth middleware
-const authMiddleware = (req: Request, res: Response, next: any) => {
-  // TODO: Implement actual auth logic
-  next();
-};
-
-// Apply auth middleware to all routes
-router.use(authMiddleware);
-
 // Get student context
-router.get('/:userId', async (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
+// يحتاج Authentication للتأكد من أن المستخدم يصل لبياناته فقط
+router.get('/:userId', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  // Authorization: التحقق من أن المستخدم يصل لبياناته فقط
+  // أو أنه معلم/ولي أمر له صلاحية
+  const userRole = req.user!.role as string;
+  if (req.user!.userId !== userId &&
+      userRole !== 'TEACHER' &&
+      userRole !== 'ADMIN' &&
+      userRole !== 'PARENT') {
+    res.status(403).json(
+      errorResponse('FORBIDDEN', 'غير مصرح لك بالوصول لهذه البيانات')
+    );
+    return;
+  }
 
     let context = await db.studentContext.findUnique({
       where: { userId },
@@ -100,25 +107,24 @@ router.get('/:userId', async (req: Request, res: Response) => {
       }
     };
 
-    res.json({
-      success: true,
-      data: response
-    });
-  } catch (error) {
-    console.error('Error getting student context:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        message: 'Failed to get student context'
-      }
-    });
-  }
-});
+    res.json(
+      successResponse(response, 'Student context retrieved successfully')
+    );
+}));
 
 // Update student context
-router.put('/:userId', async (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
+router.put('/:userId', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  // Authorization check
+  if (req.user!.userId !== userId &&
+      req.user!.role !== 'TEACHER' &&
+      req.user!.role !== 'ADMIN') {
+    res.status(403).json(
+      errorResponse('FORBIDDEN', 'غير مصرح لك بتعديل هذه البيانات')
+    );
+    return;
+  }
     const updateData = req.body;
 
     const context = await db.studentContext.update({
@@ -129,25 +135,26 @@ router.put('/:userId', async (req: Request, res: Response) => {
       }
     });
 
-    res.json({
-      success: true,
-      data: context
-    });
-  } catch (error) {
-    console.error('Error updating student context:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        message: 'Failed to update student context'
-      }
-    });
-  }
-});
+    res.json(
+      successResponse(context, 'Student context updated successfully')
+    );
+}));
 
 // Get emotional state history
-router.get('/:userId/emotional-state', async (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
+router.get('/:userId/emotional-state', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  // Authorization check
+  const userRole = req.user!.role as string;
+  if (req.user!.userId !== userId &&
+      userRole !== 'TEACHER' &&
+      userRole !== 'ADMIN' &&
+      userRole !== 'PARENT') {
+    res.status(403).json(
+      errorResponse('FORBIDDEN', 'غير مصرح لك بالوصول لهذه البيانات')
+    );
+    return;
+  }
     const { limit = 10 } = req.query;
 
     const states = await db.emotionalState.findMany({
@@ -167,9 +174,8 @@ router.get('/:userId/emotional-state', async (req: Request, res: Response) => {
       }
     });
 
-    res.json({
-      success: true,
-      data: {
+    res.json(
+      successResponse({
         current: {
           mood: context?.currentMood || 'neutral',
           confidence: context?.averageConfidence || 70,
@@ -177,23 +183,25 @@ router.get('/:userId/emotional-state', async (req: Request, res: Response) => {
           lastUpdate: context?.lastMoodUpdate
         },
         history: states
-      }
-    });
-  } catch (error) {
-    console.error('Error getting emotional state:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        message: 'Failed to get emotional state'
-      }
-    });
-  }
-});
+      }, 'Emotional state retrieved successfully')
+    );
+}));
 
 // Update emotional state
-router.post('/:userId/emotional-state', async (req: Request, res: Response) => {
+router.post('/:userId/emotional-state', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  // Authorization check
+  if (req.user!.userId !== userId &&
+      req.user!.role !== 'TEACHER' &&
+      req.user!.role !== 'ADMIN') {
+    res.status(403).json(
+      errorResponse('FORBIDDEN', 'غير مصرح لك بتعديل هذه البيانات')
+    );
+    return;
+  }
+
   try {
-    const { userId } = req.params;
     const { mood, confidence, engagement, stress, indicators, triggers, lessonId } = req.body;
 
     // Create new emotional state record
@@ -241,7 +249,7 @@ router.post('/:userId/emotional-state', async (req: Request, res: Response) => {
       }
     });
   }
-});
+}));
 
 // Get learning patterns
 router.get('/:userId/learning-patterns', async (req: Request, res: Response) => {

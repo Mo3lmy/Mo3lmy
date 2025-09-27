@@ -1,12 +1,26 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { prisma } from '../../config/database.config';
-import { successResponse } from '../../utils/response.utils';
+import { successResponse, errorResponse } from '../../utils/response.utils';
 import asyncHandler from 'express-async-handler';
+import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
 // Get user achievements
-router.get('/:userId', asyncHandler(async (req, res) => {
+router.get('/:userId', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  // Authorization check - المستخدم يرى إنجازاته فقط أو المعلم/الأدمن/ولي الأمر
+  const userRole = req.user!.role as string;
+  if (req.user!.userId !== userId &&
+      userRole !== 'TEACHER' &&
+      userRole !== 'ADMIN' &&
+      userRole !== 'PARENT') {
+    res.status(403).json(
+      errorResponse('FORBIDDEN', 'غير مصرح لك بالوصول لهذه البيانات')
+    );
+    return;
+  }
   const achievements = await prisma.userAchievement.findMany({
     where: { userId: req.params.userId },
     orderBy: { unlockedAt: 'desc' }
@@ -16,8 +30,19 @@ router.get('/:userId', asyncHandler(async (req, res) => {
 }));
 
 // Unlock achievement
-router.post('/:userId/unlock', asyncHandler(async (req, res) => {
+router.post('/:userId/unlock', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params;
+
+  // Authorization check - فقط النظام أو المعلم يمكنه منح الإنجازات
+  if (req.user!.userId !== userId &&
+      req.user!.role !== 'TEACHER' &&
+      req.user!.role !== 'ADMIN') {
+    res.status(403).json(
+      errorResponse('FORBIDDEN', 'غير مصرح لك بمنح الإنجازات')
+    );
+    return;
+  }
+
   const { achievementId, title, description, points = 100, category = 'academic', icon = '🏆' } = req.body;
 
   // Check if already unlocked
@@ -51,10 +76,23 @@ router.post('/:userId/unlock', asyncHandler(async (req, res) => {
 }))
 
 // Get progress
-router.get('/:userId/progress', asyncHandler(async (req, res) => {
+router.get('/:userId/progress', authenticate, asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  // Authorization check
+  const userRole = req.user!.role as string;
+  if (req.user!.userId !== userId &&
+      userRole !== 'TEACHER' &&
+      userRole !== 'ADMIN' &&
+      userRole !== 'PARENT') {
+    res.status(403).json(
+      errorResponse('FORBIDDEN', 'غير مصرح لك بالوصول لهذه البيانات')
+    );
+    return;
+  }
   // Access StudentContext through the generated Prisma client
   const context = await (prisma as any).studentContext.findUnique({
-    where: { userId: req.params.userId }
+    where: { userId }
   });
 
   const progress = {
@@ -67,8 +105,8 @@ router.get('/:userId/progress', asyncHandler(async (req, res) => {
   res.json(successResponse(progress));
 }));
 
-// Get leaderboard
-router.get('/leaderboard/top', asyncHandler(async (_req, res) => {
+// Get leaderboard - Public endpoint لعرض لوحة المتصدرين
+router.get('/leaderboard/top', asyncHandler(async (_req: Request, res: Response) => {
   // Access StudentContext through the generated Prisma client
   const contexts = await (prisma as any).studentContext.findMany({
     orderBy: { correctAnswers: 'desc' },

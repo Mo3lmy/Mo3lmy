@@ -5,6 +5,7 @@ export interface User {
   lastName: string
   role: 'STUDENT' | 'TEACHER' | 'PARENT' | 'ADMIN'
   grade?: number
+  gender?: 'male' | 'female'
   avatar?: string
   createdAt: string
   updatedAt: string

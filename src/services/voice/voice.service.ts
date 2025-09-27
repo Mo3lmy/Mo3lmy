@@ -308,31 +308,117 @@ export class VoiceService {
    */
   async cleanupCache(maxAgeHours: number = 24): Promise<number> {
     let deletedCount = 0;
-    
+
     try {
       const files = fs.readdirSync(this.cacheDir);
       const now = Date.now();
-      
+
       for (const file of files) {
         const filePath = path.join(this.cacheDir, file);
         const stats = fs.statSync(filePath);
         const ageInHours = (now - stats.mtime.getTime()) / (1000 * 60 * 60);
-        
+
         if (ageInHours > maxAgeHours) {
           fs.unlinkSync(filePath);
           deletedCount++;
         }
       }
-      
+
       if (deletedCount > 0) {
         console.log(`🧹 Cleaned up ${deletedCount} old audio files`);
       }
-      
+
     } catch (error) {
       console.error('❌ Cache cleanup error:', error);
     }
-    
+
     return deletedCount;
+  }
+
+  /**
+   * توليد بيانات التزامن بين الصوت والنص
+   * يستخدم تقديرات بسيطة حالياً ويمكن تحسينه لاحقاً
+   */
+  async generateSyncData(
+    text: string,
+    duration: number
+  ): Promise<{
+    start: number;
+    end: number;
+    words: Array<{ word: string; start: number; end: number }>;
+    highlights: Array<{ elementId: string; start: number; end: number }>;
+  }> {
+    // تقسيم النص إلى كلمات
+    const words = text.split(/\s+/).filter(word => word.length > 0);
+    const wordCount = words.length;
+
+    // حساب متوسط الوقت لكل كلمة
+    const avgTimePerWord = duration / wordCount;
+
+    // توليد توقيتات الكلمات
+    const wordTimings: Array<{ word: string; start: number; end: number }> = [];
+    let currentTime = 0;
+
+    for (const word of words) {
+      // تعديل الوقت حسب طول الكلمة
+      const wordDuration = avgTimePerWord * (word.length / 5); // متوسط 5 أحرف للكلمة
+
+      wordTimings.push({
+        word,
+        start: currentTime,
+        end: currentTime + wordDuration
+      });
+
+      currentTime += wordDuration;
+    }
+
+    // توليد نقاط التركيز (highlights) للعناصر المهمة
+    const highlights: Array<{ elementId: string; start: number; end: number }> = [];
+
+    // البحث عن الكلمات المهمة وإضافة highlights لها
+    const importantWords = ['مهم', 'انتبه', 'تذكر', 'لاحظ', 'مثال'];
+    wordTimings.forEach((wordTiming, index) => {
+      if (importantWords.some(important => wordTiming.word.includes(important))) {
+        highlights.push({
+          elementId: `word-${index}`,
+          start: wordTiming.start,
+          end: wordTiming.end
+        });
+      }
+    });
+
+    return {
+      start: 0,
+      end: duration,
+      words: wordTimings,
+      highlights
+    };
+  }
+
+  /**
+   * الحصول على معلومات الصوت المناسب للمستخدم
+   */
+  getVoiceForUser(grade: number | null, gender: string | null): string {
+    // خريطة الأصوات حسب العمر والجنس
+    const voiceMap: Record<string, string> = {
+      'primary-male': process.env.VOICE_ID_CHILD_MALE || this.defaultVoiceId,
+      'primary-female': process.env.VOICE_ID_CHILD_FEMALE || this.defaultVoiceId,
+      'preparatory-male': process.env.VOICE_ID_TEEN_MALE || this.defaultVoiceId,
+      'preparatory-female': process.env.VOICE_ID_TEEN_FEMALE || this.defaultVoiceId,
+      'secondary-male': process.env.VOICE_ID_ADULT_MALE || this.defaultVoiceId,
+      'secondary-female': process.env.VOICE_ID_ADULT_FEMALE || this.defaultVoiceId
+    };
+
+    // تحديد المجموعة العمرية
+    const ageGroup = !grade || grade <= 6 ? 'primary' :
+                     grade <= 9 ? 'preparatory' :
+                     'secondary';
+
+    // تحديد الجنس
+    const genderKey = gender === 'FEMALE' ? 'female' : 'male';
+
+    const key = `${ageGroup}-${genderKey}`;
+    return voiceMap[key] || this.defaultVoiceId;
   }
 }
 

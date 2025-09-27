@@ -1814,16 +1814,16 @@ ${options.mistakeHistory?.length ? `أخطاء سابقة: ${options.mistakeHist
       script += 'شكلك متحمس النهاردة! ';
     }
     
-    if (slideContent.title) {
+    if (slideContent?.title) {
       script += `هنتكلم عن ${slideContent.title}. `;
     }
     
-    if (slideContent.content) {
+    if (slideContent?.content) {
       script += `${slideContent.content} `;
     }
     
     // Add personalized encouragement
-    if (profile && profile.strengths.length > 0) {
+    if (profile?.strengths && profile.strengths.length > 0) {
       script += `أنت ممتاز في ${profile.strengths[0]}، وده هيساعدك هنا! `;
     }
     

@@ -42,60 +42,231 @@ export class ChatService {
   }
   
   /**
-   * Process message for realtime chat (NEW METHOD)
+   * Process message for realtime chat with context and history
    */
   async processMessage(
     message: string,
     context: any,
-    userId: string
-  ): Promise<{ response: string; suggestions?: string[] }> {
+    userId: string,
+    sessionId?: string
+  ): Promise<{ response: string; suggestions?: string[]; sessionId: string }> {
+    console.log(`💬 Processing chat message from user ${userId}`);
+
+    // Get or create session to maintain context
+    const session = await this.getOrCreateSession(
+      userId,
+      sessionId,
+      context?.lessonId
+    );
+
     try {
-      // إذا OpenAI موجود، استخدمه
+      // Build conversation history for context
+      const conversationHistory = await this.buildConversationHistory(session.id, userId);
+
+      // Use RAG if lesson context is available
+      let ragContext = '';
+      if (context?.lessonId) {
+        try {
+          const ragResponse = await ragService.answerQuestion(
+            message,
+            context.lessonId,
+            userId
+          );
+
+          if (ragResponse.confidence > 30) {
+            ragContext = `
+مصادر ذات صلة من الدرس:
+${ragResponse.sources.map((source, i) => `${i+1}. ${source.chunk?.text || source.lessonInfo?.title || 'مصدر'}`).join('\n')}
+
+إجابة مقترحة من المحتوى: ${ragResponse.answer}
+`;
+          }
+        } catch (ragError) {
+          console.warn('RAG service error:', ragError);
+        }
+      }
+
+      // إذا OpenAI موجود، استخدمه مع السياق الكامل
       if (this.openai) {
+        const systemPrompt = `أنت مساعد تعليمي ذكي للمناهج المصرية.
+
+معلومات السياق:
+- المادة: ${context?.subject || 'غير محدد'}
+- الوحدة: ${context?.unit || 'غير محدد'}
+- الدرس: ${context?.lesson || context?.lessonTitle || 'غير محدد'}
+- الصف: ${context?.grade || 6}
+
+${ragContext}
+
+تعليمات:
+1. استخدم المصادر المتاحة من الدرس عند الإجابة
+2. أجب بطريقة بسيطة ومناسبة لمستوى الطالب
+3. احتفظ بالسياق من المحادثة السابقة
+4. إذا لم تجد إجابة في المصادر، قدم مساعدة عامة مفيدة`;
+
+        const messages = [
+          { role: 'system', content: systemPrompt },
+          ...conversationHistory,
+          { role: 'user', content: message }
+        ];
+
         const completion = await this.openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `أنت مساعد تعليمي ذكي للمناهج المصرية. 
-              المادة: ${context.subject}
-              الوحدة: ${context.unit}
-              الدرس: ${context.lesson}
-              الصف: ${context.grade || 6}
-              
-              أجب بطريقة بسيطة ومناسبة لمستوى الطالب.`
-            },
-            {
-              role: 'user',
-              content: message
-            }
-          ],
+          messages: messages,
           temperature: 0.7,
-          max_tokens: 500
+          max_tokens: 800
         });
-        
+
+        const response = completion.choices[0].message.content || 'عذراً، لم أفهم السؤال.';
+
+        // Save conversation to session
+        await this.saveConversationToSession(session.id, userId, message, response, context?.lessonId);
+
         return {
-          response: completion.choices[0].message.content || 'عذراً، لم أفهم السؤال.',
-          suggestions: this.generateSuggestions(message)
+          response,
+          suggestions: this.generateSuggestions(message),
+          sessionId: session.id
         };
       }
     } catch (error) {
-      console.error('OpenAI error:', error);
+      console.error('Chat processing error:', error);
     }
-    
-    // Fallback response
+
+    // Fallback response with session tracking
+    const fallbackResponse = `تلقيت سؤالك: "${message}". أنا هنا لمساعدتك في فهم الدرس بشكل أفضل!`;
+
+    // Save even fallback conversations
+    await this.saveConversationToSession(session.id, userId, message, fallbackResponse, context?.lessonId);
+
     return {
-      response: `تلقيت سؤالك: "${message}". أنا هنا لمساعدتك في فهم الدرس بشكل أفضل!`,
-      suggestions: this.generateSuggestions(message)
+      response: fallbackResponse,
+      suggestions: this.generateSuggestions(message),
+      sessionId: session.id
     };
   }
   
+  /**
+   * Build conversation history for context
+   */
+  private async buildConversationHistory(sessionId: string, userId: string, limit: number = 10): Promise<Array<{role: string, content: string}>> {
+    try {
+      // First try to get messages from current session
+      let recentMessages = await prisma.chatMessage.findMany({
+        where: {
+          userId,
+          metadata: {
+            contains: `"sessionId":"${sessionId}"`
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit * 2,
+      });
+
+      // If no session-specific messages, get recent messages for this user
+      if (recentMessages.length === 0) {
+        recentMessages = await prisma.chatMessage.findMany({
+          where: {
+            userId,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: limit * 2,
+        });
+      }
+
+      const history: Array<{role: string, content: string}> = [];
+
+      for (const msg of recentMessages.reverse()) {
+        if (msg.role === 'USER' && msg.userMessage) {
+          history.push({ role: 'user', content: msg.userMessage });
+        } else if (msg.role === 'ASSISTANT' && msg.aiResponse) {
+          history.push({ role: 'assistant', content: msg.aiResponse });
+        }
+      }
+
+      // الحد من طول التاريخ لتجنب تجاوز حدود الـ token
+      return history.slice(-limit);
+    } catch (error) {
+      console.error('Error building conversation history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Save conversation to session for context
+   */
+  private async saveConversationToSession(
+    sessionId: string,
+    userId: string,
+    userMessage: string,
+    aiResponse: string,
+    lessonId?: string
+  ): Promise<void> {
+    try {
+      const timestamp = new Date();
+      const metadata = {
+        sessionId,
+        lessonId,
+        timestamp: timestamp.toISOString(),
+        userAgent: 'chat-service',
+        version: '2.0'
+      };
+
+      // Save user message
+      await prisma.chatMessage.create({
+        data: {
+          userId,
+          lessonId,
+          role: 'USER',
+          userMessage,
+          aiResponse: '',
+          metadata: JSON.stringify(metadata),
+          createdAt: timestamp
+        }
+      });
+
+      // Save AI response
+      await prisma.chatMessage.create({
+        data: {
+          userId,
+          lessonId,
+          role: 'ASSISTANT',
+          userMessage: '',
+          aiResponse,
+          metadata: JSON.stringify(metadata),
+          createdAt: new Date(timestamp.getTime() + 1000) // 1 second after user message
+        }
+      });
+
+      // Update session in memory with enhanced data
+      const session = this.sessions.get(sessionId);
+      if (session) {
+        session.messageCount += 2;
+        session.lastMessageAt = new Date();
+
+        // Update context with recent conversation topics
+        if (session.context) {
+          const extractedTopics = this.extractTopics([userMessage, aiResponse]);
+          session.context.recentTopics = [
+            ...extractedTopics,
+            ...session.context.recentTopics
+          ].slice(0, 5); // Keep only 5 most recent topics
+        }
+
+        this.sessions.set(sessionId, session);
+      }
+
+      console.log(`💾 Saved conversation to session ${sessionId} for lesson ${lessonId || 'general'}`);
+    } catch (error) {
+      console.error('Error saving conversation to session:', error);
+    }
+  }
+
   /**
    * Generate suggestions based on message
    */
   private generateSuggestions(message: string): string[] {
     const suggestions = [];
-    
+
     if (!message.includes('مثال')) {
       suggestions.push('أعطني مثال');
     }
@@ -104,7 +275,7 @@ export class ChatService {
     }
     suggestions.push('اختبرني');
     suggestions.push('ما التالي؟');
-    
+
     return suggestions.slice(0, 3);
   }
   
@@ -596,18 +767,28 @@ ${context?.lessonTitle ? `يدرس حالياً: ${context.lessonTitle}` : ''}
   }
   
   /**
-   * Get chat history
+   * Get chat history with enhanced filtering
    */
   async getChatHistory(
     userId: string,
     lessonId?: string,
-    limit: number = 50
+    limit: number = 50,
+    sessionId?: string
   ): Promise<DBChatMessage[]> {
+    const whereClause: any = { userId };
+
+    if (lessonId) {
+      whereClause.lessonId = lessonId;
+    }
+
+    if (sessionId) {
+      whereClause.metadata = {
+        contains: `"sessionId":"${sessionId}"`
+      };
+    }
+
     return await prisma.chatMessage.findMany({
-      where: {
-        userId,
-        ...(lessonId && { lessonId }),
-      },
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -666,11 +847,96 @@ ${context?.lessonTitle ? `يدرس حالياً: ${context.lessonTitle}` : ''}
   }
   
   /**
+   * Generate smart suggestions based on lesson context and slide
+   */
+  async generateSmartSuggestions(
+    userId: string,
+    lessonId?: string,
+    slideIndex?: number,
+    currentTopic?: string
+  ): Promise<string[]> {
+    const suggestions: string[] = [];
+
+    try {
+      // If we have lesson context, use RAG to generate context-aware suggestions
+      if (lessonId && ragService) {
+        try {
+          // Get relevant content for suggestions
+          const relevantContent = await ragService.answerQuestion(
+            currentTopic || 'محتوى الدرس',
+            lessonId,
+            userId
+          );
+
+          if (relevantContent.confidence > 20) {
+            // Generate context-specific suggestions
+            if (currentTopic) {
+              suggestions.push(`اشرح لي ${currentTopic} بالتفصيل`);
+              suggestions.push(`أعطني مثال على ${currentTopic}`);
+              suggestions.push(`ما أهمية ${currentTopic}؟`);
+            }
+
+            // Add general lesson suggestions
+            suggestions.push('ما هي النقاط المهمة في هذه الشريحة؟');
+            suggestions.push('هل يمكنك تبسيط هذا الشرح؟');
+            suggestions.push('اختبرني في هذا الموضوع');
+          }
+        } catch (ragError) {
+          console.warn('RAG error in suggestions:', ragError);
+        }
+      }
+
+      // Add fallback suggestions if no context-specific ones
+      if (suggestions.length === 0) {
+        suggestions.push(
+          'ما هو موضوع الدرس؟',
+          'هل يمكنك شرح هذا بطريقة أبسط؟',
+          'أعطني مثال على هذا',
+          'هل هناك تمارين للممارسة؟',
+          'ما هي النقاط المهمة في هذا الدرس؟'
+        );
+      }
+
+      // Add slide-specific suggestions if we have slide info
+      if (typeof slideIndex === 'number') {
+        suggestions.push(`اشرح الشريحة رقم ${slideIndex + 1}`);
+        if (slideIndex > 0) {
+          suggestions.push('راجع الشريحة السابقة');
+        }
+        suggestions.push('انتقل للشريحة التالية');
+      }
+
+      // Personalize based on user history
+      const userHistory = await this.getChatHistory(userId, lessonId, 5);
+      const recentTopics = userHistory
+        .map(msg => this.extractTopics([msg.userMessage || msg.aiResponse || '']))
+        .flat()
+        .filter(topic => topic.length > 3);
+
+      if (recentTopics.length > 0) {
+        const lastTopic = recentTopics[0];
+        suggestions.push(`راجع معي ${lastTopic} مرة أخرى`);
+      }
+
+      // Limit and return unique suggestions
+      return [...new Set(suggestions)].slice(0, 6);
+    } catch (error) {
+      console.error('Error generating smart suggestions:', error);
+      return [
+        'ما هو موضوع الدرس؟',
+        'اشرح لي هذا',
+        'أعطني مثال',
+        'اختبرني'
+      ];
+    }
+  }
+
+  /**
    * Clear old sessions from memory
    */
   clearOldSessions(): void {
     const oneHourAgo = new Date(Date.now() - 3600000);
-    
+
     for (const [id, session] of this.sessions) {
       if (session.lastMessageAt < oneHourAgo) {
         this.sessions.delete(id);
