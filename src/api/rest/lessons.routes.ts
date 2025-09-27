@@ -11,6 +11,9 @@ import asyncHandler from 'express-async-handler';
 import { slideService, type SlideContent } from '../../services/slides/slide.service';
 import { voiceService } from '../../services/voice/voice.service';
 
+// ============= 🆕 QUEUE IMPORTS =============
+import slideQueue from '../../services/queue/slide-generation.queue';
+
 // ============= 🆕 TEACHING ASSISTANT IMPORT =============
 import {
   teachingAssistant,
@@ -1062,39 +1065,49 @@ router.get(
       personalization
     });
     
-    // Generate HTML for all slides
+    // 🆕 Use Queue for large lessons or when voice/teaching is requested
+    const shouldUseQueue = slides.length > 5 || shouldGenerateVoice || shouldGenerateTeaching;
+
+    if (shouldUseQueue) {
+      // Add job to queue for async processing
+      const jobId = await slideQueue.addJob({
+        lessonId: id,
+        userId,
+        slides,
+        theme,
+        generateVoice: shouldGenerateVoice,
+        generateTeaching: shouldGenerateTeaching,
+        userGrade: user?.grade || 6,
+        userName: user?.firstName || 'الطالب',
+        sessionId: req.headers['x-session-id'] as string
+      });
+
+      console.log(`📋 Queued slide generation job ${jobId} for lesson ${id}`);
+
+      // Return immediate response with job ID
+      res.json(
+        successResponse({
+          jobId,
+          lessonId: id,
+          lessonTitle: lesson.titleAr || lesson.title,
+          totalSlides: slides.length,
+          estimatedDuration: slides.reduce((total, slide) =>
+            total + (slide.metadata?.duration || 10), 0
+          ),
+          theme,
+          status: 'processing',
+          message: 'جاري توليد الشرائح... سيتم إشعارك عند الانتهاء'
+        }, 'Slide generation started')
+      );
+      return;
+    }
+
+    // For small lessons without voice, generate synchronously
     const htmlSlides = slideService.generateLessonSlides(slides, theme);
-    
+
     // Add animation styles to first slide
     if (htmlSlides.length > 0) {
       htmlSlides[0] = slideService.getAnimationStyles() + htmlSlides[0];
-    }
-    
-    // 🆕 Generate teaching scripts if requested
-    let teachingScripts: any[] = [];
-    if (shouldGenerateTeaching && user) {
-      teachingScripts = await teachingAssistant.generateLessonScripts(
-        slides,
-        id,
-        user.grade || 6,
-        user.firstName
-      );
-    }
-    
-    // Generate voice (for teaching scripts or regular narration)
-    let audioUrls: string[] = [];
-    if (shouldGenerateVoice) {
-      if (shouldGenerateTeaching && teachingScripts.length > 0) {
-        // Generate voice from teaching scripts
-        for (const script of teachingScripts) {
-          const voiceResult = await voiceService.textToSpeech(script.script);
-          audioUrls.push(voiceResult.audioUrl || '');
-        }
-      } else {
-        // Generate regular voice narration
-        const voiceResults = await voiceService.generateLessonNarration(slides);
-        audioUrls = voiceResults.map(r => r.audioUrl || '');
-      }
     }
     
     res.json(
@@ -1124,8 +1137,8 @@ router.get(
           metadata: slides[index].metadata,
           duration: slides[index].metadata?.duration || 10,
           html,
-          audioUrl: shouldGenerateVoice ? audioUrls[index] : undefined,
-          teachingScript: shouldGenerateTeaching ? teachingScripts[index] : undefined,
+          audioUrl: undefined,
+          teachingScript: undefined,
           syncTimestamps: slides[index].syncTimestamps,
           personalization: slides[index].personalization
         }))
@@ -1653,6 +1666,108 @@ router.post(
         duration: script.duration,
         syncTimestamps: generateBasicSyncData(script.duration || 10)
       }, 'Slide generated successfully')
+    );
+  })
+);
+
+// ============= 🆕 QUEUE STATUS ENDPOINTS =============
+
+/**
+ * @route   GET /api/v1/lessons/:id/slides/status/:jobId
+ * @desc    Get slide generation job status
+ * @access  Private
+ */
+router.get(
+  '/:id/slides/status/:jobId',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id, jobId } = req.params;
+
+    const status = await slideQueue.getStatus(jobId);
+
+    if (!status) {
+      res.status(404).json(
+        errorResponse('JOB_NOT_FOUND', 'Job not found')
+      );
+      return;
+    }
+
+    // If completed, get cached results
+    if (status.status === 'completed') {
+      const results = await slideQueue.getResults(id, req.user!.userId);
+
+      if (results) {
+        res.json(
+          successResponse({
+            jobId,
+            lessonId: id,
+            status: 'completed',
+            slides: results.htmlSlides.map((html: string, index: number) => ({
+              number: index + 1,
+              html,
+              audioUrl: results.audioUrls?.[index],
+              script: results.teachingScripts?.[index]?.script,
+              duration: results.teachingScripts?.[index]?.duration || 10
+            })),
+            totalSlides: results.htmlSlides.length,
+            processingTime: results.processingTime
+          }, 'Slides ready')
+        );
+        return;
+      }
+    }
+
+    res.json(
+      successResponse({
+        jobId,
+        ...status
+      }, 'Job status retrieved')
+    );
+  })
+);
+
+/**
+ * @route   POST /api/v1/lessons/:id/slides/cancel/:jobId
+ * @desc    Cancel slide generation job
+ * @access  Private
+ */
+router.post(
+  '/:id/slides/cancel/:jobId',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { jobId } = req.params;
+
+    const cancelled = await slideQueue.cancelJob(jobId);
+
+    if (!cancelled) {
+      res.status(404).json(
+        errorResponse('JOB_NOT_FOUND', 'Job not found or already completed')
+      );
+      return;
+    }
+
+    res.json(
+      successResponse({
+        jobId,
+        cancelled: true
+      }, 'Job cancelled successfully')
+    );
+  })
+);
+
+/**
+ * @route   GET /api/v1/lessons/queue/stats
+ * @desc    Get queue statistics
+ * @access  Private
+ */
+router.get(
+  '/queue/stats',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const stats = await slideQueue.getStats();
+
+    res.json(
+      successResponse(stats, 'Queue statistics retrieved')
     );
   })
 );

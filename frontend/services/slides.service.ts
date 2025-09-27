@@ -82,13 +82,22 @@ export interface GenerateSingleSlideParams {
   type?: 'explanation' | 'example' | 'quiz'
 }
 
+interface SlideGenerationJob {
+  jobId: string
+  lessonId: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  progress: number
+  totalSlides: number
+  message?: string
+}
+
 class SlidesService {
   private baseUrl = '/api/v1/lessons'
 
   /**
-   * Get all slides for a lesson
+   * Get all slides for a lesson (with queue support)
    */
-  async getLessonSlides(lessonId: string, theme?: string): Promise<Slide[]> {
+  async getLessonSlides(lessonId: string, theme?: string): Promise<Slide[] | SlideGenerationJob> {
     try {
       // أضف generateVoice و generateTeaching للـ query
       const params = new URLSearchParams()
@@ -102,6 +111,11 @@ class SlidesService {
       )
 
       if (response.success && response.data) {
+        // Check if response is a job (async generation)
+        if (response.data.jobId) {
+          return response.data as SlideGenerationJob
+        }
+
         // Transform backend slides to frontend format
         const slides = response.data.slides || []
         return slides.map((slide: any, index: number) => ({
@@ -271,6 +285,73 @@ class SlidesService {
     content = content.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
 
     return { content, styles, scripts }
+  }
+
+  /**
+   * Check slide generation job status
+   */
+  async checkJobStatus(lessonId: string, jobId: string): Promise<{
+    status: string
+    progress?: number
+    slides?: Slide[]
+    error?: string
+  }> {
+    try {
+      const response = await apiService.get(
+        `${this.baseUrl}/${lessonId}/slides/status/${jobId}`
+      )
+
+      if (response.success && response.data) {
+        // If completed, transform slides to frontend format
+        if (response.data.status === 'completed' && response.data.slides) {
+          const slides = response.data.slides.map((slide: any, index: number) => ({
+            id: `slide-${lessonId}-${index}`,
+            lessonId: lessonId,
+            order: index,
+            html: slide.html || '',
+            content: {
+              type: slide.type || 'content',
+              title: slide.title,
+              content: slide.content,
+              bullets: slide.bullets
+            },
+            theme: 'default',
+            audioUrl: slide.audioUrl,
+            duration: slide.duration || 10,
+            script: slide.script
+          }))
+
+          return {
+            status: 'completed',
+            slides
+          }
+        }
+
+        return response.data
+      }
+
+      throw new Error('Failed to check job status')
+    } catch (error) {
+      console.error('Error checking job status:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Cancel slide generation job
+   */
+  async cancelJob(lessonId: string, jobId: string): Promise<boolean> {
+    try {
+      const response = await apiService.post(
+        `${this.baseUrl}/${lessonId}/slides/cancel/${jobId}`,
+        {}
+      )
+
+      return response.success
+    } catch (error) {
+      console.error('Error cancelling job:', error)
+      return false
+    }
   }
 
   /**

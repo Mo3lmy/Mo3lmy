@@ -1486,6 +1486,59 @@ export class WebSocketService {
     }, 5 * 60 * 1000); // Every 5 minutes
   }
   
+  // ============= 🆕 SLIDE GENERATION EVENTS =============
+
+  /**
+   * Emit slide generation progress
+   */
+  emitSlideGenerationProgress(userId: string, lessonId: string, progress: any): void {
+    const socket = this.connectedUsers.get(userId);
+    if (socket) {
+      socket.emit('slide_generation_progress', {
+        lessonId,
+        ...progress
+      });
+      console.log(`📊 Sent progress update to user ${userId} for lesson ${lessonId}`);
+    }
+  }
+
+  /**
+   * Emit slide generation complete
+   */
+  emitSlideGenerationComplete(userId: string, lessonId: string, result: any): void {
+    const socket = this.connectedUsers.get(userId);
+    if (socket) {
+      socket.emit('slide_generation_complete', {
+        lessonId,
+        ...result
+      });
+      console.log(`✅ Sent completion notification to user ${userId} for lesson ${lessonId}`);
+    }
+
+    // Also notify room members
+    const room = `lesson_${lessonId}`;
+    if (this.io) {
+      this.io.to(room).emit('lesson_slides_ready', {
+        lessonId,
+        message: 'الشرائح جاهزة للعرض!'
+      });
+    }
+  }
+
+  /**
+   * Emit slide generation error
+   */
+  emitSlideGenerationError(userId: string, lessonId: string, error: any): void {
+    const socket = this.connectedUsers.get(userId);
+    if (socket) {
+      socket.emit('slide_generation_error', {
+        lessonId,
+        ...error
+      });
+      console.log(`❌ Sent error notification to user ${userId} for lesson ${lessonId}`);
+    }
+  }
+
   // ============= HELPER METHODS =============
 
   /**
