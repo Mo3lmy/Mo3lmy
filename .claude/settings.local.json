@@ -49,7 +49,8 @@
       "Bash(npm run type-check:*)",
       "Bash(npm uninstall:*)",
       "Bash(start http://localhost:3000/test-colors)",
-      "Bash(npm run create:test-user:*)"
+      "Bash(npm run create:test-user:*)",
+      "Bash(del \"C:\\Projects\\smart-education-platform\\frontend\\app\\lesson\\[id]\\enhanced-page.tsx\")"
     ],
     "deny": [],
     "ask": []

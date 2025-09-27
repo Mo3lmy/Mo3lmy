@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock,
   Trophy,
@@ -10,7 +10,6 @@ import {
   Play,
   BookOpen,
   Target,
-  Star,
   Zap,
   ChevronLeft,
   Bookmark,
@@ -18,27 +17,108 @@ import {
   Download,
   CheckCircle,
   Lock,
-  Users,
   BarChart,
-  MessageCircle,
   Sparkles,
-  FileText,
-  Video,
-  Headphones,
-  PenTool,
-  Lightbulb,
   Award,
+  Heart,
+  Activity
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card, { CardHeader, CardContent } from "@/components/ui/Card";
+
+// Import AI components
+import TeachingAssistant from "@/components/ai/TeachingAssistant";
+import EmotionalIndicator from "@/components/ai/EmotionalIndicator";
+import SupportMessage from "@/components/ai/SupportMessage";
+import BreakReminder from "@/components/ai/BreakReminder";
+import LiveIndicator from "@/components/shared/LiveIndicator";
+import NotificationToast, { useNotifications } from "@/components/shared/NotificationToast";
+
+// Import AI hooks
+import { useTeachingAssistant } from "@/hooks/useTeachingAssistant";
+import { useEmotionalIntelligence } from "@/hooks/useEmotionalIntelligence";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { useStudentProfile } from "@/hooks/useStudentProfile";
+import useAuthStore from "@/stores/useAuthStore";
 
 export default function LessonPage() {
   const params = useParams();
   const router = useRouter();
   const lessonId = params.id as string;
-  const [isBookmarked, setIsBookmarked] = useState(false);
+  const { user } = useAuthStore();
+  const userId = user?.id || "";
 
-  // Placeholder data - will be replaced with real API calls
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [currentSlide, setCurrentSlide] = useState<Record<string, unknown> | null>(null);
+  const [showAIAssistant, setShowAIAssistant] = useState(true);
+
+  // AI Hooks
+  const teachingAssistant = useTeachingAssistant(lessonId);
+  const emotionalIntelligence = useEmotionalIntelligence(userId);
+  const webSocket = useWebSocket(lessonId);
+  const studentProfile = useStudentProfile(userId);
+  const notifications = useNotifications();
+
+  // Subscribe to WebSocket events
+  useEffect(() => {
+    if (!webSocket.isConnected) return;
+
+    // Teaching events
+    const unsubTeaching = webSocket.onTeachingUpdate((data) => {
+      console.log("Teaching update:", data);
+      notifications.info("تحديث تعليمي", data.message);
+    });
+
+    // Emotional events
+    const unsubEmotional = webSocket.onEmotionalStateChange((data) => {
+      console.log("Emotional state change:", data);
+      if (data.needsSupport) {
+        notifications.support("دعم عاطفي", "يبدو أنك تحتاج إلى مساعدة. كيف يمكنني مساعدتك؟");
+      }
+    });
+
+    // Achievement events
+    const unsubAchievement = webSocket.onAchievementUnlocked((data) => {
+      console.log("Achievement unlocked:", data);
+      notifications.achievement("إنجاز جديد!", data.achievement.name);
+    });
+
+    // Slide events
+    const unsubSlide = webSocket.onSlideReady((data) => {
+      console.log("Slide ready:", data);
+      setCurrentSlide(data.slide);
+    });
+
+    return () => {
+      unsubTeaching();
+      unsubEmotional();
+      unsubAchievement();
+      unsubSlide();
+    };
+  }, [webSocket, notifications]);
+
+  // Track user activity
+  useEffect(() => {
+    const activityInterval = setInterval(() => {
+      emotionalIntelligence.trackActivity("page_view", true);
+      webSocket.trackUserActivity("lesson_engagement", { lessonId });
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(activityInterval);
+  }, [emotionalIntelligence, webSocket, lessonId]);
+
+  // Handle emotional state changes
+  useEffect(() => {
+    if (emotionalIntelligence.emotionalData.needsBreak) {
+      notifications.info("وقت الاستراحة", "لقد كنت تدرس لفترة طويلة. خذ استراحة قصيرة!");
+    }
+
+    if (emotionalIntelligence.emotionalData.needsSupport) {
+      setShowAIAssistant(true);
+    }
+  }, [emotionalIntelligence.emotionalData, notifications]);
+
+  // Placeholder lesson data (will be replaced with real API call)
   const lesson = {
     id: lessonId,
     title: "المعادلات الخطية",
@@ -71,12 +151,6 @@ export default function LessonPage() {
     ],
   };
 
-  const relatedLessons = [
-    { id: "2", title: "المعادلات التربيعية", difficulty: "HARD", duration: 60 },
-    { id: "3", title: "أنظمة المعادلات", difficulty: "MEDIUM", duration: 50 },
-    { id: "4", title: "المتباينات الخطية", difficulty: "EASY", duration: 40 },
-  ];
-
   const getDifficultyDetails = (difficulty: string) => {
     switch (difficulty) {
       case "EASY":
@@ -108,34 +182,115 @@ export default function LessonPage() {
 
   const difficultyDetails = getDifficultyDetails(lesson.difficulty);
 
+  const handleStartLesson = () => {
+    // Track activity
+    emotionalIntelligence.trackActivity("lesson_start", true);
+    webSocket.trackUserActivity("lesson_started", { lessonId });
+
+    // Generate initial teaching script
+    teachingAssistant.generateScript({
+      type: "introduction",
+      title: lesson.title,
+      content: lesson.description
+    });
+
+    // Show notification
+    notifications.success("بداية رائعة!", "هيا نبدأ رحلة التعلم!");
+  };
+
+  const handleEmotionalClick = () => {
+    emotionalIntelligence.clearSuggestions();
+    emotionalIntelligence.getSuggestions();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-primary-50 py-8">
+      {/* Notification Toast */}
+      <NotificationToast
+        notifications={notifications.notifications}
+        onDismiss={notifications.removeNotification}
+        position="top-right"
+      />
+
+      {/* Break Reminder */}
+      <BreakReminder
+        sessionDuration={emotionalIntelligence.emotionalData.sessionDuration}
+        onBreakStart={() => {
+          emotionalIntelligence.trackActivity("break_started", true);
+          webSocket.trackUserActivity("break_taken");
+        }}
+        onBreakEnd={() => {
+          emotionalIntelligence.trackActivity("break_ended", true);
+          notifications.motivation("عودة موفقة!", "هيا نكمل التعلم بنشاط!");
+        }}
+      />
+
       <div className="container-custom">
-        {/* Breadcrumb Navigation */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="mb-6"
-        >
-          <nav className="flex items-center gap-2 text-sm text-gray-600">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="hover:text-primary-600 transition-colors"
-            >
-              الرئيسية
-            </button>
-            <ChevronLeft className="h-4 w-4 text-gray-400" />
-            <button
-              onClick={() => router.push("/lessons")}
-              className="hover:text-primary-600 transition-colors"
-            >
-              الدروس
-            </button>
-            <ChevronLeft className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-900 font-medium">{lesson.subject}</span>
-          </nav>
-        </motion.div>
+        {/* Top Bar with Live Status and Emotional Indicator */}
+        <div className="flex items-center justify-between mb-6">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-4"
+          >
+            {/* Breadcrumb */}
+            <nav className="flex items-center gap-2 text-sm text-gray-600">
+              <button
+                onClick={() => router.push("/dashboard")}
+                className="hover:text-primary-600 transition-colors"
+              >
+                الرئيسية
+              </button>
+              <ChevronLeft className="h-4 w-4 text-gray-400" />
+              <button
+                onClick={() => router.push("/lessons")}
+                className="hover:text-primary-600 transition-colors"
+              >
+                الدروس
+              </button>
+              <ChevronLeft className="h-4 w-4 text-gray-400" />
+              <span className="text-gray-900 font-medium">{lesson.subject}</span>
+            </nav>
+
+            {/* Live Indicator */}
+            <LiveIndicator
+              isConnected={webSocket.isConnected}
+              reconnectAttempt={webSocket.reconnectAttempt}
+            />
+          </motion.div>
+
+          {/* Emotional Indicator */}
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-72"
+          >
+            <EmotionalIndicator
+              mood={emotionalIntelligence.emotionalData.mood}
+              confidence={emotionalIntelligence.emotionalData.confidence}
+              engagement={emotionalIntelligence.emotionalData.engagement}
+              onMoodClick={handleEmotionalClick}
+            />
+          </motion.div>
+        </div>
+
+        {/* Support Messages */}
+        {emotionalIntelligence.suggestions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <SupportMessage
+              suggestions={emotionalIntelligence.suggestions}
+              onDismiss={(index) => {
+                const newSuggestions = [...emotionalIntelligence.suggestions];
+                newSuggestions.splice(index, 1);
+                emotionalIntelligence.clearSuggestions();
+              }}
+            />
+          </motion.div>
+        )}
 
         {/* Lesson Header */}
         <motion.div
@@ -175,16 +330,15 @@ export default function LessonPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Trophy className="h-5 w-5 text-yellow-300" />
-                      <span>100 نقطة</span>
+                      <span>{studentProfile.profile?.points || 0} نقطة</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      <span>{lesson.totalStudents} طالب</span>
+                      <Activity className="h-5 w-5" />
+                      <span>مستوى {studentProfile.profile?.level || 1}</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Star className="h-5 w-5 text-yellow-300 fill-current" />
-                      <span className="font-semibold">{lesson.rating}</span>
-                      <span className="text-white/70">(42 تقييم)</span>
+                    <div className="flex items-center gap-2">
+                      <Heart className="h-5 w-5 text-red-300" />
+                      <span>{studentProfile.profile?.streak || 0} يوم متتالي</span>
                     </div>
                   </div>
                 </div>
@@ -195,10 +349,7 @@ export default function LessonPage() {
                     variant="secondary"
                     size="lg"
                     className="w-full md:w-auto bg-white text-primary-600 hover:bg-gray-100"
-                    onClick={() => {
-                      // Navigate to lesson viewer/slides
-                      console.log("Start lesson:", lessonId);
-                    }}
+                    onClick={handleStartLesson}
                   >
                     <Play className="ml-2 h-5 w-5" />
                     ابدأ الدرس
@@ -254,6 +405,37 @@ export default function LessonPage() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* AI Teaching Assistant */}
+            <AnimatePresence>
+              {showAIAssistant && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <TeachingAssistant
+                    lessonId={lessonId}
+                    slideContent={currentSlide || undefined}
+                    className="mb-6"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Toggle AI Assistant Button */}
+            <div className="flex justify-end mb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAIAssistant(!showAIAssistant)}
+                className="flex items-center gap-2"
+              >
+                <Brain className="h-4 w-4" />
+                {showAIAssistant ? "إخفاء المساعد الذكي" : "إظهار المساعد الذكي"}
+              </Button>
+            </div>
+
             {/* Learning Objectives */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -280,6 +462,11 @@ export default function LessonPage() {
                             ? "bg-success-50 border border-success-200"
                             : "bg-gray-50 border border-gray-200"
                         }`}
+                        onClick={() => {
+                          if (objective.completed) {
+                            emotionalIntelligence.trackActivity("objective_reviewed", true);
+                          }
+                        }}
                       >
                         {objective.completed ? (
                           <CheckCircle className="h-5 w-5 text-success-600" />
@@ -300,7 +487,7 @@ export default function LessonPage() {
               </Card>
             </motion.div>
 
-            {/* Lesson Sections */}
+            {/* Lesson Sections with AI Integration */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -326,6 +513,17 @@ export default function LessonPage() {
                             ? "bg-white border-success-200 hover:border-success-300"
                             : "bg-gray-50 border-gray-200 hover:border-primary-300"
                         }`}
+                        onClick={() => {
+                          emotionalIntelligence.trackActivity(`section_${index}_clicked`, true);
+                          webSocket.trackUserActivity("section_opened", { sectionIndex: index });
+
+                          // Generate teaching script for this section
+                          teachingAssistant.generateScript({
+                            type: "section",
+                            title: section.title,
+                            content: `Starting section: ${section.title}`
+                          });
+                        }}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -361,46 +559,74 @@ export default function LessonPage() {
                 </CardContent>
               </Card>
             </motion.div>
+          </div>
 
-            {/* Key Points */}
+          {/* Sidebar with Student Profile Info */}
+          <div className="space-y-6">
+            {/* Student Progress Card */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
             >
-              <Card variant="bordered">
+              <Card variant="elevated">
                 <CardHeader>
-                  <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                    <Lightbulb className="h-6 w-6 text-motivation-600" />
-                    النقاط الرئيسية
-                  </h2>
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <BarChart className="h-5 w-5 text-primary-600" />
+                    تقدمك الشخصي
+                  </h3>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {lesson.keyPoints.map((point, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.4 + index * 0.1 }}
-                        whileHover={{ scale: 1.05 }}
-                        className="flex items-start gap-3 p-4 bg-gradient-to-br from-primary-50 to-white rounded-lg border border-primary-200"
-                      >
-                        <div className="flex-shrink-0 w-8 h-8 bg-primary-500 text-white rounded-full flex items-center justify-center font-semibold text-sm">
-                          {index + 1}
-                        </div>
-                        <p className="text-gray-700">{point}</p>
-                      </motion.div>
-                    ))}
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-600">المستوى</span>
+                        <span className="font-semibold">
+                          {studentProfile.profile?.level || 1}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-primary-400 to-primary-600"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${studentProfile.getLevelProgress()}%` }}
+                          transition={{ duration: 1 }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-center">
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <Trophy className="h-5 w-5 text-yellow-500 mx-auto mb-1" />
+                        <p className="text-xs text-gray-600">النقاط</p>
+                        <p className="font-bold text-primary-600">
+                          {studentProfile.profile?.points || 0}
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <Zap className="h-5 w-5 text-orange-500 mx-auto mb-1" />
+                        <p className="text-xs text-gray-600">السلسلة</p>
+                        <p className="font-bold text-primary-600">
+                          {studentProfile.profile?.streak || 0} يوم
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">نمط التعلم المفضل</p>
+                      <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">
+                        {studentProfile.profile?.learningStyle === "visual" && "بصري"}
+                        {studentProfile.profile?.learningStyle === "auditory" && "سمعي"}
+                        {studentProfile.profile?.learningStyle === "kinesthetic" && "حركي"}
+                        {studentProfile.profile?.learningStyle === "reading" && "قرائي"}
+                      </span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
-          </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Features */}
+            {/* AI Features */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -410,7 +636,7 @@ export default function LessonPage() {
                 <CardHeader>
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-motivation-600" />
-                    مميزات الدرس
+                    مميزات الذكاء الاصطناعي
                   </h3>
                 </CardHeader>
                 <CardContent>
@@ -420,143 +646,40 @@ export default function LessonPage() {
                         <Brain className="h-5 w-5 text-primary-600" />
                       </div>
                       <div>
-                        <h4 className="font-medium text-gray-900">مساعد AI ذكي</h4>
-                        <p className="text-xs text-gray-600">احصل على مساعدة فورية</p>
+                        <h4 className="font-medium text-gray-900">مساعد تعليمي ذكي</h4>
+                        <p className="text-xs text-gray-600">12 نوع تفاعل مختلف</p>
                       </div>
                     </div>
 
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 bg-success-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <PenTool className="h-5 w-5 text-success-600" />
+                        <Heart className="h-5 w-5 text-success-600" />
                       </div>
                       <div>
-                        <h4 className="font-medium text-gray-900">تمارين تفاعلية</h4>
-                        <p className="text-xs text-gray-600">حل وتقييم فوري</p>
+                        <h4 className="font-medium text-gray-900">ذكاء عاطفي</h4>
+                        <p className="text-xs text-gray-600">مراقبة ودعم مستمر</p>
                       </div>
                     </div>
 
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 bg-motivation-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Video className="h-5 w-5 text-motivation-600" />
+                        <Activity className="h-5 w-5 text-motivation-600" />
                       </div>
                       <div>
-                        <h4 className="font-medium text-gray-900">شرح بالفيديو</h4>
-                        <p className="text-xs text-gray-600">فيديوهات عالية الجودة</p>
+                        <h4 className="font-medium text-gray-900">تتبع فوري</h4>
+                        <p className="text-xs text-gray-600">WebSocket مباشر</p>
                       </div>
                     </div>
 
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Headphones className="h-5 w-5 text-purple-600" />
+                        <Award className="h-5 w-5 text-purple-600" />
                       </div>
                       <div>
-                        <h4 className="font-medium text-gray-900">شرح صوتي</h4>
-                        <p className="text-xs text-gray-600">استمع للدرس</p>
+                        <h4 className="font-medium text-gray-900">نظام إنجازات</h4>
+                        <p className="text-xs text-gray-600">شارات ومكافآت</p>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Quick Actions */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-            >
-              <Card variant="bordered">
-                <CardHeader>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    إجراءات سريعة
-                  </h3>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button variant="outline" className="w-full justify-start">
-                    <MessageCircle className="ml-2 h-4 w-4" />
-                    اسأل المعلم
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start">
-                    <FileText className="ml-2 h-4 w-4" />
-                    تحميل الملخص
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start">
-                    <BarChart className="ml-2 h-4 w-4" />
-                    عرض التقدم
-                  </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Related Lessons */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              <Card variant="bordered">
-                <CardHeader>
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-primary-600" />
-                    دروس مشابهة
-                  </h3>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {relatedLessons.map((relatedLesson, index) => (
-                      <motion.div
-                        key={relatedLesson.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5 + index * 0.1 }}
-                        whileHover={{ x: -5 }}
-                        className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all cursor-pointer"
-                        onClick={() => router.push(`/lesson/${relatedLesson.id}`)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="text-sm font-medium text-gray-900">
-                              {relatedLesson.title}
-                            </h4>
-                            <div className="flex items-center gap-3 mt-1">
-                              <span className="text-xs text-gray-600">
-                                {relatedLesson.duration} دقيقة
-                              </span>
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  getDifficultyDetails(relatedLesson.difficulty).color
-                                }`}
-                              >
-                                {getDifficultyDetails(relatedLesson.difficulty).label}
-                              </span>
-                            </div>
-                          </div>
-                          <ChevronLeft className="h-4 w-4 text-gray-400" />
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Achievement Preview */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-            >
-              <Card variant="elevated" className="bg-gradient-to-br from-motivation-500 to-motivation-600 text-white">
-                <CardContent className="text-center py-6">
-                  <Award className="h-12 w-12 mx-auto mb-3" />
-                  <h3 className="text-lg font-semibold mb-2">أكمل الدرس</h3>
-                  <p className="text-sm opacity-90 mb-3">
-                    واحصل على شارة &quot;خبير المعادلات&quot;
-                  </p>
-                  <div className="flex justify-center gap-1">
-                    {[...Array(3)].map((_, i) => (
-                      <Star key={i} className="h-5 w-5 fill-current text-yellow-300" />
-                    ))}
                   </div>
                 </CardContent>
               </Card>
