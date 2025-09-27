@@ -824,18 +824,15 @@ router.get(
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { 
-      theme = 'default', 
-      generateVoice = 'false',
-      generateTeaching = 'false' // 🆕
-    } = req.query as { 
+    const {
+      theme = 'default',
+      generateVoice = 'false',  // Default to false for performance
+      generateTeaching = 'false' // Default to false for performance
+    } = req.query as {
       theme?: string;
       generateVoice?: string;
       generateTeaching?: string;
     };
-    
-    const shouldGenerateVoice = generateVoice === 'true';
-    const shouldGenerateTeaching = generateTeaching === 'true'; // 🆕
     const userId = req.user!.userId;
     
     // Get user and lesson
@@ -933,126 +930,46 @@ router.get(
       });
     }
 
-    // 5. Examples slides - create a slide for each example
+    // 5. One example slide (not multiple)
     if (enrichedData?.examples && enrichedData.examples.length > 0) {
-      enrichedData.examples.slice(0, 3).forEach((example: any, index: number) => {
-        if (example.problem && example.solution) {
-          slides.push({
-            type: 'example',
-            title: example.type || `مثال ${index + 1}`,
-            content: example.problem,
-            bullets: [
-              `الحل: ${example.solution}`,
-              example.explanation ? `الشرح: ${example.explanation}` : null
-            ].filter(Boolean) as string[],
-            metadata: { duration: 10 },
-            personalization
-          });
-        }
-      });
+      const firstExample = enrichedData.examples[0];
+      if (firstExample.problem && firstExample.solution) {
+        slides.push({
+          type: 'example',
+          title: firstExample.type || 'مثال تطبيقي',
+          content: firstExample.problem,
+          bullets: [
+            `الحل: ${firstExample.solution}`,
+            firstExample.explanation ? `الشرح: ${firstExample.explanation}` : null
+          ].filter(Boolean) as string[],
+          metadata: { duration: 10 },
+          personalization
+        });
+      }
     }
 
-    // 6. Real world applications
-    if (enrichedData?.realWorldApplications && enrichedData.realWorldApplications.length > 0) {
-      slides.push({
-        type: 'bullet',
-        title: 'التطبيقات العملية في الحياة',
-        bullets: enrichedData.realWorldApplications.slice(0, 4),
-        metadata: { duration: 10 },
-        personalization
-      });
-    }
-
-    // 7. Educational story (using new story type)
-    if (enrichedData?.educationalStories && enrichedData.educationalStories.length > 0) {
-      const story = enrichedData.educationalStories[0];
-      slides.push({
-        type: 'story',
-        title: 'قصة تعليمية',
-        content: typeof story === 'string' ? story : story.story || story.content,
-        metadata: { duration: 15 },
-        personalization
-      });
-    }
-
-    // 8. Practice exercises/quiz slides
+    // 6. One quiz slide (most important for engagement)
     if (enrichedData?.exercises && enrichedData.exercises.length > 0) {
-      enrichedData.exercises.slice(0, 2).forEach((exercise: any, index: number) => {
-        if (exercise.type === 'MCQ' && exercise.options) {
-          // Extract clean options without أ) ب) ج) د)
-          const cleanOptions = exercise.options.map((opt: string) =>
-            opt.replace(/^[أ-د]\)\s*/, '')
-          );
+      const exercise = enrichedData.exercises[0];
+      if (exercise.type === 'MCQ' && exercise.options) {
+        const cleanOptions = exercise.options.map((opt: string) =>
+          opt.replace(/^[أ-د]\)\s*/, '')
+        );
+        const answerIndex = ['أ', 'ب', 'ج', 'د'].indexOf(exercise.correctAnswer?.charAt(0) || 'أ');
 
-          // Convert Arabic letter answer to index
-          const answerIndex = ['أ', 'ب', 'ج', 'د'].indexOf(exercise.correctAnswer?.charAt(0) || 'أ');
-
-          slides.push({
-            type: 'quiz',
-            title: `تمرين ${index + 1}`,
-            quiz: {
-              question: exercise.question,
-              options: cleanOptions,
-              correctIndex: answerIndex >= 0 ? answerIndex : 0,
-              explanation: exercise.explanation
-            },
-            metadata: { duration: 20 },
-            personalization
-          });
-        } else {
-          slides.push({
-            type: 'content',
-            title: `تمرين ${index + 1}`,
-            content: exercise.question || 'تمرين تطبيقي',
-            metadata: { duration: 15 },
-            personalization
-          });
-        }
-      });
-    }
-
-    // 9. Student tips (using new tips type)
-    if (enrichedData?.studentTips && enrichedData.studentTips.length > 0) {
-      slides.push({
-        type: 'tips',
-        title: 'نصائح للطلاب',
-        bullets: enrichedData.studentTips.slice(0, 4),
-        metadata: { duration: 8 },
-        personalization
-      });
-    }
-
-    // 10. Common mistakes
-    if (enrichedData?.commonMistakes && enrichedData.commonMistakes.length > 0) {
-      slides.push({
-        type: 'bullet',
-        title: 'الأخطاء الشائعة وكيفية تجنبها',
-        bullets: enrichedData.commonMistakes.slice(0, 4),
-        metadata: { duration: 10 },
-        personalization
-      });
-    }
-
-    // 11. Fun facts
-    if (enrichedData?.funFacts && enrichedData.funFacts.length > 0) {
-      slides.push({
-        type: 'bullet',
-        title: 'هل تعلم؟ - حقائق مثيرة',
-        bullets: enrichedData.funFacts.slice(0, 3),
-        metadata: { duration: 8 },
-        personalization
-      });
-    }
-
-    // 12. Quick review
-    if (enrichedData?.quickReview) {
-      slides.push({
-        type: 'content',
-        title: 'مراجعة سريعة',
-        content: enrichedData.quickReview,
-        metadata: { duration: 10 },
-        personalization
-      });
+        slides.push({
+          type: 'quiz',
+          title: 'تمرين تفاعلي',
+          quiz: {
+            question: exercise.question,
+            options: cleanOptions,
+            correctIndex: answerIndex >= 0 ? answerIndex : 0,
+            explanation: exercise.explanation
+          },
+          metadata: { duration: 20 },
+          personalization
+        });
+      }
     }
 
     // 13. Summary slide (always last)
@@ -1064,33 +981,59 @@ router.get(
       metadata: { duration: 10 },
       personalization
     });
-    
-    // 🆕 Use Queue for large lessons or when voice/teaching is requested
+
+    // Only generate voice/teaching for small lessons to avoid timeout
+    const shouldGenerateVoice = generateVoice === 'true' && slides.length <= 7;
+    const shouldGenerateTeaching = generateTeaching === 'true' && slides.length <= 7;
+
+    // Use Queue for large lessons or when voice/teaching is requested
     const shouldUseQueue = slides.length > 5 || shouldGenerateVoice || shouldGenerateTeaching;
 
     if (shouldUseQueue) {
-      // Debug: Print req.user to see what it contains
-      console.log('🔍 req.user content:', JSON.stringify(req.user, null, 2));
+      // تأكد من الحصول على userId الصحيح من JWT
+      const jwtUserId = req.user!.userId;
 
-      // Get the actual user ID from JWT token
-      const actualUserId = req.user!.userId; // هذا الـ ID الصحيح من الـ token
+      // تحقق من أن userId موجود وصحيح
+      if (!jwtUserId || typeof jwtUserId !== 'string') {
+        console.error('❌ Invalid userId from JWT:', jwtUserId);
+        res.status(401).json(
+          errorResponse('AUTH_ERROR', 'Invalid user authentication')
+        );
+        return;
+      }
 
-      console.log('🔍 actualUserId from req.user:', actualUserId);
+      console.log(`🔐 JWT User ID: ${jwtUserId}, Type: ${typeof jwtUserId}`);
 
-      // Add job to queue with correct user ID
+      // تأكد من وجود المستخدم في قاعدة البيانات
+      const dbUser = await prisma.user.findUnique({
+        where: { id: jwtUserId },
+        select: { id: true, firstName: true, grade: true }
+      });
+
+      if (!dbUser) {
+        console.error(`❌ User ${jwtUserId} not found in database`);
+        res.status(401).json(
+          errorResponse('USER_NOT_FOUND', 'User not found')
+        );
+        return;
+      }
+
+      console.log(`✅ Verified user: ${dbUser.id}`);
+
+      // أضف الـ job مع userId الصحيح
       const jobId = await slideQueue.addJob({
         lessonId: id,
-        userId: actualUserId, // ✅ استخدم الـ ID الصحيح
+        userId: dbUser.id, // استخدم ID من قاعدة البيانات
         slides,
         theme,
         generateVoice: shouldGenerateVoice,
         generateTeaching: shouldGenerateTeaching,
-        userGrade: user?.grade || 6,
-        userName: user?.firstName || 'الطالب',
-        sessionId: req.headers['x-session-id'] as string || actualUserId
+        userGrade: dbUser.grade || 6,
+        userName: dbUser.firstName || 'الطالب',
+        sessionId: `session-${dbUser.id}-${Date.now()}` // لا تستخدم headers
       });
 
-      console.log(`📋 Queued slide generation job ${jobId} for lesson ${id}, user ${actualUserId}`);
+      console.log(`📋 Job ${jobId}: lessonId=${id}, userId=${dbUser.id}`);
 
       res.json(
         successResponse({

@@ -54,7 +54,7 @@ interface SlideResult {
 
 // ============= REDIS CONNECTION =============
 
-import { createMockQueue, isMockMode } from './mock-queue.service';
+import { createMockQueue, isMockMode, getMockCachedResults } from './mock-queue.service';
 
 let redisConnection: any;
 
@@ -116,6 +116,16 @@ export const queueEvents = isMockMode()
 export async function processSlideGeneration(job: Job<SlideGenerationJob>): Promise<SlideGenerationResult> {
   const startTime = Date.now();
   const { lessonId, userId, slides, theme, generateVoice, generateTeaching, userGrade, userName } = job.data;
+
+  // تحقق من userId
+  console.log(`🔧 Processing job ${job.id}:`);
+  console.log(`  - lessonId: ${lessonId}`);
+  console.log(`  - userId: ${userId} (type: ${typeof userId})`);
+  console.log(`  - slides: ${slides.length}`);
+
+  if (!userId || typeof userId !== 'string') {
+    throw new Error(`Invalid userId: ${userId}`);
+  }
 
   console.log(`🚀 Starting slide generation for lesson ${lessonId}, ${slides.length} slides`);
 
@@ -205,12 +215,17 @@ export async function processSlideGeneration(job: Job<SlideGenerationJob>): Prom
     console.log(`✅ Slide generation completed in ${processingTime}ms`);
 
     // Store results in cache/database
-    await storeGenerationResults(lessonId, userId, {
+    const finalResults = {
       htmlSlides,
       teachingScripts,
       audioUrls,
       processedSlides,
-    });
+      processingTime,
+    };
+
+    await storeGenerationResults(lessonId, userId, finalResults);
+
+    console.log(`✅ Job ${job.id} completed successfully`);
 
     return {
       lessonId,
@@ -230,84 +245,96 @@ export async function processSlideGeneration(job: Job<SlideGenerationJob>): Prom
 // ============= HELPER FUNCTIONS =============
 
 async function storeGenerationResults(lessonId: string, userId: string, results: any): Promise<void> {
-  // استخدم multiple cache keys للتأكد
-  const primaryKey = `slides:${lessonId}:${userId}`;
-  const lessonKey = `slides:${lessonId}:latest`; // Fallback key
-  const ttl = 3600; // 1 hour
+  const ttl = 3600;
 
-  try {
-    // Store with primary key
-    await redisConnection.setex(
-      primaryKey,
-      ttl,
-      JSON.stringify({
-        ...results,
-        generatedAt: new Date(),
-        userId  // أضف userId للتأكد
-      })
-    );
-
-    // Also store with lesson-only key as fallback
-    await redisConnection.setex(
-      lessonKey,
-      ttl,
-      JSON.stringify({
-        ...results,
-        generatedAt: new Date(),
-        userId
-      })
-    );
-
-    console.log(`💾 Stored generation results for ${primaryKey} and ${lessonKey}`);
-  } catch (error) {
-    console.error('Failed to store generation results:', error);
+  // تحقق من userId قبل الحفظ
+  if (!userId || typeof userId !== 'string' || userId.includes('session')) {
+    console.error(`❌ Invalid userId for storage: ${userId}`);
+    throw new Error('Invalid userId for storage');
   }
+
+  // If in mock mode, results are already stored by mock queue
+  if (isMockMode()) {
+    console.log(`💾 Mock mode: Results already stored`);
+    return;
+  }
+
+  // استخدم مفاتيح متعددة للتأكد
+  const keys = [
+    `slides:${lessonId}:${userId}`,        // Primary key with userId
+    `slides:${lessonId}:latest`,           // Fallback key
+    `slides:${lessonId}:job-${Date.now()}` // Unique key
+  ];
+
+  const dataToStore = JSON.stringify({
+    ...results,
+    generatedAt: new Date().toISOString(),
+    userId,
+    lessonId
+  });
+
+  // احفظ في كل المفاتيح
+  await Promise.all(
+    keys.map(key => redisConnection.setex(key, ttl, dataToStore))
+  );
+
+  console.log(`💾 Stored results with keys:`, keys);
 }
 
 export async function getGenerationResults(lessonId: string, userId: string): Promise<any | null> {
-  try {
-    // First, try exact match
-    const exactKey = `slides:${lessonId}:${userId}`;
-    let cached = await redisConnection.get(exactKey);
+  console.log(`🔍 Getting results for lesson=${lessonId}, userId=${userId}`);
 
-    if (cached) {
-      console.log(`✅ Found exact match: ${exactKey}`);
-      return JSON.parse(cached);
-    }
+  // If in mock mode, use mock cache
+  if (isMockMode()) {
+    console.log(`🔍 Mock mode: Getting results for ${lessonId}, ${userId}`);
+    return getMockCachedResults(lessonId, userId);
+  }
 
-    // Second, try latest key
-    const latestKey = `slides:${lessonId}:latest`;
-    cached = await redisConnection.get(latestKey);
+  // جرب المفاتيح بالترتيب
+  const keysToTry = [
+    `slides:${lessonId}:${userId}`,
+    `slides:${lessonId}:latest`
+  ];
 
-    if (cached) {
-      console.log(`✅ Found latest: ${latestKey}`);
-      return JSON.parse(cached);
-    }
+  for (const key of keysToTry) {
+    try {
+      const cached = await redisConnection.get(key);
+      if (cached) {
+        console.log(`✅ Found results with key: ${key}`);
+        const parsed = JSON.parse(cached);
 
-    // Third, find ANY key for this lesson (fallback)
-    const pattern = `slides:${lessonId}:*`;
-    const keys = await redisConnection.keys(pattern);
-
-    if (keys && keys.length > 0) {
-      console.log(`🔍 Found ${keys.length} keys matching pattern`);
-
-      // Get the most recent one
-      for (const key of keys) {
-        const data = await redisConnection.get(key);
-        if (data) {
-          console.log(`✅ Using fallback key: ${key}`);
-          return JSON.parse(data);
+        // تحقق من أن البيانات صحيحة
+        if (parsed.htmlSlides && Array.isArray(parsed.htmlSlides)) {
+          return parsed;
         }
       }
+    } catch (error) {
+      console.error(`Error parsing cached data for ${key}:`, error);
     }
-
-    console.log(`❌ No results found for lesson ${lessonId}, user ${userId}`);
-    return null;
-
-  } catch (error) {
-    console.error('Failed to get generation results:', error);
-    return null;
   }
+
+  // إذا فشل كل شيء، ابحث بنمط
+  const pattern = `slides:${lessonId}:*`;
+  const allKeys = await redisConnection.keys(pattern);
+  console.log(`🔎 Found ${allKeys.length} keys with pattern ${pattern}`);
+
+  for (const key of allKeys) {
+    try {
+      const cached = await redisConnection.get(key);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.htmlSlides && Array.isArray(parsed.htmlSlides)) {
+          console.log(`✅ Found valid results with pattern key: ${key}`);
+          return parsed;
+        }
+      }
+    } catch (error) {
+      console.error(`Error with key ${key}:`, error);
+    }
+  }
+
+  console.log(`❌ No valid results found`);
+  return null;
 }
 
 export async function getJobStatus(jobId: string): Promise<SlideGenerationProgress | null> {
@@ -321,18 +348,26 @@ export async function getJobStatus(jobId: string): Promise<SlideGenerationProgre
 
     const state = await job.getState();
     const progress = job.progress as any || {};
+    const isCompleted = await job.isCompleted();
+    const isFailed = await job.isFailed();
 
-    // IMPORTANT: Return actual state, not 'processing' when completed
-    const actualStatus = state === 'completed' ? 'completed' :
-                        state === 'failed' ? 'failed' :
-                        state === 'active' ? 'processing' :
-                        state as any;
+    // تحديد الحالة الفعلية
+    let actualStatus: string;
+    if (isCompleted || state === 'completed') {
+      actualStatus = 'completed';
+    } else if (isFailed || state === 'failed') {
+      actualStatus = 'failed';
+    } else if (state === 'active' || state === 'waiting') {
+      actualStatus = 'processing';
+    } else {
+      actualStatus = state;
+    }
 
-    console.log(`📊 Job ${jobId} state: ${state}, status: ${actualStatus}`);
+    console.log(`📊 Job ${jobId}: state=${state}, isCompleted=${isCompleted}, actualStatus=${actualStatus}`);
 
     return {
       lessonId: job.data.lessonId,
-      status: actualStatus, // ✅ Return correct status
+      status: actualStatus as any,
       progress: progress.progress || 0,
       currentSlide: progress.currentSlide || 0,
       totalSlides: job.data.slides?.length || 0,

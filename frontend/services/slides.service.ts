@@ -99,24 +99,16 @@ class SlidesService {
    */
   async getLessonSlides(lessonId: string, theme?: string): Promise<Slide[] | SlideGenerationJob> {
     try {
-      // أضف generateVoice و generateTeaching للـ query
       const params = new URLSearchParams()
       if (theme) params.append('theme', theme)
-      params.append('generateVoice', 'true')  // مهم!
-      params.append('generateTeaching', 'true') // مهم!
+      params.append('generateVoice', 'true')
+      params.append('generateTeaching', 'true')
 
       const queryString = params.toString()
 
-      // Generate a session ID for WebSocket tracking
-      const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
+      // لا ترسل sessionId في headers
       const response = await apiService.get(
-        `${this.baseUrl}/${lessonId}/slides${queryString ? '?' + queryString : ''}`,
-        {
-          headers: {
-            'X-Session-Id': sessionId
-          }
-        }
+        `${this.baseUrl}/${lessonId}/slides${queryString ? '?' + queryString : ''}`
       )
 
       if (response.success && response.data) {
