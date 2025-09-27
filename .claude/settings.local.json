@@ -45,7 +45,11 @@
       "Bash(start http://localhost:3000/test-full-integration.html)",
       "Read(//c/**)",
       "Bash(timeout:*)",
-      "Bash(del /f srcservicesqueueworkersslide.worker.ts srcworker.ts)"
+      "Bash(del /f srcservicesqueueworkersslide.worker.ts srcworker.ts)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(start http://localhost:3000/test-colors)",
+      "Bash(npm run create:test-user:*)"
     ],
     "deny": [],
     "ask": []

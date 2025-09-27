@@ -1,138 +1,301 @@
-// frontend/hooks/useWebSocket.ts
 import { useEffect, useState, useCallback, useRef } from 'react';
-import io, { Socket } from 'socket.io-client';
-import { useAuthStore } from '@/store/authStore';
+import { io, Socket } from 'socket.io-client';
+import useAuthStore from '@/stores/useAuthStore';
 
-interface UseWebSocketReturn {
-  socket: Socket | null;
-  connected: boolean;
-  connect: () => void;
-  disconnect: () => void;
-  emit: (event: string, data?: any) => void;
-  on: (event: string, handler: (data: any) => void) => void;
-  off: (event: string, handler?: (data: any) => void) => void;
+interface WebSocketOptions {
+  autoConnect?: boolean;
+  reconnectionAttempts?: number;
+  reconnectionDelay?: number;
 }
 
-export function useWebSocket(): UseWebSocketReturn {
+interface EventHandler {
+  event: string;
+  handler: (data: any) => void;
+}
+
+export function useWebSocket(
+  lessonId?: string,
+  options: WebSocketOptions = {}
+) {
+  const {
+    autoConnect = true,
+    reconnectionAttempts = 5,
+    reconnectionDelay = 1000
+  } = options;
+
+  const { user, token } = useAuthStore();
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [connected, setConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
-  const { token } = useAuthStore();
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const eventHandlersRef = useRef<EventHandler[]>([]);
 
-  const connect = useCallback(() => {
-    if (socketRef.current?.connected) return;
+  // Initialize socket connection
+  useEffect(() => {
+    if (!autoConnect || !token) return;
 
-    const newSocket = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3000', {
-      auth: {
-        token: token || ''
-      },
+    const socketInstance = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001', {
       transports: ['websocket', 'polling'],
+      auth: {
+        token
+      },
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
+      reconnectionAttempts,
+      reconnectionDelay
     });
 
-    newSocket.on('connect', () => {
-      console.log('✅ WebSocket connected');
-      setConnected(true);
+    // Connection events
+    socketInstance.on('connect', () => {
+      console.log('WebSocket connected');
+      setIsConnected(true);
+      setConnectionError(null);
+      setReconnectAttempt(0);
+
+      // Authenticate
+      socketInstance.emit('authenticate', { token });
+
+      // Join lesson if provided
+      if (lessonId) {
+        socketInstance.emit('join_lesson', { lessonId });
+      }
     });
 
-    newSocket.on('disconnect', () => {
-      console.log('❌ WebSocket disconnected');
-      setConnected(false);
+    socketInstance.on('disconnect', (reason) => {
+      console.log('WebSocket disconnected:', reason);
+      setIsConnected(false);
     });
 
-    newSocket.on('error', (error) => {
-      console.error('WebSocket error:', error);
+    socketInstance.on('connect_error', (error) => {
+      console.error('WebSocket connection error:', error);
+      setConnectionError(error.message);
     });
 
-    socketRef.current = newSocket;
-    setSocket(newSocket);
-  }, [token]);
+    socketInstance.on('reconnect_attempt', (attemptNumber) => {
+      setReconnectAttempt(attemptNumber);
+    });
 
+    // Store socket instance
+    setSocket(socketInstance);
+
+    // Cleanup on unmount
+    return () => {
+      socketInstance.disconnect();
+    };
+  }, [token, lessonId, autoConnect, reconnectionAttempts, reconnectionDelay]);
+
+  // Connect manually
+  const connect = useCallback(() => {
+    if (socket && !isConnected) {
+      socket.connect();
+    }
+  }, [socket, isConnected]);
+
+  // Disconnect manually
   const disconnect = useCallback(() => {
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-      setSocket(null);
-      setConnected(false);
+    if (socket && isConnected) {
+      socket.disconnect();
     }
-  }, []);
+  }, [socket, isConnected]);
 
+  // Emit event
   const emit = useCallback((event: string, data?: any) => {
-    if (socketRef.current?.connected) {
-      socketRef.current.emit(event, data);
+    if (socket && isConnected) {
+      socket.emit(event, data);
     } else {
-      console.warn('Socket not connected, cannot emit:', event);
+      console.warn('Socket not connected. Cannot emit event:', event);
     }
-  }, []);
+  }, [socket, isConnected]);
 
+  // Listen to events
   const on = useCallback((event: string, handler: (data: any) => void) => {
-    if (socketRef.current) {
-      socketRef.current.on(event, handler);
+    if (socket) {
+      socket.on(event, handler);
+      eventHandlersRef.current.push({ event, handler });
     }
-  }, []);
 
+    // Return cleanup function
+    return () => {
+      if (socket) {
+        socket.off(event, handler);
+        eventHandlersRef.current = eventHandlersRef.current.filter(
+          eh => !(eh.event === event && eh.handler === handler)
+        );
+      }
+    };
+  }, [socket]);
+
+  // Listen to event once
+  const once = useCallback((event: string, handler: (data: any) => void) => {
+    if (socket) {
+      socket.once(event, handler);
+    }
+  }, [socket]);
+
+  // Remove listener
   const off = useCallback((event: string, handler?: (data: any) => void) => {
-    if (socketRef.current) {
+    if (socket) {
       if (handler) {
-        socketRef.current.off(event, handler);
+        socket.off(event, handler);
       } else {
-        socketRef.current.off(event);
+        socket.off(event);
       }
     }
-  }, []);
+  }, [socket]);
 
-  // Auto-connect when token is available
-  useEffect(() => {
-    if (token && !socketRef.current?.connected) {
-      connect();
-    }
-
-    return () => {
-      disconnect();
-    };
-  }, [token, connect, disconnect]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
+  // Cleanup all listeners
+  const removeAllListeners = useCallback((event?: string) => {
+    if (socket) {
+      if (event) {
+        socket.removeAllListeners(event);
+      } else {
+        socket.removeAllListeners();
       }
-    };
-  }, []);
+      eventHandlersRef.current = event
+        ? eventHandlersRef.current.filter(eh => eh.event !== event)
+        : [];
+    }
+  }, [socket]);
+
+  // Join room
+  const joinRoom = useCallback((room: string) => {
+    emit('join_room', { room });
+  }, [emit]);
+
+  // Leave room
+  const leaveRoom = useCallback((room: string) => {
+    emit('leave_room', { room });
+  }, [emit]);
+
+  // Event handlers for specific features
+
+  // Teaching Assistant events
+  const onTeachingUpdate = useCallback((handler: (data: any) => void) => {
+    return on('teaching_update', handler);
+  }, [on]);
+
+  const onTeachingInteraction = useCallback((handler: (data: any) => void) => {
+    return on('teaching_interaction', handler);
+  }, [on]);
+
+  // Emotional Intelligence events
+  const onEmotionalStateChange = useCallback((handler: (data: any) => void) => {
+    return on('emotional_state_change', handler);
+  }, [on]);
+
+  const onSupportMessage = useCallback((handler: (data: any) => void) => {
+    return on('support_message', handler);
+  }, [on]);
+
+  // Achievement events
+  const onAchievementUnlocked = useCallback((handler: (data: any) => void) => {
+    return on('achievement_unlocked', handler);
+  }, [on]);
+
+  const onProgressUpdate = useCallback((handler: (data: any) => void) => {
+    return on('progress_update', handler);
+  }, [on]);
+
+  // Slide generation events
+  const onSlideGenerationProgress = useCallback((handler: (data: any) => void) => {
+    return on('slide_generation_progress', handler);
+  }, [on]);
+
+  const onSlideReady = useCallback((handler: (data: any) => void) => {
+    return on('slide_ready', handler);
+  }, [on]);
+
+  // Quiz events
+  const onQuizAnswer = useCallback((handler: (data: any) => void) => {
+    return on('quiz_answer', handler);
+  }, [on]);
+
+  const onQuizComplete = useCallback((handler: (data: any) => void) => {
+    return on('quiz_complete', handler);
+  }, [on]);
+
+  // Chat events
+  const onChatMessage = useCallback((handler: (data: any) => void) => {
+    return on('chat_message', handler);
+  }, [on]);
+
+  const sendChatMessage = useCallback((message: string, context?: any) => {
+    emit('chat_message', {
+      message,
+      userId: user?.id,
+      lessonId,
+      context,
+      timestamp: new Date()
+    });
+  }, [emit, user, lessonId]);
+
+  // User activity tracking
+  const trackUserActivity = useCallback((activity: string, metadata?: any) => {
+    emit('user_activity', {
+      activity,
+      metadata,
+      userId: user?.id,
+      lessonId,
+      timestamp: new Date()
+    });
+  }, [emit, user, lessonId]);
+
+  // Update emotional state
+  const updateEmotionalState = useCallback((state: any) => {
+    emit('update_emotional_state', {
+      ...state,
+      userId: user?.id,
+      timestamp: new Date()
+    });
+  }, [emit, user]);
+
+  // Request teaching interaction
+  const requestTeachingInteraction = useCallback((type: string, context?: any) => {
+    emit('teaching_interaction_request', {
+      type,
+      context,
+      userId: user?.id,
+      lessonId,
+      timestamp: new Date()
+    });
+  }, [emit, user, lessonId]);
 
   return {
-    socket: socketRef.current,
-    connected,
+    // Connection state
+    socket,
+    isConnected,
+    connectionError,
+    reconnectAttempt,
+
+    // Connection methods
     connect,
     disconnect,
+
+    // Core event methods
     emit,
     on,
+    once,
     off,
+    removeAllListeners,
+
+    // Room methods
+    joinRoom,
+    leaveRoom,
+
+    // Feature-specific methods
+    onTeachingUpdate,
+    onTeachingInteraction,
+    onEmotionalStateChange,
+    onSupportMessage,
+    onAchievementUnlocked,
+    onProgressUpdate,
+    onSlideGenerationProgress,
+    onSlideReady,
+    onQuizAnswer,
+    onQuizComplete,
+    onChatMessage,
+    sendChatMessage,
+    trackUserActivity,
+    updateEmotionalState,
+    requestTeachingInteraction
   };
-}
-
-// Export a singleton instance for global use
-let globalSocket: Socket | null = null;
-
-export function getGlobalSocket(): Socket | null {
-  if (!globalSocket) {
-    const token = localStorage.getItem('token');
-    if (token) {
-      globalSocket = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3000', {
-        auth: { token },
-        transports: ['websocket', 'polling'],
-      });
-    }
-  }
-  return globalSocket;
-}
-
-export function disconnectGlobalSocket(): void {
-  if (globalSocket) {
-    globalSocket.disconnect();
-    globalSocket = null;
-  }
 }

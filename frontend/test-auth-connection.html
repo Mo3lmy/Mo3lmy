@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Auth Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Frontend Authentication Connection Test</h1>
+
+    <div class="info">
+        <strong>Environment Variables:</strong><br>
+        API URL: <span id="apiUrl">Loading...</span><br>
+        Socket URL: <span id="socketUrl">Loading...</span>
+    </div>
+
+    <div>
+        <h3>Test Login</h3>
+        <input type="email" id="email" placeholder="Email" value="test@test.com">
+        <input type="password" id="password" placeholder="Password" value="Test1234!">
+        <button onclick="testLogin()">Test Login</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        // Display environment variables
+        document.getElementById('apiUrl').textContent = window.location.protocol + '//' + window.location.hostname + ':3001/api/v1';
+        document.getElementById('socketUrl').textContent = window.location.protocol + '//' + window.location.hostname + ':3001';
+
+        function addResult(message, type) {
+            const resultsDiv = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = message;
+            resultsDiv.appendChild(div);
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                addResult('Testing login...', 'info');
+
+                const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    addResult(`✅ Login successful! User: ${data.data.user.firstName} ${data.data.user.lastName}`, 'success');
+
+                    // Test protected endpoint
+                    const meResponse = await fetch('http://localhost:3001/api/v1/auth/me', {
+                        headers: {
+                            'Authorization': `Bearer ${data.data.token}`
+                        }
+                    });
+
+                    const meData = await meResponse.json();
+                    if (meData.success) {
+                        addResult(`✅ Protected endpoint test successful! Retrieved user data.`, 'success');
+                    } else {
+                        addResult(`❌ Protected endpoint test failed: ${meData.error?.message}`, 'error');
+                    }
+
+                } else {
+                    addResult(`❌ Login failed: ${data.error?.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Connection error: ${error.message}`, 'error');
+                console.error('Login test error:', error);
+            }
+        }
+
+        // Test basic connectivity on page load
+        window.onload = async function() {
+            try {
+                const response = await fetch('http://localhost:3001/api');
+                const data = await response.json();
+                addResult(`✅ Backend connection successful! API Version: ${data.version}`, 'success');
+            } catch (error) {
+                addResult(`❌ Backend connection failed: ${error.message}`, 'error');
+            }
+        };
+    </script>
+</body>
+</html>

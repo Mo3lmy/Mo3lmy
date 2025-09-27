@@ -1,29 +1,12 @@
 import type { Metadata } from "next";
-import { Inter, Cairo } from "next/font/google";
 import "./globals.css";
-import { Providers } from "./providers";
-import { FloatingChatWrapper } from "@/components/chat/FloatingChatWrapper";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const cairo = Cairo({
-  variable: "--font-cairo",
-  subsets: ["arabic", "latin"],
-});
+import Providers from "./providers";
+import Header from "@/components/layout/Header";
+import Footer from "@/components/layout/Footer";
 
 export const metadata: Metadata = {
-  title: "Smart Education Platform",
-  description: "AI-powered learning platform with emotional intelligence",
-  keywords: "education, learning, AI, emotional intelligence, adaptive learning",
-  authors: [{ name: "Smart Education Team" }],
-  openGraph: {
-    title: "Smart Education Platform",
-    description: "Learn with AI and emotional intelligence",
-    type: "website",
-  },
+  title: "مُعلمي - منصة التعليم الذكية",
+  description: "مُعلمي - منصة تعليمية ذكية مدعومة بالذكاء الاصطناعي لتحسين تجربة التعلم",
 };
 
 export default function RootLayout({
@@ -32,12 +15,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" data-scroll-behavior="smooth">
-      <body
-        className={`${inter.variable} ${cairo.variable} antialiased bg-gradient-to-br from-primary-50 via-white to-secondary-50`}
-      >
-        <Providers>{children}</Providers>
-        <FloatingChatWrapper />
+    <html lang="ar" dir="rtl">
+      <body className="antialiased min-h-screen flex flex-col">
+        <Providers>
+          <Header />
+          <main className="flex-1">
+            {children}
+          </main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );
