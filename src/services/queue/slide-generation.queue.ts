@@ -311,6 +311,14 @@ export async function addSlideGenerationJob(data: SlideGenerationJob): Promise<s
 
 export async function cancelSlideGenerationJob(jobId: string): Promise<boolean> {
   try {
+    // Check if using mock queue
+    if (isMockMode()) {
+      // Mock cancellation - just return true for now
+      console.log(`🚫 Mock: Cancelled job ${jobId}`);
+      return true;
+    }
+
+    // Real BullMQ cancellation
     const job = await slideGenerationQueue.getJob(jobId);
     if (job) {
       await job.remove();

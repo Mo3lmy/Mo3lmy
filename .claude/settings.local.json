@@ -36,7 +36,8 @@
       "Bash(cat:*)",
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI3N2Q3MzMxMS01YTBiLTQ4OWEtYWU3My0wOGZjYjc4YjIzZmIiLCJlbWFpbCI6InNsaWRldGVzdEBleGFtcGxlLmNvbSIsInJvbGUiOiJTVFVERU5UIiwiaWF0IjoxNzU4OTI5ODUzLCJleHAiOjE3NTk1MzQ2NTN9.qqe45UzgGj0NtM6bmuw-vVVvr-wo9pIY-nrkCU9jSW0\")",
       "Bash(npm run typecheck:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(start http://localhost:3001/test-frontend-integration.html)"
     ],
     "deny": [],
     "ask": []

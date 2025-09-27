@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار توليد الشرائح - Frontend Integration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Cairo', 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-right: 4px solid #667eea;
+        }
+
+        .status h3 {
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .status-message {
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .slides-container {
+            margin-top: 30px;
+        }
+
+        .slide-viewer {
+            background: #f7fafc;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 500px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide-content {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .slide-nav {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .slide-nav button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+
+        .success {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+
+        .progress-bar {
+            background: #e2e8f0;
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 اختبار نظام توليد الشرائح</h1>
+
+        <div class="controls">
+            <button onclick="generateSlides(false, false)">توليد الشرائح (بدون صوت)</button>
+            <button onclick="generateSlides(false, true)">توليد الشرائح مع التدريس</button>
+            <button onclick="checkJobStatus()">فحص حالة المهمة</button>
+            <button onclick="clearDisplay()">مسح العرض</button>
+        </div>
+
+        <div class="status">
+            <h3>الحالة الحالية:</h3>
+            <div class="status-message" id="statusMessage">
+                جاهز لبدء توليد الشرائح
+            </div>
+        </div>
+
+        <div class="progress-bar" id="progressBar" style="display: none;">
+            <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <div class="slides-container" id="slidesContainer" style="display: none;">
+            <div class="slide-viewer" id="slideViewer">
+                <div class="slide-content" id="slideContent"></div>
+            </div>
+
+            <div class="slide-nav">
+                <button onclick="previousSlide()">◀</button>
+                <span id="slideNumber">1 / 1</span>
+                <button onclick="nextSlide()">▶</button>
+            </div>
+        </div>
+
+        <div id="debugInfo" style="margin-top: 20px;">
+            <h3>معلومات التصحيح:</h3>
+            <pre id="debugContent"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:3001/api/v1';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI3N2Q3MzMxMS01YTBiLTQ4OWEtYWU3My0wOGZjYjc4YjIzZmIiLCJlbWFpbCI6InNsaWRldGVzdEBleGFtcGxlLmNvbSIsInJvbGUiOiJTVFVERU5UIiwiaWF0IjoxNzU4OTI5ODUzLCJleHAiOjE3NTk1MzQ2NTN9.qqe45UzgGj0NtM6bmuw-vVVvr-wo9pIY-nrkCU9jSW0';
+        const LESSON_ID = 'LESSON_1758905299464_qjan5xlid';
+
+        // State
+        let currentSlides = [];
+        let currentSlideIndex = 0;
+        let currentJobId = null;
+        let pollInterval = null;
+
+        // Utility Functions
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+
+            if (type === 'error') {
+                statusEl.style.color = '#c53030';
+            } else if (type === 'success') {
+                statusEl.style.color = '#22543d';
+            } else {
+                statusEl.style.color = '#4a5568';
+            }
+
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error">${message}</div>`;
+            setTimeout(() => {
+                errorContainer.innerHTML = '';
+            }, 5000);
+        }
+
+        function updateProgress(percentage) {
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+
+            if (percentage > 0) {
+                progressBar.style.display = 'block';
+                progressFill.style.width = `${percentage}%`;
+            } else {
+                progressBar.style.display = 'none';
+            }
+        }
+
+        function updateDebug(data) {
+            const debugContent = document.getElementById('debugContent');
+            debugContent.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // Slide Generation
+        async function generateSlides(generateVoice = false, generateTeaching = false) {
+            try {
+                updateStatus('جاري بدء توليد الشرائح...', 'info');
+                updateProgress(0);
+
+                const response = await fetch(
+                    `${API_BASE}/lessons/${LESSON_ID}/slides?generateVoice=${generateVoice}&generateTeaching=${generateTeaching}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${TOKEN}`,
+                            'X-Session-Id': 'test-session-' + Date.now()
+                        }
+                    }
+                );
+
+                const data = await response.json();
+                updateDebug(data);
+
+                if (data.success) {
+                    if (data.data.jobId) {
+                        // Job queued - start polling
+                        currentJobId = data.data.jobId;
+                        updateStatus(`تم إضافة المهمة للقائمة - رقم المهمة: ${currentJobId}`, 'info');
+                        startPolling();
+                    } else if (data.data.slides) {
+                        // Synchronous generation
+                        updateStatus('تم توليد الشرائح بنجاح!', 'success');
+                        displaySlides(data.data.slides);
+                    }
+                } else {
+                    throw new Error(data.error?.message || 'Failed to generate slides');
+                }
+            } catch (error) {
+                console.error('Error generating slides:', error);
+                showError('خطأ في توليد الشرائح: ' + error.message);
+                updateStatus('فشل توليد الشرائح', 'error');
+            }
+        }
+
+        // Job Status Polling
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+
+            pollInterval = setInterval(async () => {
+                await checkJobStatus(false);
+            }, 1000); // Poll every second
+        }
+
+        async function checkJobStatus(manual = true) {
+            if (!currentJobId && manual) {
+                const jobId = prompt('أدخل رقم المهمة:');
+                if (!jobId) return;
+                currentJobId = jobId;
+            }
+
+            if (!currentJobId) {
+                showError('لا توجد مهمة جارية');
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/lessons/slides/job/${currentJobId}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${TOKEN}`
+                        }
+                    }
+                );
+
+                const data = await response.json();
+
+                if (manual) {
+                    updateDebug(data);
+                }
+
+                if (data.success) {
+                    const jobData = data.data;
+
+                    if (jobData.status === 'completed') {
+                        // Job completed
+                        updateStatus('تم إكمال توليد الشرائح بنجاح!', 'success');
+                        updateProgress(100);
+
+                        if (pollInterval) {
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                        }
+
+                        if (jobData.slides) {
+                            displaySlides(jobData.slides);
+                        }
+                    } else if (jobData.status === 'processing') {
+                        // Job in progress
+                        const progress = jobData.progress || 0;
+                        updateProgress(progress);
+                        updateStatus(`جاري المعالجة... ${progress}% (${jobData.currentSlide}/${jobData.totalSlides})`, 'info');
+                    } else if (jobData.status === 'failed') {
+                        // Job failed
+                        updateStatus('فشل توليد الشرائح: ' + (jobData.error || 'Unknown error'), 'error');
+                        if (pollInterval) {
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                        }
+                    }
+                } else {
+                    if (response.status === 404) {
+                        updateStatus('المهمة غير موجودة', 'error');
+                        if (pollInterval) {
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking job status:', error);
+                if (manual) {
+                    showError('خطأ في فحص حالة المهمة: ' + error.message);
+                }
+            }
+        }
+
+        // Slide Display
+        function displaySlides(slides) {
+            currentSlides = slides;
+            currentSlideIndex = 0;
+
+            document.getElementById('slidesContainer').style.display = 'block';
+            showSlide(0);
+
+            updateStatus(`تم عرض ${slides.length} شريحة`, 'success');
+        }
+
+        function showSlide(index) {
+            if (!currentSlides.length) return;
+
+            if (index < 0) index = 0;
+            if (index >= currentSlides.length) index = currentSlides.length - 1;
+
+            currentSlideIndex = index;
+            const slide = currentSlides[index];
+
+            const slideContent = document.getElementById('slideContent');
+            slideContent.innerHTML = slide.html || '<div style="padding: 20px;">No HTML content</div>';
+
+            document.getElementById('slideNumber').textContent = `${index + 1} / ${currentSlides.length}`;
+
+            // Show script if available
+            if (slide.script) {
+                console.log(`Slide ${index + 1} script:`, slide.script);
+            }
+        }
+
+        function nextSlide() {
+            showSlide(currentSlideIndex + 1);
+        }
+
+        function previousSlide() {
+            showSlide(currentSlideIndex - 1);
+        }
+
+        function clearDisplay() {
+            currentSlides = [];
+            currentSlideIndex = 0;
+            currentJobId = null;
+
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            document.getElementById('slidesContainer').style.display = 'none';
+            document.getElementById('errorContainer').innerHTML = '';
+            document.getElementById('debugContent').textContent = '';
+            updateProgress(0);
+            updateStatus('جاهز لبدء توليد الشرائح', 'info');
+        }
+
+        // Keyboard Navigation
+        document.addEventListener('keydown', (e) => {
+            if (!currentSlides.length) return;
+
+            if (e.key === 'ArrowLeft') {
+                previousSlide();
+            } else if (e.key === 'ArrowRight') {
+                nextSlide();
+            }
+        });
+    </script>
+</body>
+</html>

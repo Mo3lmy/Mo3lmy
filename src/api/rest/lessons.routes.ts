@@ -1727,6 +1727,60 @@ router.get(
 );
 
 /**
+ * @route   GET /api/v1/lessons/slides/job/:jobId
+ * @desc    Get slide generation job status by job ID
+ * @access  Private
+ */
+router.get(
+  '/slides/job/:jobId',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { jobId } = req.params;
+
+    const status = await slideQueue.getStatus(jobId);
+
+    if (!status) {
+      res.status(404).json(
+        errorResponse('JOB_NOT_FOUND', 'Job not found')
+      );
+      return;
+    }
+
+    // If completed, get cached results
+    if (status.status === 'completed' && status.lessonId) {
+      const results = await slideQueue.getResults(status.lessonId, req.user!.userId);
+
+      if (results) {
+        res.json(
+          successResponse({
+            jobId,
+            lessonId: status.lessonId,
+            status: 'completed',
+            slides: results.htmlSlides.map((html: string, index: number) => ({
+              number: index + 1,
+              html,
+              audioUrl: results.audioUrls?.[index],
+              script: results.teachingScripts?.[index]?.script,
+              duration: results.teachingScripts?.[index]?.duration || 10
+            })),
+            totalSlides: results.htmlSlides.length,
+            processingTime: results.processingTime
+          }, 'Slides ready')
+        );
+        return;
+      }
+    }
+
+    res.json(
+      successResponse({
+        jobId,
+        ...status
+      }, 'Job status retrieved')
+    );
+  })
+);
+
+/**
  * @route   POST /api/v1/lessons/:id/slides/cancel/:jobId
  * @desc    Cancel slide generation job
  * @access  Private

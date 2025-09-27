@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار نظام الشرائح</title>
+    <style>
+        body {
+            font-family: 'Cairo', 'Arial', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            direction: rtl;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+            background: #f7fafc;
+            border-right: 4px solid #667eea;
+        }
+        .success {
+            background: #c6f6d5;
+            border-color: #48bb78;
+            color: #22543d;
+        }
+        .error {
+            background: #fed7d7;
+            border-color: #f56565;
+            color: #c53030;
+        }
+        .info {
+            background: #e6f7ff;
+            border-color: #1890ff;
+            color: #0050b3;
+        }
+        button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .slide-content {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 10px;
+            min-height: 400px;
+        }
+        .slide-navigation {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            text-align: left;
+            direction: ltr;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+        }
+        .spinner {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 5px solid #e2e8f0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #e2e8f0;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 اختبار نظام توليد الشرائح</h1>
+
+        <div id="connectionStatus" class="status">
+            جاري التحقق من الاتصال بالخادم...
+        </div>
+
+        <div id="controls" style="display: none;">
+            <button onclick="testConnection()">اختبار الاتصال</button>
+            <button onclick="generateSlides()">توليد الشرائح</button>
+            <button onclick="checkLastJob()">فحص آخر مهمة</button>
+            <button onclick="clearDisplay()">مسح الشاشة</button>
+        </div>
+
+        <div class="progress-bar" id="progressBar" style="display: none;">
+            <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+        </div>
+
+        <div id="statusMessages"></div>
+
+        <div id="slideContent" style="display: none;">
+            <h2>عرض الشرائح:</h2>
+            <div class="slide-content" id="slideDisplay"></div>
+            <div class="slide-navigation">
+                <button onclick="previousSlide()">السابق</button>
+                <span id="slideCounter">0 / 0</span>
+                <button onclick="nextSlide()">التالي</button>
+            </div>
+        </div>
+
+        <div id="debugSection">
+            <h3>معلومات التصحيح:</h3>
+            <pre id="debugInfo"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:3001/api/v1';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI3N2Q3MzMxMS01YTBiLTQ4OWEtYWU3My0wOGZjYjc4YjIzZmIiLCJlbWFpbCI6InNsaWRldGVzdEBleGFtcGxlLmNvbSIsInJvbGUiOiJTVFVERU5UIiwiaWF0IjoxNzU4OTI5ODUzLCJleHAiOjE3NTk1MzQ2NTN9.qqe45UzgGj0NtM6bmuw-vVVvr-wo9pIY-nrkCU9jSW0';
+        const LESSON_ID = 'LESSON_1758905299464_qjan5xlid';
+
+        // State
+        let slides = [];
+        let currentSlideIndex = 0;
+        let lastJobId = null;
+        let pollInterval = null;
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            checkConnection();
+        });
+
+        async function checkConnection() {
+            const statusEl = document.getElementById('connectionStatus');
+            const debugEl = document.getElementById('debugInfo');
+
+            try {
+                const response = await fetch(`${API_BASE.replace('/api/v1', '')}/health`);
+                const data = await response.json();
+
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ متصل بالخادم بنجاح';
+                document.getElementById('controls').style.display = 'block';
+
+                debugEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ فشل الاتصال بالخادم: ${error.message}`;
+
+                debugEl.textContent = `Error: ${error.message}\nURL: ${API_BASE}`;
+            }
+        }
+
+        async function testConnection() {
+            addStatusMessage('جاري اختبار الاتصال...', 'info');
+
+            try {
+                // Test health endpoint
+                const healthResponse = await fetch('http://localhost:3001/health');
+                const healthData = await healthResponse.json();
+                addStatusMessage('✅ Health endpoint working', 'success');
+
+                // Test API status
+                const apiResponse = await fetch('http://localhost:3001/api/status');
+                const apiData = await apiResponse.json();
+                addStatusMessage('✅ API status endpoint working', 'success');
+
+                // Test authenticated endpoint
+                const authResponse = await fetch(`${API_BASE}/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`
+                    }
+                });
+
+                if (authResponse.ok) {
+                    const authData = await authResponse.json();
+                    addStatusMessage('✅ Authentication working', 'success');
+                } else {
+                    addStatusMessage('⚠️ Authentication failed', 'error');
+                }
+
+                document.getElementById('debugInfo').textContent = JSON.stringify({
+                    health: healthData,
+                    api: apiData
+                }, null, 2);
+
+            } catch (error) {
+                addStatusMessage(`❌ Connection test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function generateSlides() {
+            addStatusMessage('بدء توليد الشرائح...', 'info');
+            clearInterval(pollInterval);
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/lessons/${LESSON_ID}/slides?generateVoice=false&generateTeaching=true`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${TOKEN}`,
+                            'X-Session-Id': 'test-' + Date.now()
+                        }
+                    }
+                );
+
+                const data = await response.json();
+                document.getElementById('debugInfo').textContent = JSON.stringify(data, null, 2);
+
+                if (data.success) {
+                    if (data.data.jobId) {
+                        lastJobId = data.data.jobId;
+                        addStatusMessage(`✅ تم إضافة المهمة للقائمة: ${lastJobId}`, 'success');
+                        startPolling();
+                    } else if (data.data.slides) {
+                        addStatusMessage('✅ تم توليد الشرائح مباشرة', 'success');
+                        displaySlides(data.data.slides);
+                    }
+                } else {
+                    throw new Error(data.error?.message || 'Failed to generate slides');
+                }
+            } catch (error) {
+                addStatusMessage(`❌ خطأ: ${error.message}`, 'error');
+            }
+        }
+
+        function startPolling() {
+            document.getElementById('progressBar').style.display = 'block';
+
+            pollInterval = setInterval(async () => {
+                await checkJobStatus(false);
+            }, 1000);
+        }
+
+        async function checkJobStatus(manual = true) {
+            if (!lastJobId && manual) {
+                lastJobId = prompt('أدخل رقم المهمة:');
+                if (!lastJobId) return;
+            }
+
+            if (!lastJobId) {
+                addStatusMessage('لا توجد مهمة للفحص', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/lessons/slides/job/${lastJobId}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${TOKEN}`
+                        }
+                    }
+                );
+
+                const data = await response.json();
+
+                if (manual) {
+                    document.getElementById('debugInfo').textContent = JSON.stringify(data, null, 2);
+                }
+
+                if (data.success && data.data) {
+                    const jobData = data.data;
+
+                    if (jobData.status === 'completed') {
+                        clearInterval(pollInterval);
+                        updateProgress(100);
+                        addStatusMessage('✅ اكتمل توليد الشرائح', 'success');
+
+                        if (jobData.slides) {
+                            displaySlides(jobData.slides);
+                        }
+                    } else if (jobData.status === 'processing') {
+                        const progress = jobData.progress || 0;
+                        updateProgress(progress);
+                        addStatusMessage(`جاري المعالجة... ${progress}%`, 'info');
+                    } else if (jobData.status === 'failed') {
+                        clearInterval(pollInterval);
+                        addStatusMessage(`❌ فشل التوليد: ${jobData.error}`, 'error');
+                    }
+                }
+            } catch (error) {
+                if (manual) {
+                    addStatusMessage(`❌ خطأ في فحص المهمة: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        async function checkLastJob() {
+            // Try to get job 23 which should exist
+            lastJobId = '23';
+            await checkJobStatus(false);
+        }
+
+        function displaySlides(slidesData) {
+            slides = slidesData;
+            currentSlideIndex = 0;
+
+            document.getElementById('slideContent').style.display = 'block';
+            showSlide(0);
+
+            addStatusMessage(`تم عرض ${slides.length} شريحة`, 'success');
+        }
+
+        function showSlide(index) {
+            if (!slides.length) return;
+
+            if (index < 0) index = 0;
+            if (index >= slides.length) index = slides.length - 1;
+
+            currentSlideIndex = index;
+            const slide = slides[index];
+
+            document.getElementById('slideDisplay').innerHTML = slide.html || '<p>لا يوجد محتوى HTML</p>';
+            document.getElementById('slideCounter').textContent = `${index + 1} / ${slides.length}`;
+        }
+
+        function nextSlide() {
+            showSlide(currentSlideIndex + 1);
+        }
+
+        function previousSlide() {
+            showSlide(currentSlideIndex - 1);
+        }
+
+        function clearDisplay() {
+            slides = [];
+            currentSlideIndex = 0;
+            lastJobId = null;
+            clearInterval(pollInterval);
+
+            document.getElementById('slideContent').style.display = 'none';
+            document.getElementById('progressBar').style.display = 'none';
+            document.getElementById('statusMessages').innerHTML = '';
+            document.getElementById('debugInfo').textContent = '';
+
+            updateProgress(0);
+            addStatusMessage('تم مسح الشاشة', 'info');
+        }
+
+        function addStatusMessage(message, type = 'info') {
+            const container = document.getElementById('statusMessages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `status ${type}`;
+            messageEl.textContent = message;
+            container.appendChild(messageEl);
+
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                messageEl.remove();
+            }, 5000);
+        }
+
+        function updateProgress(percentage) {
+            document.getElementById('progressFill').style.width = `${percentage}%`;
+        }
+    </script>
+</body>
+</html>
